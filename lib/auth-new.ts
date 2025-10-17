@@ -1,0 +1,89 @@
+import { api, saveToken, clearToken, ApiResponse } from './api/client';
+import { API_ENDPOINTS } from './api/config';
+
+export type UserRole = "student" | "teacher" | "admin" | "responsable";
+
+export interface User {
+  id: string;
+  email: string;
+  role: UserRole;
+  full_name: string;
+  profile?: any;
+}
+
+export interface LoginResponse {
+  success: boolean;
+  token: string;
+  refreshToken?: string;
+  user: User;
+}
+
+export async function authenticateUser(
+  email: string,
+  password: string
+): Promise<{ success: boolean; user?: User; error?: string }> {
+  try {
+    const response = await api.post<LoginResponse>(API_ENDPOINTS.auth.login, {
+      email,
+      password,
+    });
+
+    if (response.success && response.data) {
+      const { token, refreshToken, user } = response.data;
+
+      saveToken(token);
+      if (refreshToken) {
+        localStorage.setItem('refresh_token', refreshToken);
+      }
+
+      setUserSession(user);
+
+      return { success: true, user };
+    }
+
+    return {
+      success: false,
+      error: response.error || 'Échec de la connexion',
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: 'Erreur de connexion au serveur',
+    };
+  }
+}
+
+export function setUserSession(user: User): void {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('user', JSON.stringify(user));
+  }
+}
+
+export function getUserSession(): User | null {
+  if (typeof window !== 'undefined') {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        return JSON.parse(userStr);
+      } catch (error) {
+        console.error('Erreur parsing user session:', error);
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+export async function clearUserSession(): Promise<void> {
+  try {
+    await api.post(API_ENDPOINTS.auth.logout);
+  } catch (error) {
+    console.error('Erreur lors de la déconnexion:', error);
+  } finally {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('user');
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('refresh_token');
+    }
+  }
+}
