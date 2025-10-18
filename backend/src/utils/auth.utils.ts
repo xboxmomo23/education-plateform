@@ -176,3 +176,4 @@ export function extractTokenFromHeader(authHeader: string | undefined): string |
 
   return parts[1];
 }
+

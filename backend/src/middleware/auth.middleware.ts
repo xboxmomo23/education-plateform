@@ -8,7 +8,15 @@ import { UserRole, JWTPayload } from '../types';
 declare global {
   namespace Express {
     interface Request {
-      user?: JWTPayload;
+      user?: {
+        userId: string;
+        email: string;
+        role: UserRole;
+        full_name: string;
+        // Future: Multi-tenant context
+        // Sera rempli automatiquement depuis user.establishment_id
+        establishmentId?: string;
+      };
     }
   }
 }
@@ -19,6 +27,7 @@ declare global {
 
 /**
  * Vérifie qu'un utilisateur est authentifié
+ * Future-proof: inclut le contexte establishment
  */
 export async function authenticate(
   req: Request,
@@ -26,7 +35,6 @@ export async function authenticate(
   next: NextFunction
 ): Promise<void> {
   try {
-    // Extraire le token du header Authorization
     const token = extractTokenFromHeader(req.headers.authorization);
     
     if (!token) {
@@ -37,7 +45,6 @@ export async function authenticate(
       return;
     }
     
-    // Vérifier la validité du token JWT
     let decoded: JWTPayload;
     try {
       decoded = verifyToken(token);
@@ -49,7 +56,6 @@ export async function authenticate(
       return;
     }
     
-    // Vérifier que la session existe toujours en base
     const session = await findSessionByToken(token);
     if (!session) {
       res.status(401).json({
@@ -59,7 +65,6 @@ export async function authenticate(
       return;
     }
     
-    // Vérifier que l'utilisateur existe et est actif
     const user = await findUserById(decoded.userId);
     if (!user || !user.active || user.deleted_at) {
       res.status(401).json({
@@ -69,11 +74,16 @@ export async function authenticate(
       return;
     }
     
-    // Mettre à jour l'activité de la session
     await updateSessionActivity(token);
     
-    // Attacher l'utilisateur à la requête
-    req.user = decoded;
+    req.user = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      full_name: user.full_name,
+      // Future: Ajouter automatiquement le contexte establishment
+      // establishmentId: user.establishment_id,
+    };
     
     next();
   } catch (error) {
@@ -106,7 +116,7 @@ export function authorize(...allowedRoles: UserRole[]) {
       res.status(403).json({
         success: false,
         error: 'Accès refusé : permissions insuffisantes',
-        required_role: allowedRoles,
+        required_roles: allowedRoles,
         your_role: req.user.role,
       });
       return;
@@ -139,12 +149,10 @@ export async function optionalAuthenticate(
     const token = extractTokenFromHeader(req.headers.authorization);
     
     if (!token) {
-      // Pas de token, on continue sans authentification
       next();
       return;
     }
     
-    // Tenter de décoder le token
     try {
       const decoded = verifyToken(token);
       const session = await findSessionByToken(token);
@@ -152,7 +160,14 @@ export async function optionalAuthenticate(
       if (session) {
         const user = await findUserById(decoded.userId);
         if (user && user.active && !user.deleted_at) {
-          req.user = decoded;
+          req.user = {
+            userId: user.id,
+            email: user.email,
+            role: user.role,
+            full_name: user.full_name,
+            // Future
+            // establishmentId: user.establishment_id,
+          };
           await updateSessionActivity(token);
         }
       }
@@ -195,7 +210,6 @@ export async function checkAccountStatus(
       return;
     }
     
-    // Vérifier si le compte est bloqué
     if (user.account_locked_until && new Date(user.account_locked_until) > new Date()) {
       res.status(403).json({
         success: false,
@@ -205,7 +219,6 @@ export async function checkAccountStatus(
       return;
     }
     
-    // Vérifier si le compte est actif
     if (!user.active) {
       res.status(403).json({
         success: false,
@@ -223,3 +236,40 @@ export async function checkAccountStatus(
     });
   }
 }
+
+// =========================
+// Future: Middleware Multi-tenant
+// =========================
+
+/**
+ * Middleware pour isoler les données par établissement
+ * À activer lors de la migration multi-tenant
+ */
+/*
+export async function enforceEstablishmentIsolation(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  if (!req.user?.establishmentId) {
+    res.status(403).json({
+      success: false,
+      error: 'Établissement non identifié',
+    });
+    return;
+  }
+  
+  // Vérifier que l'utilisateur appartient bien à cet établissement
+  const user = await findUserById(req.user.userId);
+  
+  if (user.establishment_id !== req.user.establishmentId) {
+    res.status(403).json({
+      success: false,
+      error: 'Accès interdit à cet établissement',
+    });
+    return;
+  }
+  
+  next();
+}
+*/

@@ -1,6 +1,21 @@
 import { pool } from '../config/database';
 import { User, UserRole, StudentProfile, TeacherProfile, ResponsableProfile } from '../types';
 import { hashPassword } from '../utils/auth.utils';
+import { QueryBuilder, addBaseFilters } from '../utils/query-builder';
+
+// =========================
+// Interfaces de filtres
+// =========================
+
+export interface UserFilters {
+  id?: string;
+  email?: string;
+  role?: UserRole;
+  active?: boolean;
+  includeDeleted?: boolean;
+  // Future: Multi-tenant
+  establishmentId?: string;
+}
 
 // =========================
 // Création d'utilisateurs
@@ -11,22 +26,27 @@ export interface CreateUserData {
   password: string;
   role: UserRole;
   full_name: string;
+  establishmentId?: string;  // Future: Obligatoire
 }
 
 export async function createUser(userData: CreateUserData): Promise<User> {
-  const { email, password, role, full_name } = userData;
+  const { email, password, role, full_name, establishmentId } = userData;
   
   const password_hash = await hashPassword(password);
   
   const query = `
-    INSERT INTO users (email, password_hash, role, full_name, email_verified)
-    VALUES ($1, $2, $3, $4, $5)
+    INSERT INTO users (
+      email, password_hash, role, full_name, email_verified
+      ${establishmentId ? ', establishment_id' : ''}
+    )
+    VALUES ($1, $2, $3, $4, $5 ${establishmentId ? ', $6' : ''})
     RETURNING *
   `;
   
   const values = [email, password_hash, role, full_name, false];
-  const result = await pool.query(query, values);
+  if (establishmentId) values.push(establishmentId);
   
+  const result = await pool.query(query, values);
   return result.rows[0];
 }
 
@@ -112,31 +132,70 @@ export async function createResponsableProfile(
 }
 
 // =========================
-// Recherche d'utilisateurs
+// Recherche d'utilisateurs (REFACTORÉ)
 // =========================
 
-export async function findUserByEmail(email: string): Promise<User | null> {
+/**
+ * Trouve des utilisateurs avec filtres extensibles
+ * Future-proof pour multi-tenant
+ */
+export async function findUsers(filters: UserFilters = {}): Promise<User[]> {
+  const qb = new QueryBuilder();
+  
+  // Ajouter les filtres standards
+  addBaseFilters(qb, {
+    establishmentId: filters.establishmentId,
+    active: filters.active,
+    includeDeleted: filters.includeDeleted,
+  });
+  
+  // Ajouter les filtres spécifiques
+  if (filters.id) {
+    qb.addCondition('id', filters.id);
+  }
+  
+  if (filters.email) {
+    qb.addCondition('email', filters.email);
+  }
+  
+  if (filters.role) {
+    qb.addCondition('role', filters.role);
+  }
+  
+  const { where, values } = qb.build();
+  
   const query = `
     SELECT * FROM users 
-    WHERE email = $1 AND deleted_at IS NULL
+    ${where}
+    ORDER BY created_at DESC
   `;
   
-  const result = await pool.query(query, [email]);
-  return result.rows[0] || null;
+  const result = await pool.query(query, values);
+  return result.rows;
 }
 
-export async function findUserById(id: string): Promise<User | null> {
-  const query = `
-    SELECT * FROM users 
-    WHERE id = $1 AND deleted_at IS NULL
-  `;
-  
-  const result = await pool.query(query, [id]);
-  return result.rows[0] || null;
+/**
+ * Trouve un utilisateur par email
+ * Wrapper pour compatibilité avec l'ancien code
+ */
+export async function findUserByEmail(email: string, establishmentId?: string): Promise<User | null> {
+  const users = await findUsers({ email, establishmentId });
+  return users[0] || null;
 }
 
-export async function getUserWithProfile(userId: string, role: UserRole) {
-  const user = await findUserById(userId);
+/**
+ * Trouve un utilisateur par ID
+ */
+export async function findUserById(id: string, establishmentId?: string): Promise<User | null> {
+  const users = await findUsers({ id, establishmentId });
+  return users[0] || null;
+}
+
+/**
+ * Récupère un utilisateur avec son profil
+ */
+export async function getUserWithProfile(userId: string, role: UserRole, establishmentId?: string) {
+  const user = await findUserById(userId, establishmentId);
   if (!user) return null;
   
   let profile: StudentProfile | TeacherProfile | ResponsableProfile | null = null;
@@ -186,7 +245,6 @@ export async function updateLastLogin(userId: string): Promise<void> {
     SET last_login = NOW(), failed_login_attempts = 0
     WHERE id = $1
   `;
-  
   await pool.query(query, [userId]);
 }
 
@@ -197,7 +255,6 @@ export async function incrementFailedAttempts(userId: string): Promise<number> {
     WHERE id = $1
     RETURNING failed_login_attempts
   `;
-  
   const result = await pool.query(query, [userId]);
   return result.rows[0].failed_login_attempts;
 }
@@ -208,7 +265,6 @@ export async function lockAccount(userId: string, durationMinutes: number = 30):
     SET account_locked_until = NOW() + INTERVAL '${durationMinutes} minutes'
     WHERE id = $1
   `;
-  
   await pool.query(query, [userId]);
 }
 
@@ -218,7 +274,6 @@ export async function isAccountLocked(userId: string): Promise<boolean> {
     FROM users 
     WHERE id = $1
   `;
-  
   const result = await pool.query(query, [userId]);
   const user = result.rows[0];
   
@@ -237,7 +292,6 @@ export async function updatePassword(userId: string, newPassword: string): Promi
     SET password_hash = $1, password_changed_at = NOW()
     WHERE id = $2
   `;
-  
   await pool.query(query, [password_hash, userId]);
 }
 
@@ -247,7 +301,6 @@ export async function activateUser(userId: string): Promise<void> {
     SET active = TRUE, email_verified = TRUE
     WHERE id = $1
   `;
-  
   await pool.query(query, [userId]);
 }
 
@@ -257,6 +310,5 @@ export async function deactivateUser(userId: string): Promise<void> {
     SET active = FALSE, deleted_at = NOW()
     WHERE id = $1
   `;
-  
   await pool.query(query, [userId]);
 }

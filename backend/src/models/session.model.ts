@@ -1,9 +1,10 @@
 import { pool } from '../config/database';
 import { UserSession } from '../types';
 import { hashToken } from '../utils/auth.utils';
+import { QueryBuilder } from '../utils/query-builder';
 
 // =========================
-// Création de sessions
+// Interfaces
 // =========================
 
 export interface CreateSessionData {
@@ -11,19 +12,25 @@ export interface CreateSessionData {
   token: string;
   deviceInfo?: string;
   ipAddress?: string;
-  expiresIn: string; // Ex: '24h', '7d'
+  expiresIn: string;
 }
 
-/**
- * Crée une nouvelle session utilisateur
- */
+export interface SessionFilters {
+  userId?: string;
+  tokenHash?: string;
+  expired?: boolean;
+  // Future: Multi-tenant
+  establishmentId?: string;
+}
+
+// =========================
+// Création de sessions
+// =========================
+
 export async function createSession(data: CreateSessionData): Promise<UserSession> {
   const { userId, token, deviceInfo, ipAddress, expiresIn } = data;
   
-  // Hasher le token pour sécurité
   const token_hash = hashToken(token);
-  
-  // Calculer la date d'expiration
   const expiresAt = calculateExpiration(expiresIn);
   
   const query = `
@@ -40,13 +47,9 @@ export async function createSession(data: CreateSessionData): Promise<UserSessio
   return result.rows[0];
 }
 
-/**
- * Calcule la date d'expiration à partir d'une durée
- */
 function calculateExpiration(duration: string): Date {
   const now = new Date();
   
-  // Parser la durée (ex: '24h', '7d', '30m')
   const match = duration.match(/^(\d+)([smhd])$/);
   if (!match) {
     throw new Error('Format de durée invalide');
@@ -56,16 +59,16 @@ function calculateExpiration(duration: string): Date {
   const numValue = parseInt(value);
   
   switch (unit) {
-    case 's': // secondes
+    case 's':
       now.setSeconds(now.getSeconds() + numValue);
       break;
-    case 'm': // minutes
+    case 'm':
       now.setMinutes(now.getMinutes() + numValue);
       break;
-    case 'h': // heures
+    case 'h':
       now.setHours(now.getHours() + numValue);
       break;
-    case 'd': // jours
+    case 'd':
       now.setDate(now.getDate() + numValue);
       break;
   }
@@ -74,36 +77,61 @@ function calculateExpiration(duration: string): Date {
 }
 
 // =========================
-// Récupération de sessions
+// Récupération de sessions (REFACTORÉ)
 // =========================
+
+/**
+ * Trouve des sessions avec filtres extensibles
+ * Future-proof pour multi-tenant
+ */
+export async function findSessions(filters: SessionFilters = {}): Promise<UserSession[]> {
+  const qb = new QueryBuilder();
+  
+  if (filters.userId) {
+    qb.addCondition('user_id', filters.userId);
+  }
+  
+  if (filters.tokenHash) {
+    qb.addCondition('token_hash', filters.tokenHash);
+  }
+  
+  if (filters.expired === false) {
+    qb.addCondition('expires_at', 'NOW()', '>');
+  } else if (filters.expired === true) {
+    qb.addCondition('expires_at', 'NOW()', '<');
+  }
+  
+  // Future: Multi-tenant via JOIN avec users
+  // if (filters.establishmentId) {
+  //   // Nécessite un JOIN avec users pour filter par establishment_id
+  // }
+  
+  const { where, values } = qb.build();
+  
+  const query = `
+    SELECT * FROM user_sessions 
+    ${where}
+    ORDER BY created_at DESC
+  `;
+  
+  const result = await pool.query(query, values);
+  return result.rows;
+}
 
 /**
  * Trouve une session par token
  */
 export async function findSessionByToken(token: string): Promise<UserSession | null> {
   const token_hash = hashToken(token);
-  
-  const query = `
-    SELECT * FROM user_sessions 
-    WHERE token_hash = $1 AND expires_at > NOW()
-  `;
-  
-  const result = await pool.query(query, [token_hash]);
-  return result.rows[0] || null;
+  const sessions = await findSessions({ tokenHash: token_hash, expired: false });
+  return sessions[0] || null;
 }
 
 /**
  * Récupère toutes les sessions actives d'un utilisateur
  */
 export async function getUserActiveSessions(userId: string): Promise<UserSession[]> {
-  const query = `
-    SELECT * FROM user_sessions 
-    WHERE user_id = $1 AND expires_at > NOW()
-    ORDER BY created_at DESC
-  `;
-  
-  const result = await pool.query(query, [userId]);
-  return result.rows;
+  return findSessions({ userId, expired: false });
 }
 
 /**
@@ -124,9 +152,6 @@ export async function countUserActiveSessions(userId: string): Promise<number> {
 // Mise à jour de sessions
 // =========================
 
-/**
- * Met à jour l'activité d'une session
- */
 export async function updateSessionActivity(token: string): Promise<void> {
   const token_hash = hashToken(token);
   
@@ -143,9 +168,6 @@ export async function updateSessionActivity(token: string): Promise<void> {
 // Suppression de sessions
 // =========================
 
-/**
- * Révoque une session (déconnexion)
- */
 export async function revokeSession(token: string): Promise<boolean> {
   const token_hash = hashToken(token);
   
@@ -159,9 +181,6 @@ export async function revokeSession(token: string): Promise<boolean> {
   return result.rowCount !== null && result.rowCount > 0;
 }
 
-/**
- * Révoque toutes les sessions d'un utilisateur
- */
 export async function revokeAllUserSessions(userId: string): Promise<number> {
   const query = `
     DELETE FROM user_sessions 
@@ -173,9 +192,6 @@ export async function revokeAllUserSessions(userId: string): Promise<number> {
   return result.rowCount || 0;
 }
 
-/**
- * Révoque toutes les sessions sauf celle en cours
- */
 export async function revokeOtherSessions(userId: string, currentToken: string): Promise<number> {
   const token_hash = hashToken(currentToken);
   
@@ -189,9 +205,6 @@ export async function revokeOtherSessions(userId: string, currentToken: string):
   return result.rowCount || 0;
 }
 
-/**
- * Nettoie les sessions expirées
- */
 export async function cleanupExpiredSessions(): Promise<number> {
   const query = `
     DELETE FROM user_sessions 
@@ -203,11 +216,7 @@ export async function cleanupExpiredSessions(): Promise<number> {
   return result.rowCount || 0;
 }
 
-/**
- * Limite le nombre de sessions par utilisateur
- */
 export async function limitUserSessions(userId: string, maxSessions: number = 5): Promise<void> {
-  // Supprimer les sessions les plus anciennes si on dépasse la limite
   const query = `
     DELETE FROM user_sessions 
     WHERE id IN (
