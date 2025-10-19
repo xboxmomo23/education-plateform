@@ -1,3 +1,4 @@
+import { pool } from '../config/database';  // ✅ Ajoute cet import
 import { Request, Response } from 'express';
 import {
   createEvaluation,
@@ -595,6 +596,10 @@ export async function getGradeByIdHandler(req: Request, res: Response): Promise<
             date: grade.evaluation_date,
             description: grade.evaluation_description,
           },
+          /* The above code is defining a TypeScript object with properties related to a course. It is
+          extracting information from a `grade` object and assigning it to the corresponding
+          properties in the `course` object. The properties being extracted include `id`,
+          `subjectName`, `subjectCode`, `className`, and `classCode`. */
           course: {
             id: grade.course_id,
             subjectName: grade.subject_name,
@@ -660,7 +665,7 @@ async function checkGradeAccessPermission(
       WHERE g.id = $1 AND sr.responsable_id = $2
     `;
     const result = await pool.query(query, [grade.id, userId]);
-    return parseInt(result.rows[0].count) > 0;
+    return result.rows.length > 0 && parseInt(result.rows[0].count) > 0;  
   }
 
   // Élève : doit être sa propre note
@@ -811,9 +816,11 @@ export async function getStudentAveragesHandler(req: Request, res: Response): Pr
         averages: {
           general: overallAverage,
           bySubject: averages.reduce((acc, avg) => {
-            acc[avg.subject_name] = avg.weighted_average;
-            return acc;
-          }, {} as Record<string, number>),
+            if (avg.subject_name) {  // ✅ Vérification ajoutée
+              acc[avg.subject_name] = avg.weighted_average;
+            }
+          return acc;
+        }, {} as Record<string, number>),
         },
         details: averages,
       },

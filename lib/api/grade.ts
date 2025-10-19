@@ -13,6 +13,14 @@ export interface Evaluation {
   description?: string;
 }
 
+// ✅ Crée d'abord un type pour les données d'entrée
+export interface CreateGradeData {
+  studentId: string;
+  value?: number;
+  absent?: boolean;
+  comment?: string;
+}
+
 export interface Grade {
   id: string;
   evaluationId: string;
@@ -41,7 +49,7 @@ export const gradesApi = {
     api.delete(`/api/grades/evaluations/${id}`),
 
   // Grades
-  createOrUpdateGrades: (evaluationId: string, grades: Grade[]) => 
+  createOrUpdateGrades: (evaluationId: string, grades: CreateGradeData[]) => 
     api.post('/api/grades', { evaluationId, grades }),
     
   updateGrade: (id: string, data: Partial<Grade>) => 

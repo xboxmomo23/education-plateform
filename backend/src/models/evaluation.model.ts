@@ -168,7 +168,7 @@ export async function findEvaluations(filters: EvaluationFilters = {}): Promise<
   qb.addOrderBy('e.eval_date', 'DESC');
   qb.addOrderBy('e.created_at', 'DESC');
 
-  const { fullQuery, values } = qb.build();
+  const { fullQuery, values } = qb.buildFull();  // ✅ buildFull() au lieu de build()
 
   const baseQuery = `
     SELECT 
@@ -181,7 +181,7 @@ export async function findEvaluations(filters: EvaluationFilters = {}): Promise<
     FROM evaluations e
   `;
 
-  const query = fullQuery(baseQuery);
+  const query = fullQuery(baseQuery);  // ✅ Appelle fullQuery avec baseQuery
   const result = await pool.query(query, values);
   
   return result.rows;
