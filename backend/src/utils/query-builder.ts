@@ -1,6 +1,7 @@
 /**
  * Query Builder pour requêtes SQL extensibles
- * Prépare le multi-tenant sans casser le code actuel
+ * Préparé le multi-tenant sans casser le code actuel
+ * VERSION AMÉLIORÉE (garde ton code de base, ajoute juste ces méthodes)
  */
 
 export interface BaseFilters {
@@ -13,6 +14,11 @@ export class QueryBuilder {
   private conditions: string[] = [];
   private values: any[] = [];
   private paramIndex = 1;
+  
+  // ✅ NOUVEAU: Pour supporter les JOINs (utilisé dans tes models)
+  private joins: string[] = [];
+  private orderBys: string[] = [];
+  private groupBys: string[] = [];
   
   constructor(baseConditions: string[] = []) {
     this.conditions = [...baseConditions];
@@ -33,12 +39,13 @@ export class QueryBuilder {
    * Ajoute le filtre establishment_id (préparé pour multi-tenant)
    * Pour l'instant commenté, à activer plus tard
    */
-  addEstablishmentFilter(establishmentId?: string): this {
+  addEstablishmentFilter(establishmentId?: string, tableAlias?: string): this {
     // Future: Multi-tenant filter
     // Décommenter quand le multi-tenant sera activé
     /*
     if (establishmentId) {
-      this.conditions.push(`establishment_id = $${this.paramIndex++}`);
+      const field = tableAlias ? `${tableAlias}.establishment_id` : 'establishment_id';
+      this.conditions.push(`${field} = $${this.paramIndex++}`);
       this.values.push(establishmentId);
     }
     */
@@ -78,6 +85,39 @@ export class QueryBuilder {
     return this;
   }
   
+  // ✅ NOUVEAU: Support des JOINs (utilisé dans grade.model.ts et evaluation.model.ts)
+  addJoin(type: 'INNER' | 'LEFT' | 'RIGHT', table: string, condition: string): this {
+    this.joins.push(`${type} JOIN ${table} ON ${condition}`);
+    return this;
+  }
+  
+  // ✅ NOUVEAU: Support ORDER BY (utilisé partout dans tes models)
+  addOrderBy(field: string, direction: 'ASC' | 'DESC' = 'ASC'): this {
+    this.orderBys.push(`${field} ${direction}`);
+    return this;
+  }
+  
+  // ✅ NOUVEAU: Support GROUP BY (utilisé dans grade.model.ts)
+  addGroupBy(field: string): this {
+    if (!this.groupBys.includes(field)) {
+      this.groupBys.push(field);
+    }
+    return this;
+  }
+  
+  // ✅ NOUVEAU: Filtre par date range (utile pour les évaluations)
+  addDateRangeFilter(field: string, startDate?: Date, endDate?: Date): this {
+    if (startDate) {
+      this.conditions.push(`${field} >= $${this.paramIndex++}`);
+      this.values.push(startDate);
+    }
+    if (endDate) {
+      this.conditions.push(`${field} <= $${this.paramIndex++}`);
+      this.values.push(endDate);
+    }
+    return this;
+  }
+  
   /**
    * Construit la clause WHERE et retourne les valeurs
    */
@@ -89,6 +129,42 @@ export class QueryBuilder {
     return { where, values: this.values };
   }
   
+  // ✅ NOUVEAU: Build complet avec JOINs, ORDER BY, GROUP BY (pour tes models complexes)
+  buildFull(): { 
+    fullQuery: (baseQuery: string) => string; 
+    values: any[] 
+  } {
+    const { where, values } = this.build();
+    
+    const fullQuery = (baseQuery: string): string => {
+      let query = baseQuery;
+      
+      // Ajouter les JOINs
+      if (this.joins.length > 0) {
+        query += '\n' + this.joins.join('\n');
+      }
+      
+      // Ajouter WHERE
+      if (where) {
+        query += '\n' + where;
+      }
+      
+      // Ajouter GROUP BY
+      if (this.groupBys.length > 0) {
+        query += '\nGROUP BY ' + this.groupBys.join(', ');
+      }
+      
+      // Ajouter ORDER BY
+      if (this.orderBys.length > 0) {
+        query += '\nORDER BY ' + this.orderBys.join(', ');
+      }
+      
+      return query;
+    };
+    
+    return { fullQuery, values };
+  }
+  
   /**
    * Réinitialise le builder
    */
@@ -96,6 +172,9 @@ export class QueryBuilder {
     this.conditions = [];
     this.values = [];
     this.paramIndex = 1;
+    this.joins = [];
+    this.orderBys = [];
+    this.groupBys = [];
     return this;
   }
 }
