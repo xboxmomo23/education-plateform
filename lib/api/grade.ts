@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { api } from './client';
 
 // Types
 export interface Evaluation {
@@ -26,55 +26,55 @@ export interface Grade {
 export const gradesApi = {
   // Evaluations
   createEvaluation: (data: Partial<Evaluation>) => 
-    apiClient.post('/api/grades/evaluations', data),
+    api.post('/api/grades/evaluations', data),
     
   getEvaluations: (filters?: any) => 
-    apiClient.get('/api/grades/evaluations', { params: filters }),
+    api.get('/api/grades/evaluations', { params: filters }),
     
   getEvaluation: (id: string) => 
-    apiClient.get(`/api/grades/evaluations/${id}`),
+    api.get(`/api/grades/evaluations/${id}`),
     
   updateEvaluation: (id: string, data: Partial<Evaluation>) => 
-    apiClient.put(`/api/grades/evaluations/${id}`, data),
+    api.put(`/api/grades/evaluations/${id}`, data),
     
   deleteEvaluation: (id: string) => 
-    apiClient.delete(`/api/grades/evaluations/${id}`),
+    api.delete(`/api/grades/evaluations/${id}`),
 
   // Grades
   createOrUpdateGrades: (evaluationId: string, grades: Grade[]) => 
-    apiClient.post('/api/grades', { evaluationId, grades }),
+    api.post('/api/grades', { evaluationId, grades }),
     
   updateGrade: (id: string, data: Partial<Grade>) => 
-    apiClient.put(`/api/grades/${id}`, data),
+    api.put(`/api/grades/${id}`, data),
     
   deleteGrade: (id: string) => 
-    apiClient.delete(`/api/grades/${id}`),
+    api.delete(`/api/grades/${id}`),
     
   getGradeHistory: (id: string) => 
-    apiClient.get(`/api/grades/${id}/history`),
+    api.get(`/api/grades/${id}/history`),
 
   // Student
   getStudentGrades: (studentId: string, filters?: any) => 
-    apiClient.get(`/api/grades/student/${studentId}`, { params: filters }),
+    api.get(`/api/grades/student/${studentId}`, { params: filters }),
     
   getStudentAverages: (studentId: string, termId?: string) => 
-    apiClient.get(`/api/grades/student/${studentId}/averages`, { 
+    api.get(`/api/grades/student/${studentId}/averages`, { 
       params: { termId } 
     }),
 
   // Responsable
   getChildrenGrades: (filters?: any) => 
-    apiClient.get('/api/grades/children', { params: filters }),
+    api.get('/api/grades/children', { params: filters }),
 
   // Course
   getCourseGrades: (courseId: string, evaluationId?: string) => 
-    apiClient.get(`/api/grades/course/${courseId}`, { 
+    api.get(`/api/grades/course/${courseId}`, { 
       params: { evaluationId } 
     }),
 
   // Statistics
   getClassAverages: (classId: string, termId?: string) => 
-    apiClient.get(`/api/grades/class/${classId}/averages`, { 
+    api.get(`/api/grades/class/${classId}/averages`, { 
       params: { termId } 
     }),
 };

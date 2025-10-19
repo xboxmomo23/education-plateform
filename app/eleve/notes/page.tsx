@@ -261,7 +261,7 @@ export default function EditNotePage() {
   // Afficher un loader pendant le chargement
   if (isLoading) {
     return (
-      <DashboardLayout>
+      <DashboardLayout requiredRole="student">
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
@@ -275,7 +275,7 @@ export default function EditNotePage() {
   // Afficher les erreurs
   if (error || !note) {
     return (
-      <DashboardLayout>
+      <DashboardLayout requiredRole="student">
         <Card className="max-w-md mx-auto mt-8">
           <CardHeader>
             <CardTitle className="text-red-500 flex items-center gap-2">
@@ -295,7 +295,7 @@ export default function EditNotePage() {
   }
 
   return (
-    <DashboardLayout>
+    <DashboardLayout requiredRole="student">
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
