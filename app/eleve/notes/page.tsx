@@ -5,8 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { BookOpen, Download, TrendingUp, TrendingDown, Minus } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
+import { gradesApi } from "@/lib/api/grade" // ✅ Import de ton API
+import { getUserSession } from "@/lib/auth" // ✅ Pour récupérer l'ID de l'élève
 
 // Types
 interface Grade {
@@ -27,144 +29,21 @@ interface Subject {
   coefficient: number
 }
 
-// Données de démonstration
-const DEMO_SUBJECTS: Subject[] = [
-  {
-    id: "1",
-    name: "Mathématiques",
-    coefficient: 4,
-    grades: [
-      {
-        id: "1",
-        value: 15,
-        date: "2025-09-15",
-        type: "Contrôle",
-        coefficient: 2,
-        classAverage: 12.5,
-        classMin: 6,
-        classMax: 18,
-      },
-      {
-        id: "2",
-        value: 17,
-        date: "2025-10-01",
-        type: "Devoir",
-        coefficient: 1,
-        classAverage: 13.2,
-        classMin: 8,
-        classMax: 19,
-      },
-      {
-        id: "3",
-        value: 14,
-        date: "2025-10-10",
-        type: "Examen",
-        coefficient: 3,
-        classAverage: 11.8,
-        classMin: 5,
-        classMax: 17,
-      },
-    ],
-  },
-  {
-    id: "2",
-    name: "Français",
-    coefficient: 3,
-    grades: [
-      {
-        id: "4",
-        value: 16,
-        date: "2025-09-20",
-        type: "Contrôle",
-        coefficient: 2,
-        classAverage: 13.5,
-        classMin: 9,
-        classMax: 18,
-      },
-      {
-        id: "5",
-        value: 15,
-        date: "2025-10-05",
-        type: "Devoir",
-        coefficient: 1,
-        classAverage: 12.8,
-        classMin: 7,
-        classMax: 17,
-      },
-    ],
-  },
-  {
-    id: "3",
-    name: "Histoire-Géographie",
-    coefficient: 3,
-    grades: [
-      {
-        id: "6",
-        value: 13,
-        date: "2025-09-25",
-        type: "Contrôle",
-        coefficient: 2,
-        classAverage: 12.0,
-        classMin: 6,
-        classMax: 16,
-      },
-      {
-        id: "7",
-        value: 14,
-        date: "2025-10-08",
-        type: "Devoir",
-        coefficient: 1,
-        classAverage: 11.5,
-        classMin: 5,
-        classMax: 15,
-      },
-    ],
-  },
-  {
-    id: "4",
-    name: "Physique-Chimie",
-    coefficient: 3,
-    grades: [
-      {
-        id: "8",
-        value: 12,
-        date: "2025-09-18",
-        type: "Contrôle",
-        coefficient: 2,
-        classAverage: 11.2,
-        classMin: 4,
-        classMax: 16,
-      },
-    ],
-  },
-  {
-    id: "5",
-    name: "Anglais",
-    coefficient: 2,
-    grades: [
-      {
-        id: "9",
-        value: 18,
-        date: "2025-09-22",
-        type: "Contrôle",
-        coefficient: 2,
-        classAverage: 14.5,
-        classMin: 10,
-        classMax: 19,
-      },
-      {
-        id: "10",
-        value: 17,
-        date: "2025-10-12",
-        type: "Participation",
-        coefficient: 1,
-        classAverage: 15.0,
-        classMin: 12,
-        classMax: 18,
-      },
-    ],
-  },
-]
+// Fonction pour obtenir la couleur de la note
+function getGradeColor(grade: number): string {
+  if (grade >= 16) return "text-green-500"
+  if (grade >= 14) return "text-blue-500"
+  if (grade >= 12) return "text-orange-500"
+  if (grade >= 10) return "text-yellow-500"
+  return "text-red-500"
+}
+
+// Fonction pour obtenir l'icône de tendance
+function getTrendIcon(current: number, previous: number) {
+  if (current > previous) return <TrendingUp className="h-4 w-4 text-green-500" />
+  if (current < previous) return <TrendingDown className="h-4 w-4 text-red-500" />
+  return <Minus className="h-4 w-4 text-muted-foreground" />
+}
 
 // Fonction pour calculer la moyenne d'une matière
 function calculateSubjectAverage(subject: Subject): number {
@@ -184,29 +63,117 @@ function calculateOverallAverage(subjects: Subject[]): number {
   return totalWeighted / totalCoefficients
 }
 
-// Fonction pour obtenir la couleur de la note
-function getGradeColor(grade: number): string {
-  if (grade >= 16) return "text-green-500"
-  if (grade >= 14) return "text-blue-500"
-  if (grade >= 12) return "text-orange-500"
-  if (grade >= 10) return "text-yellow-500"
-  return "text-red-500"
-}
-
-// Fonction pour obtenir l'icône de tendance
-function getTrendIcon(current: number, previous: number) {
-  if (current > previous) return <TrendingUp className="h-4 w-4 text-green-500" />
-  if (current < previous) return <TrendingDown className="h-4 w-4 text-red-500" />
-  return <Minus className="h-4 w-4 text-muted-foreground" />
-}
-
 export default function NotesPage() {
-  const [selectedPeriod, setSelectedPeriod] = useState<"trimestre1" | "trimestre2" | "trimestre3" | "annuel">(
-    "trimestre1",
-  )
+  const [selectedPeriod, setSelectedPeriod] = useState<"trimestre1" | "trimestre2" | "trimestre3" | "annuel">("trimestre1")
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null)
+  
+  // ✅ NOUVEAU: États pour les données API
+  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [studentId, setStudentId] = useState<string | null>(null)
+  const [termId, setTermId] = useState<string | null>(null)
 
-  const overallAverage = calculateOverallAverage(DEMO_SUBJECTS)
+  // 🔹 MODIFICATION 1: Récupérer l'ID de l'élève au montage
+  useEffect(() => {
+    const user = getUserSession()
+    if (user && user.role === "student") {
+      setStudentId(user.userId)
+    }
+  }, [])
+
+  // 🔹 MODIFICATION 2: Charger les notes quand l'élève est identifié
+  useEffect(() => {
+    if (studentId) {
+      loadStudentGrades()
+    }
+  }, [studentId, selectedPeriod])
+
+  // ✅ NOUVELLE FONCTION: Charger toutes les notes de l'élève
+  const loadStudentGrades = async () => {
+    if (!studentId) return
+
+    try {
+      setIsLoading(true)
+      setError(null)
+
+      // Déterminer le termId selon la période sélectionnée
+      const filters: any = {}
+      if (selectedPeriod !== "annuel") {
+        // Tu devras avoir une fonction pour convertir "trimestre1" en UUID du terme
+        filters.termId = getTermIdByPeriod(selectedPeriod)
+      }
+
+      // Appel API pour récupérer les notes de l'élève
+      const response = await gradesApi.getStudentGrades(studentId, filters)
+
+      if (response.success) {
+        const gradesData = response.data.grades
+
+        // Regrouper les notes par matière
+        const subjectMap = new Map<string, Subject>()
+
+        gradesData.forEach((grade: any) => {
+          const subjectId = grade.course_subject_name || "unknown"
+          
+          if (!subjectMap.has(subjectId)) {
+            subjectMap.set(subjectId, {
+              id: subjectId,
+              name: subjectId,
+              grades: [],
+              coefficient: grade.evaluation_coefficient || 1,
+            })
+          }
+
+          const subject = subjectMap.get(subjectId)!
+          subject.grades.push({
+            id: grade.id,
+            value: grade.value || 0,
+            date: grade.evaluation_date,
+            type: mapEvaluationType(grade.evaluation_type),
+            coefficient: grade.evaluation_coefficient,
+            classAverage: 12, // Tu devras récupérer ça via une autre API
+            classMin: 0,
+            classMax: 20,
+          })
+        })
+
+        setSubjects(Array.from(subjectMap.values()))
+      } else {
+        setError("Erreur lors du chargement des notes")
+      }
+    } catch (err) {
+      console.error("Erreur chargement notes élève:", err)
+      setError("Impossible de charger les notes")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // ✅ HELPER: Mapper les types d'évaluation
+  const mapEvaluationType = (type: string): string => {
+    const mapping: Record<string, string> = {
+      controle: "Contrôle",
+      devoir: "Devoir",
+      participation: "Participation",
+      examen: "Examen",
+    }
+    return mapping[type] || "Évaluation"
+  }
+
+  // ✅ HELPER: Convertir la période en termId (à adapter selon ta BDD)
+  const getTermIdByPeriod = (period: string): string | undefined => {
+    // TODO: Remplacer par les vrais UUID de tes termes
+    const termMapping: Record<string, string> = {
+      trimestre1: "uuid-term-1",
+      trimestre2: "uuid-term-2",
+      trimestre3: "uuid-term-3",
+    }
+    return termMapping[period]
+  }
+
+  // Calculer la moyenne générale
+  const overallAverage = calculateOverallAverage(subjects)
 
   // Données pour le graphique d'évolution
   const getChartData = (subject: Subject) => {
@@ -222,6 +189,38 @@ export default function NotesPage() {
   const exportBulletin = () => {
     console.log("[v0] Exporting bulletin as PDF for period:", selectedPeriod)
     alert("Export PDF en cours de développement")
+  }
+
+  // 🔹 MODIFICATION 3: Afficher un loader pendant le chargement
+  if (isLoading) {
+    return (
+      <DashboardLayout requiredRole="student">
+        <div className="flex items-center justify-center py-12">
+          <p className="text-muted-foreground">Chargement de vos notes...</p>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
+  // 🔹 MODIFICATION 4: Afficher les erreurs
+  if (error) {
+    return (
+      <DashboardLayout requiredRole="student">
+        <div className="flex items-center justify-center py-12">
+          <Card className="max-w-md">
+            <CardHeader>
+              <CardTitle className="text-red-500">Erreur</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground mb-4">{error}</p>
+              <Button onClick={() => loadStudentGrades()} className="w-full">
+                Réessayer
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </DashboardLayout>
+    )
   }
 
   return (
@@ -289,7 +288,7 @@ export default function NotesPage() {
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Coefficient total</p>
                 <p className="text-2xl font-bold">
-                  {DEMO_SUBJECTS.reduce((sum, subject) => sum + subject.coefficient, 0)}
+                  {subjects.reduce((sum, subject) => sum + subject.coefficient, 0)}
                 </p>
               </div>
             </div>
@@ -298,127 +297,135 @@ export default function NotesPage() {
 
         {/* Liste des matières */}
         <div className="space-y-4">
-          {DEMO_SUBJECTS.map((subject) => {
-            const subjectAverage = calculateSubjectAverage(subject)
-            const isExpanded = selectedSubject === subject.id
+          {subjects.length === 0 ? (
+            <Card>
+              <CardContent className="py-8 text-center text-muted-foreground">
+                Aucune note pour cette période
+              </CardContent>
+            </Card>
+          ) : (
+            subjects.map((subject) => {
+              const subjectAverage = calculateSubjectAverage(subject)
+              const isExpanded = selectedSubject === subject.id
 
-            return (
-              <Card key={subject.id} className={isExpanded ? "border-primary" : ""}>
-                <CardHeader
-                  className="cursor-pointer"
-                  onClick={() => setSelectedSubject(isExpanded ? null : subject.id)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                        <BookOpen className="h-6 w-6 text-primary" />
-                      </div>
-                      <div>
-                        <CardTitle>{subject.name}</CardTitle>
-                        <CardDescription>
-                          {subject.grades.length} note{subject.grades.length > 1 ? "s" : ""} • Coefficient{" "}
-                          {subject.coefficient}
-                        </CardDescription>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className={`text-3xl font-bold ${getGradeColor(subjectAverage)}`}>
-                        {subject.grades.length > 0 ? subjectAverage.toFixed(2) : "-"}
-                      </div>
-                      <p className="text-sm text-muted-foreground">Moyenne</p>
-                    </div>
-                  </div>
-                </CardHeader>
-
-                {isExpanded && (
-                  <CardContent className="space-y-6">
-                    {/* Graphique d'évolution */}
-                    {subject.grades.length > 1 && (
-                      <div>
-                        <h4 className="mb-3 text-sm font-medium">Évolution des notes</h4>
-                        <div className="h-64">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={getChartData(subject)}>
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis dataKey="date" />
-                              <YAxis domain={[0, 20]} />
-                              <Tooltip />
-                              <Legend />
-                              <Line
-                                type="monotone"
-                                dataKey="Mes notes"
-                                stroke="rgb(59, 130, 246)"
-                                strokeWidth={2}
-                                dot={{ fill: "rgb(59, 130, 246)" }}
-                              />
-                              <Line
-                                type="monotone"
-                                dataKey="Moyenne classe"
-                                stroke="rgb(156, 163, 175)"
-                                strokeWidth={2}
-                                strokeDasharray="5 5"
-                                dot={{ fill: "rgb(156, 163, 175)" }}
-                              />
-                            </LineChart>
-                          </ResponsiveContainer>
+              return (
+                <Card key={subject.id} className={isExpanded ? "border-primary" : ""}>
+                  <CardHeader
+                    className="cursor-pointer"
+                    onClick={() => setSelectedSubject(isExpanded ? null : subject.id)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+                          <BookOpen className="h-6 w-6 text-primary" />
+                        </div>
+                        <div>
+                          <CardTitle>{subject.name}</CardTitle>
+                          <CardDescription>
+                            {subject.grades.length} note{subject.grades.length > 1 ? "s" : ""} • Coefficient{" "}
+                            {subject.coefficient}
+                          </CardDescription>
                         </div>
                       </div>
-                    )}
-
-                    {/* Liste des notes */}
-                    <div>
-                      <h4 className="mb-3 text-sm font-medium">Détail des notes</h4>
-                      <div className="space-y-3">
-                        {subject.grades.length === 0 ? (
-                          <p className="text-center text-sm text-muted-foreground py-4">Aucune note pour le moment</p>
-                        ) : (
-                          subject.grades.map((grade, index) => (
-                            <div key={grade.id} className="rounded-lg border p-4">
-                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <Badge variant="outline">{grade.type}</Badge>
-                                    <span className="text-sm text-muted-foreground">
-                                      {new Date(grade.date).toLocaleDateString("fr-FR")}
-                                    </span>
-                                    {index > 0 && getTrendIcon(grade.value, subject.grades[index - 1].value)}
-                                  </div>
-                                  <div className="mt-2 grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
-                                    <div>
-                                      <p className="text-muted-foreground">Ma note</p>
-                                      <p className={`text-lg font-bold ${getGradeColor(grade.value)}`}>
-                                        {grade.value}/20
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <p className="text-muted-foreground">Moyenne classe</p>
-                                      <p className="text-lg font-medium">{grade.classAverage}/20</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-muted-foreground">Note min</p>
-                                      <p className="text-lg font-medium">{grade.classMin}/20</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-muted-foreground">Note max</p>
-                                      <p className="text-lg font-medium">{grade.classMax}/20</p>
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-sm text-muted-foreground">Coefficient</p>
-                                  <p className="text-2xl font-bold">{grade.coefficient}</p>
-                                </div>
-                              </div>
-                            </div>
-                          ))
-                        )}
+                      <div className="text-right">
+                        <div className={`text-3xl font-bold ${getGradeColor(subjectAverage)}`}>
+                          {subject.grades.length > 0 ? subjectAverage.toFixed(2) : "-"}
+                        </div>
+                        <p className="text-sm text-muted-foreground">Moyenne</p>
                       </div>
                     </div>
-                  </CardContent>
-                )}
-              </Card>
-            )
-          })}
+                  </CardHeader>
+
+                  {isExpanded && (
+                    <CardContent className="space-y-6">
+                      {/* Graphique d'évolution */}
+                      {subject.grades.length > 1 && (
+                        <div>
+                          <h4 className="mb-3 text-sm font-medium">Évolution des notes</h4>
+                          <div className="h-64">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={getChartData(subject)}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="date" />
+                                <YAxis domain={[0, 20]} />
+                                <Tooltip />
+                                <Legend />
+                                <Line
+                                  type="monotone"
+                                  dataKey="Mes notes"
+                                  stroke="rgb(59, 130, 246)"
+                                  strokeWidth={2}
+                                  dot={{ fill: "rgb(59, 130, 246)" }}
+                                />
+                                <Line
+                                  type="monotone"
+                                  dataKey="Moyenne classe"
+                                  stroke="rgb(156, 163, 175)"
+                                  strokeWidth={2}
+                                  strokeDasharray="5 5"
+                                  dot={{ fill: "rgb(156, 163, 175)" }}
+                                />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Liste des notes */}
+                      <div>
+                        <h4 className="mb-3 text-sm font-medium">Détail des notes</h4>
+                        <div className="space-y-3">
+                          {subject.grades.length === 0 ? (
+                            <p className="text-center text-sm text-muted-foreground py-4">Aucune note pour le moment</p>
+                          ) : (
+                            subject.grades.map((grade, index) => (
+                              <div key={grade.id} className="rounded-lg border p-4">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant="outline">{grade.type}</Badge>
+                                      <span className="text-sm text-muted-foreground">
+                                        {new Date(grade.date).toLocaleDateString("fr-FR")}
+                                      </span>
+                                      {index > 0 && getTrendIcon(grade.value, subject.grades[index - 1].value)}
+                                    </div>
+                                    <div className="mt-2 grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+                                      <div>
+                                        <p className="text-muted-foreground">Ma note</p>
+                                        <p className={`text-lg font-bold ${getGradeColor(grade.value)}`}>
+                                          {grade.value}/20
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <p className="text-muted-foreground">Moyenne classe</p>
+                                        <p className="text-lg font-medium">{grade.classAverage}/20</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-muted-foreground">Note min</p>
+                                        <p className="text-lg font-medium">{grade.classMin}/20</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-muted-foreground">Note max</p>
+                                        <p className="text-lg font-medium">{grade.classMax}/20</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-sm text-muted-foreground">Coefficient</p>
+                                    <p className="text-2xl font-bold">{grade.coefficient}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  )}
+                </Card>
+              )
+            })
+          )}
         </div>
       </div>
     </DashboardLayout>

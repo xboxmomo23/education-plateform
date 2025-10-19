@@ -4,6 +4,7 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { generalLimiter, helmetConfig } from './middleware/security.middleware';
 import authRoutes from './routes/auth.routes';
+import gradeRoutes from './routes/grade.routes';
 
 // Charger les variables d'environnement
 dotenv.config();
@@ -55,6 +56,7 @@ app.get('/health', (req: Request, res: Response) => {
 
 // Routes d'authentification
 app.use('/api/auth', authRoutes);
+app.use('/api/grades', gradeRoutes);
 
 // Route 404
 app.use('*', (req: Request, res: Response) => {
