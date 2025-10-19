@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { body, param, query } from 'express-validator';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import { validateRequest } from '../middleware/validation.middleware';
+import { getGradeByIdHandler } from '../controllers/grade.controller'; // Ajouter cet import en haut
 import {
   // Evaluations
   createEvaluationHandler,
@@ -238,6 +239,29 @@ router.delete(
   param('id').isUUID(),
   validateRequest,
   deleteGradeHandler
+);
+
+
+// ============================================
+// IMPORTANT : Ordre des routes
+// Cette route doit être placée APRÈS les routes d'évaluations
+// mais AVANT la route /:id/history pour éviter les conflits
+// ============================================
+
+// Placer cette route vers la ligne 200, après les routes d'évaluations
+
+/**
+ * GET /api/grades/:id
+ * Récupère les détails complets d'une note
+ * IMPORTANT : Cette route doit être AVANT /:id/history
+ */
+router.get(
+  '/:id',
+  authenticate,
+  authorize('teacher', 'admin', 'responsable', 'student'),
+  param('id').isUUID().withMessage('ID de note invalide'),
+  validateRequest,
+  getGradeByIdHandler
 );
 
 /**

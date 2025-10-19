@@ -386,6 +386,85 @@ export async function updateGrade(
   }
 }
 
+
+
+
+// ============================================
+// À AJOUTER dans src/backend/models/grade.model.ts
+// APRÈS les fonctions existantes (vers la ligne 300-350)
+// ============================================
+
+/**
+ * Récupère une note par son ID avec tous les détails nécessaires pour l'édition
+ * Utilisé par l'endpoint GET /api/grades/:id
+ */
+export async function findGradeByIdWithDetails(
+  gradeId: string,
+  establishmentId?: string
+): Promise<GradeWithDetails | null> {
+  const qb = new QueryBuilder();
+
+  // Joins pour récupérer tous les détails
+  qb.addJoin('INNER', 'evaluations e', 'e.id = g.evaluation_id');
+  qb.addJoin('INNER', 'courses c', 'c.id = e.course_id');
+  qb.addJoin('INNER', 'subjects s', 's.id = c.subject_id');
+  qb.addJoin('INNER', 'classes cl', 'cl.id = c.class_id');
+  qb.addJoin('INNER', 'student_profiles sp', 'sp.user_id = g.student_id');
+  qb.addJoin('INNER', 'users u', 'u.id = g.student_id');
+  qb.addJoin('INNER', 'users creator', 'creator.id = g.created_by');
+
+  // Filtres
+  qb.addCondition('g.id', gradeId);
+  qb.addEstablishmentFilter(establishmentId, 'e');
+
+  const { fullQuery, values } = qb.buildFull();
+
+  const baseQuery = `
+    SELECT 
+      g.id,
+      g.evaluation_id,
+      g.student_id,
+      g.value,
+      g.absent,
+      g.normalized_value,
+      g.comment,
+      g.created_by,
+      g.created_at,
+      g.updated_at,
+      
+      -- Informations de l'élève
+      u.full_name as student_name,
+      u.email as student_email,
+      sp.student_no,
+      
+      -- Informations de l'évaluation
+      e.title as evaluation_title,
+      e.type as evaluation_type,
+      e.coefficient as evaluation_coefficient,
+      e.max_scale as evaluation_max_scale,
+      e.eval_date as evaluation_date,
+      e.description as evaluation_description,
+      
+      -- Informations du cours
+      c.id as course_id,
+      s.name as subject_name,
+      s.code as subject_code,
+      cl.label as class_label,
+      cl.code as class_code,
+      
+      -- Informations de création
+      creator.full_name as created_by_name,
+      creator.role as created_by_role
+      
+    FROM grades g
+  `;
+
+  const query = fullQuery(baseQuery);
+  const result = await pool.query(query, values);
+
+  return result.rows[0] || null;
+}
+
 // =========================
 // Suppression
 // =========================

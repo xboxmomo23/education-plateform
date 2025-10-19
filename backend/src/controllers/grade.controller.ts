@@ -504,6 +504,175 @@ export async function deleteGradeHandler(req: Request, res: Response): Promise<v
   }
 }
 
+
+
+
+// ============================================
+// À AJOUTER dans src/backend/controllers/grade.controller.ts
+// APRÈS les autres handlers (vers la ligne 500-600)
+// ============================================
+
+import { findGradeByIdWithDetails } from '../models/grade.model'; // ✅ Ajouter cet import en haut
+
+/**
+ * GET /api/grades/:id
+ * Récupère les détails complets d'une note pour l'édition
+ */
+export async function getGradeByIdHandler(req: Request, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: 'Non authentifié' });
+      return;
+    }
+
+    const { id } = req.params;
+
+    console.log(`[API] Fetching grade ${id} for user ${req.user.email}`);
+
+    // Récupérer la note avec tous les détails
+    const grade = await findGradeByIdWithDetails(
+      id,
+      req.user.establishmentId
+    );
+
+    if (!grade) {
+      res.status(404).json({
+        success: false,
+        error: 'Note non trouvée',
+      });
+      return;
+    }
+
+    // Vérifier les permissions selon le rôle
+    const hasPermission = await checkGradeAccessPermission(
+      grade,
+      req.user.userId,
+      req.user.role
+    );
+
+    if (!hasPermission) {
+      res.status(403).json({
+        success: false,
+        error: 'Vous n\'avez pas accès à cette note',
+      });
+      return;
+    }
+
+    // Récupérer l'historique des modifications
+    const history = await getGradeHistory(id);
+
+    // Calculer les statistiques de la classe pour cette évaluation
+    const stats = await getEvaluationStats(
+      grade.evaluation_id,
+      req.user.establishmentId
+    );
+
+    // Retourner toutes les données nécessaires
+    res.json({
+      success: true,
+      data: {
+        grade: {
+          id: grade.id,
+          evaluationId: grade.evaluation_id,
+          studentId: grade.student_id,
+          studentName: grade.student_name,
+          studentEmail: grade.student_email,
+          studentNo: grade.student_no,
+          value: grade.value,
+          absent: grade.absent,
+          normalizedValue: grade.normalized_value,
+          comment: grade.comment,
+          createdAt: grade.created_at,
+          updatedAt: grade.updated_at,
+          createdBy: grade.created_by_name,
+          createdByRole: grade.created_by_role,
+          evaluation: {
+            id: grade.evaluation_id,
+            title: grade.evaluation_title,
+            type: grade.evaluation_type,
+            coefficient: grade.evaluation_coefficient,
+            maxScale: grade.evaluation_max_scale,
+            date: grade.evaluation_date,
+            description: grade.evaluation_description,
+          },
+          course: {
+            id: grade.course_id,
+            subjectName: grade.subject_name,
+            subjectCode: grade.subject_code,
+            className: grade.class_label,
+            classCode: grade.class_code,
+          },
+        },
+        history,
+        stats: {
+          classAverage: stats?.average || 0,
+          classMin: stats?.min || 0,
+          classMax: stats?.max || 0,
+          totalStudents: stats?.total || 0,
+          completedGrades: stats?.completed || 0,
+        },
+      },
+    });
+
+    console.log(`[API] Grade ${id} fetched successfully`);
+  } catch (error) {
+    console.error('[API] Error fetching grade:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la récupération de la note',
+    });
+  }
+}
+
+/**
+ * Vérifie si l'utilisateur a accès à cette note
+ * Fonction helper pour getGradeByIdHandler
+ */
+async function checkGradeAccessPermission(
+  grade: any,
+  userId: string,
+  userRole: string
+): Promise<boolean> {
+  // Admin : accès complet
+  if (userRole === 'admin') {
+    return true;
+  }
+
+  // Professeur : doit être le prof du cours
+  if (userRole === 'teacher') {
+    const query = `
+      SELECT COUNT(*) as count
+      FROM grades g
+      INNER JOIN evaluations e ON e.id = g.evaluation_id
+      INNER JOIN courses c ON c.id = e.course_id
+      WHERE g.id = $1 AND c.teacher_id = $2
+    `;
+    const result = await pool.query(query, [grade.id, userId]);
+    return parseInt(result.rows[0].count) > 0;
+  }
+
+  // Responsable : doit être le parent de l'élève
+  if (userRole === 'responsable') {
+    const query = `
+      SELECT COUNT(*) as count
+      FROM grades g
+      INNER JOIN student_responsables sr ON sr.student_id = g.student_id
+      WHERE g.id = $1 AND sr.responsable_id = $2
+    `;
+    const result = await pool.query(query, [grade.id, userId]);
+    return parseInt(result.rows[0].count) > 0;
+  }
+
+  // Élève : doit être sa propre note
+  if (userRole === 'student') {
+    return grade.student_id === userId;
+  }
+
+  return false;
+}
+
+
+
 /**
  * GET /api/grades/:id/history
  * Récupère l'historique d'une note
