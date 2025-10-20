@@ -13,12 +13,18 @@ export interface Evaluation {
   description?: string;
 }
 
-// ✅ Crée d'abord un type pour les données d'entrée
-export interface CreateGradeData {
+// ✅ CORRIGÉ : value peut être number, null ou undefined
+export interface CreateGradeInput {
   studentId: string;
-  value?: number;
+  value?: number | null;  // ✅ Ajout de "| null"
   absent?: boolean;
-  comment?: string;
+  comment?: string | null;  // ✅ Ajout de "| null"
+}
+
+export interface UpdateGradeInput {
+  value?: number | null;  // ✅ Ajout de "| null"
+  absent?: boolean;
+  comment?: string | null;  // ✅ Ajout de "| null"
 }
 
 export interface Grade {
@@ -32,57 +38,84 @@ export interface Grade {
 
 // API Functions
 export const gradesApi = {
-  // Evaluations
+  // ============================================
+  // EVALUATIONS
+  // ============================================
+  
   createEvaluation: (data: Partial<Evaluation>) => 
-    api.post('/api/grades/evaluations', data),
+    api.post('/grades/evaluations', data),
     
   getEvaluations: (filters?: any) => 
-    api.get('/api/grades/evaluations', { params: filters }),
+    api.get('/grades/evaluations', { params: filters }),
     
   getEvaluation: (id: string) => 
-    api.get(`/api/grades/evaluations/${id}`),
+    api.get(`/grades/evaluations/${id}`),
     
   updateEvaluation: (id: string, data: Partial<Evaluation>) => 
-    api.put(`/api/grades/evaluations/${id}`, data),
+    api.put(`/grades/evaluations/${id}`, data),
     
   deleteEvaluation: (id: string) => 
-    api.delete(`/api/grades/evaluations/${id}`),
+    api.delete(`/grades/evaluations/${id}`),
 
-  // Grades
-  createOrUpdateGrades: (evaluationId: string, grades: CreateGradeData[]) => 
-    api.post('/api/grades', { evaluationId, grades }),
+  // ============================================
+  // GRADES (Notes)
+  // ============================================
+  
+  getGrade: (gradeId: string) =>
+    api.get(`/grades/${gradeId}`),
+
+  createOrUpdateGrades: (evaluationId: string, grades: CreateGradeInput[]) => 
+    api.post('/grades', { evaluationId, grades }),
     
-  updateGrade: (id: string, data: Partial<Grade>) => 
-    api.put(`/api/grades/${id}`, data),
+  updateGrade: (id: string, data: UpdateGradeInput) => 
+    api.put(`/grades/${id}`, data),
     
   deleteGrade: (id: string) => 
-    api.delete(`/api/grades/${id}`),
+    api.delete(`/grades/${id}`),
     
   getGradeHistory: (id: string) => 
-    api.get(`/api/grades/${id}/history`),
+    api.get(`/grades/${id}/history`),
 
-  // Student
+  // ============================================
+  // STUDENT (Élève)
+  // ============================================
+  
   getStudentGrades: (studentId: string, filters?: any) => 
-    api.get(`/api/grades/student/${studentId}`, { params: filters }),
+    api.get(`/grades/student/${studentId}`, { params: filters }),
     
   getStudentAverages: (studentId: string, termId?: string) => 
-    api.get(`/api/grades/student/${studentId}/averages`, { 
-      params: { termId } 
+    api.get(`/grades/student/${studentId}/averages`, { 
+      params: termId ? { termId } : undefined 
     }),
 
-  // Responsable
+  // ============================================
+  // RESPONSABLE (Parents)
+  // ============================================
+  
   getChildrenGrades: (filters?: any) => 
-    api.get('/api/grades/children', { params: filters }),
+    api.get('/grades/children', { params: filters }),
 
-  // Course
+  // ============================================
+  // COURSE (Cours)
+  // ============================================
+  
   getCourseGrades: (courseId: string, evaluationId?: string) => 
-    api.get(`/api/grades/course/${courseId}`, { 
-      params: { evaluationId } 
+    api.get(`/grades/course/${courseId}`, { 
+      params: evaluationId ? { evaluationId } : undefined 
     }),
 
-  // Statistics
+  // ✅ AJOUTÉ : Récupérer les élèves d'un cours
+  getCourseStudents: (courseId: string, evaluationId?: string) =>
+    api.get(`/grades/course/${courseId}/students`, {
+      params: evaluationId ? { evaluationId } : undefined
+    }),
+
+  // ============================================
+  // STATISTICS (Statistiques)
+  // ============================================
+  
   getClassAverages: (classId: string, termId?: string) => 
-    api.get(`/api/grades/class/${classId}/averages`, { 
-      params: { termId } 
+    api.get(`/grades/class/${classId}/averages`, { 
+      params: termId ? { termId } : undefined 
     }),
 };

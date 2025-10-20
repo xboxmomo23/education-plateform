@@ -11,7 +11,7 @@ export interface User {
   profile?: any;
 }
 
-export interface LoginResponse {
+export interface BackendLoginResponse {
   success: boolean;
   token: string;
   refreshToken?: string;
@@ -23,19 +23,33 @@ export async function authenticateUser(
   password: string
 ): Promise<{ success: boolean; user?: User; error?: string }> {
   try {
-    const response = await api.post<LoginResponse>(API_ENDPOINTS.auth.login, {
+    const response = await api.post<BackendLoginResponse>(API_ENDPOINTS.auth.login, {
       email,
       password,
     });
 
-    if (response.success && response.data) {
-      const { token, refreshToken, user } = response.data;
+    if (response.success) {
+      // ✅ Accès direct aux propriétés (le backend retourne directement, pas dans "data")
+      const token = (response as any).token || response.data?.token;
+      const refreshToken = (response as any).refreshToken || response.data?.refreshToken;
+      const user = (response as any).user || response.data?.user;
 
+      if (!token) {
+        return {
+          success: false,
+          error: 'Token manquant dans la réponse du serveur',
+        };
+      }
+
+      // Sauvegarder le token
       saveToken(token);
+      
+      // Sauvegarder le refresh token si présent
       if (refreshToken) {
         localStorage.setItem('refresh_token', refreshToken);
       }
 
+      // Sauvegarder la session utilisateur
       setUserSession(user);
 
       return { success: true, user };

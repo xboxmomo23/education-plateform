@@ -88,7 +88,7 @@ async function findEvaluations(filters = {}) {
     // Ordre par défaut
     qb.addOrderBy('e.eval_date', 'DESC');
     qb.addOrderBy('e.created_at', 'DESC');
-    const { fullQuery, values } = qb.build();
+    const { fullQuery, values } = qb.buildFull(); // ✅ buildFull() au lieu de build()
     const baseQuery = `
     SELECT 
       e.*,
@@ -99,7 +99,7 @@ async function findEvaluations(filters = {}) {
       AVG(g.value) as average_grade
     FROM evaluations e
   `;
-    const query = fullQuery(baseQuery);
+    const query = fullQuery(baseQuery); // ✅ Appelle fullQuery avec baseQuery
     const result = await database_1.pool.query(query, values);
     return result.rows;
 }

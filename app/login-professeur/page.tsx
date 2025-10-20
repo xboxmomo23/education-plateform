@@ -1,9 +1,8 @@
-import { LoginForm } from "@/components/login-form"
-
+import { LoginFormUpdated } from "@/components/login-form-updated"
 export default function LoginProfesseurPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
-      <LoginForm
+      <LoginFormUpdated
         role="teacher"
         title="Connexion Professeur"
         description="Connectez-vous à votre espace professeur"

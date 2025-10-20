@@ -680,7 +680,9 @@ async function getStudentAveragesHandler(req, res) {
                 averages: {
                     general: overallAverage,
                     bySubject: averages.reduce((acc, avg) => {
-                        acc[avg.subject_name] = avg.weighted_average;
+                        if (avg.subject_name) { // ✅ Vérification ajoutée
+                            acc[avg.subject_name] = avg.weighted_average;
+                        }
                         return acc;
                     }, {}),
                 },

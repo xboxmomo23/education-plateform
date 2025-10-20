@@ -8,6 +8,10 @@ export interface ApiResponse<T = any> {
   errors?: Array<{ field: string; message: string }>;
 }
 
+export interface ApiRequestOptions extends RequestInit {
+  params?: Record<string, any>;
+}
+
 const defaultHeaders: Record<string, string> = {
   'Content-Type': 'application/json',
 };
@@ -32,14 +36,30 @@ export function clearToken(): void {
   }
 }
 
+function buildUrl(endpoint: string, params?: Record<string, any>): string {
+  if (!params) return endpoint;
+  
+  const queryParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      queryParams.append(key, String(value));
+    }
+  });
+  
+  const queryString = queryParams.toString();
+  return queryString ? `${endpoint}?${queryString}` : endpoint;
+}
+
 async function apiRequest<T = any>(
   endpoint: string,
-  options: RequestInit = {}
+  options: ApiRequestOptions = {}
 ): Promise<ApiResponse<T>> {
   try {
+    const { params, ...fetchOptions } = options;
+    
     const headers: Record<string, string> = {
       ...defaultHeaders,
-      ...(options.headers as Record<string, string>),
+      ...(fetchOptions.headers as Record<string, string>),
     };
 
     const token = getToken();
@@ -47,8 +67,10 @@ async function apiRequest<T = any>(
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...options,
+    const url = buildUrl(`${API_BASE_URL}${endpoint}`, params);
+
+    const response = await fetch(url, {
+      ...fetchOptions,
       headers,
     });
 
@@ -73,30 +95,30 @@ async function apiRequest<T = any>(
 }
 
 export const api = {
-  get: <T = any>(endpoint: string, options?: RequestInit) =>
+  get: <T = any>(endpoint: string, options?: ApiRequestOptions) =>
     apiRequest<T>(endpoint, { ...options, method: 'GET' }),
 
-  post: <T = any>(endpoint: string, body?: any, options?: RequestInit) =>
+  post: <T = any>(endpoint: string, body?: any, options?: ApiRequestOptions) =>
     apiRequest<T>(endpoint, {
       ...options,
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
     }),
 
-  put: <T = any>(endpoint: string, body?: any, options?: RequestInit) =>
+  put: <T = any>(endpoint: string, body?: any, options?: ApiRequestOptions) =>
     apiRequest<T>(endpoint, {
       ...options,
       method: 'PUT',
       body: body ? JSON.stringify(body) : undefined,
     }),
 
-  patch: <T = any>(endpoint: string, body?: any, options?: RequestInit) =>
+  patch: <T = any>(endpoint: string, body?: any, options?: ApiRequestOptions) =>
     apiRequest<T>(endpoint, {
       ...options,
       method: 'PATCH',
       body: body ? JSON.stringify(body) : undefined,
     }),
 
-  delete: <T = any>(endpoint: string, options?: RequestInit) =>
+  delete: <T = any>(endpoint: string, options?: ApiRequestOptions) =>
     apiRequest<T>(endpoint, { ...options, method: 'DELETE' }),
 };

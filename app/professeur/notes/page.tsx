@@ -4,18 +4,13 @@ import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Download, Search, Plus, Edit, Trash2, AlertTriangle, Clock, CheckCircle, History } from "lucide-react"
+import { Download, Plus, Edit, Trash2, AlertTriangle, Clock } from "lucide-react"
 import { useState, useEffect } from "react"
 import { EditNoteModal } from "@/components/notes/EditNoteModal"
-import { gradesApi } from "@/lib/api/grade" // ✅ Import de ton API
+import { GradeEntryModal } from "@/components/notes/GradeEntryModal"
+import { gradesApi } from "@/lib/api/grade"
 
 // Types
-interface Student {
-  id: string
-  name: string
-  class: string
-}
-
 interface Grade {
   id: string
   studentId: string
@@ -31,60 +26,50 @@ interface Grade {
   isLocked: boolean
 }
 
-// 🔹 MODIFICATION 1: Ajouter un état pour les données API
 export default function ProfesseurNotesPage() {
   const [selectedClass, setSelectedClass] = useState<string>("Terminale A")
   const [selectedSubject, setSelectedSubject] = useState<string>("Mathématiques")
   const [selectedType, setSelectedType] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState("")
-  const [showAddModal, setShowAddModal] = useState(false)
-  const [showHistoryModal, setShowHistoryModal] = useState(false)
   const [grades, setGrades] = useState<Grade[]>([])
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   
-  // ✅ NOUVEAU: États pour le chargement et les erreurs
+  // États pour le chargement et les erreurs
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [evaluations, setEvaluations] = useState<any[]>([])
   const [selectedEvaluationId, setSelectedEvaluationId] = useState<string | null>(null)
 
-  const [newGrade, setNewGrade] = useState({
-    studentId: "",
-    value: "",
-    type: "Contrôle" as Grade["type"],
-    coefficient: "1",
-    date: new Date().toISOString().split("T")[0],
-  })
+  // ✅ NOUVEAU : États pour le modal de saisie de notes
+  const [showGradeEntryModal, setShowGradeEntryModal] = useState(false)
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null)
 
-  // 🔹 MODIFICATION 2: Charger les évaluations au montage
+  // Charger les évaluations au montage
   useEffect(() => {
     loadEvaluations()
   }, [selectedClass, selectedSubject])
 
-  // 🔹 MODIFICATION 3: Charger les notes quand une évaluation est sélectionnée
+  // Charger les notes quand une évaluation est sélectionnée
   useEffect(() => {
     if (selectedEvaluationId) {
       loadGradesForEvaluation(selectedEvaluationId)
     }
   }, [selectedEvaluationId])
 
-  // ✅ NOUVELLE FONCTION: Charger les évaluations du professeur
+  // Fonction : Charger les évaluations du professeur
   const loadEvaluations = async () => {
     try {
       setIsLoading(true)
       setError(null)
 
-      // Appel API pour récupérer les évaluations
       const response = await gradesApi.getEvaluations({
-        // courseId: getCourseIdByClassAndSubject(selectedClass, selectedSubject), // Tu devras avoir cette info
         type: selectedType !== "all" ? selectedType : undefined,
       })
 
       if (response.success) {
-        setEvaluations(response.data)
+        setEvaluations(response.data || [])
         
-        // Sélectionner automatiquement la première évaluation
-        if (response.data.length > 0) {
+        if (response.data && response.data.length > 0) {
           setSelectedEvaluationId(response.data[0].id)
         }
       } else {
@@ -98,20 +83,18 @@ export default function ProfesseurNotesPage() {
     }
   }
 
-  // ✅ NOUVELLE FONCTION: Charger les notes d'une évaluation
+  // Fonction : Charger les notes d'une évaluation
   const loadGradesForEvaluation = async (evaluationId: string) => {
     try {
       setIsLoading(true)
       setError(null)
 
-      // Appel API pour récupérer les détails de l'évaluation avec toutes les notes
       const response = await gradesApi.getEvaluation(evaluationId)
 
       if (response.success) {
         const evaluation = response.data.evaluation
         const gradesData = response.data.grades
 
-        // Transformer les données API en format du frontend
         const transformedGrades: Grade[] = gradesData.map((g: any) => ({
           id: g.id,
           studentId: g.student_id,
@@ -119,7 +102,7 @@ export default function ProfesseurNotesPage() {
           date: evaluation.eval_date,
           type: mapEvaluationType(evaluation.type),
           coefficient: evaluation.coefficient,
-          subject: evaluation.course_subject_name,
+          subject: evaluation.course_subject_name || selectedSubject,
           enteredBy: g.created_by,
           enteredAt: g.created_at,
           isLocked: !canModifyGrade({ created_at: g.created_at }),
@@ -137,7 +120,7 @@ export default function ProfesseurNotesPage() {
     }
   }
 
-  // ✅ HELPER: Mapper les types d'évaluation
+  // Helper : Mapper les types d'évaluation
   const mapEvaluationType = (type: string): Grade["type"] => {
     const mapping: Record<string, Grade["type"]> = {
       controle: "Contrôle",
@@ -148,7 +131,7 @@ export default function ProfesseurNotesPage() {
     return mapping[type] || "Contrôle"
   }
 
-  // 🔹 MODIFICATION 4: Fonction pour vérifier si une note peut être modifiée (48h)
+  // Fonction : Vérifier si une note peut être modifiée (48h)
   function canModifyGrade(grade: { created_at: string }): boolean {
     const enteredDate = new Date(grade.created_at)
     const now = new Date()
@@ -156,7 +139,7 @@ export default function ProfesseurNotesPage() {
     return hoursDiff < 48
   }
 
-  // Fonction pour calculer les statistiques
+  // Fonction : Calculer les statistiques
   function calculateStats(grades: Grade[]) {
     if (grades.length === 0) return { average: 0, min: 0, max: 0 }
     const values = grades.map((g) => g.value)
@@ -177,55 +160,7 @@ export default function ProfesseurNotesPage() {
   // Calculer les statistiques
   const stats = calculateStats(filteredGrades)
 
-  // 🔹 MODIFICATION 5: Ajouter une note (appel API)
-  const addGrade = async () => {
-    if (!newGrade.studentId || !newGrade.value || !selectedEvaluationId) {
-      alert("Veuillez remplir tous les champs")
-      return
-    }
-
-    try {
-      setIsLoading(true)
-
-      // Appel API pour créer/mettre à jour les notes
-      const response = await gradesApi.createOrUpdateGrades(selectedEvaluationId, [
-        {
-          studentId: newGrade.studentId,
-          value: parseFloat(newGrade.value),
-          absent: false,
-          comment: "",
-        },
-      ])
-
-      if (response.success) {
-        alert("Note ajoutée avec succès !")
-        
-        // Recharger les notes
-        await loadGradesForEvaluation(selectedEvaluationId)
-        
-        // Fermer le modal
-        setShowAddModal(false)
-        
-        // Reset le formulaire
-        setNewGrade({
-          studentId: "",
-          value: "",
-          type: "Contrôle",
-          coefficient: "1",
-          date: new Date().toISOString().split("T")[0],
-        })
-      } else {
-        alert(`Erreur: ${response.error}`)
-      }
-    } catch (err) {
-      console.error("Erreur ajout note:", err)
-      alert("Impossible d'ajouter la note")
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  // 🔹 MODIFICATION 6: Supprimer une note (appel API)
+  // Fonction : Supprimer une note
   const deleteGrade = async (gradeId: string) => {
     const grade = grades.find((g) => g.id === gradeId)
     if (grade && !canModifyGrade({ created_at: grade.enteredAt })) {
@@ -240,13 +175,10 @@ export default function ProfesseurNotesPage() {
     try {
       setIsLoading(true)
 
-      // Appel API pour supprimer la note
       const response = await gradesApi.deleteGrade(gradeId)
 
       if (response.success) {
         alert("Note supprimée avec succès !")
-        
-        // Retirer la note de l'état local
         setGrades(grades.filter((g) => g.id !== gradeId))
       } else {
         alert(`Erreur: ${response.error}`)
@@ -261,7 +193,7 @@ export default function ProfesseurNotesPage() {
 
   // Exporter les notes
   const exportGrades = (format: "pdf" | "csv") => {
-    console.log("[v0] Exporting grades as:", format)
+    console.log("Exporting grades as:", format)
     alert(`Export ${format.toUpperCase()} en cours de développement`)
   }
 
@@ -275,7 +207,7 @@ export default function ProfesseurNotesPage() {
     setEditingNoteId(null)
   }
 
-  // 🔹 MODIFICATION 7: Afficher un loader pendant le chargement
+  // Afficher un loader pendant le chargement
   if (isLoading && grades.length === 0) {
     return (
       <DashboardLayout requiredRole="teacher">
@@ -286,7 +218,7 @@ export default function ProfesseurNotesPage() {
     )
   }
 
-  // 🔹 MODIFICATION 8: Afficher les erreurs
+  // Afficher les erreurs
   if (error) {
     return (
       <DashboardLayout requiredRole="teacher">
@@ -325,9 +257,15 @@ export default function ProfesseurNotesPage() {
               <Download className="mr-2 h-4 w-4" />
               CSV
             </Button>
-            <Button onClick={() => setShowAddModal(true)}>
+            <Button 
+              onClick={() => {
+                // TODO: Récupérer le vrai courseId depuis l'évaluation sélectionnée
+                setSelectedCourseId("test-course-id") 
+                setShowGradeEntryModal(true)
+              }}
+            >
               <Plus className="mr-2 h-4 w-4" />
-              Ajouter une note
+              Saisir des notes
             </Button>
           </div>
         </div>
@@ -449,10 +387,6 @@ export default function ProfesseurNotesPage() {
                 <CardTitle>Notes ({filteredGrades.length})</CardTitle>
                 <CardDescription>Liste des notes pour la classe sélectionnée</CardDescription>
               </div>
-              <Button variant="outline" size="sm" onClick={() => setShowHistoryModal(true)}>
-                <History className="mr-2 h-4 w-4" />
-                Historique
-              </Button>
             </div>
           </CardHeader>
           <CardContent>
@@ -519,57 +453,21 @@ export default function ProfesseurNotesPage() {
           </CardContent>
         </Card>
 
-        {/* Modal d'ajout de note */}
-        {showAddModal && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-            onClick={() => setShowAddModal(false)}
-          >
-            <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-              <CardHeader>
-                <CardTitle>Ajouter une note</CardTitle>
-                <CardDescription>Saisir une nouvelle note pour un élève</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium">Élève</label>
-                  <input
-                    type="text"
-                    placeholder="ID de l'élève"
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
-                    value={newGrade.studentId}
-                    onChange={(e) => setNewGrade({ ...newGrade, studentId: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Note (sur 20)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="20"
-                    step="0.5"
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
-                    value={newGrade.value}
-                    onChange={(e) => setNewGrade({ ...newGrade, value: e.target.value })}
-                  />
-                </div>
-                <div className="flex gap-2 pt-4">
-                  <Button className="flex-1" onClick={addGrade} disabled={isLoading}>
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    {isLoading ? "Ajout..." : "Ajouter"}
-                  </Button>
-                  <Button variant="outline" className="flex-1" onClick={() => setShowAddModal(false)}>
-                    Annuler
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
         {/* Modal d'édition de note */}
         {editingNoteId && (
           <EditNoteModal noteId={editingNoteId} onClose={() => setEditingNoteId(null)} onSuccess={refreshGrades} />
+        )}
+
+        {/* ✅ NOUVEAU : Modal de saisie de notes */}
+        {showGradeEntryModal && selectedEvaluationId && selectedCourseId && (
+          <GradeEntryModal
+            evaluationId={selectedEvaluationId}
+            courseId={selectedCourseId}
+            evaluationTitle="Contrôle du 20 octobre"
+            maxScale={20}
+            onClose={() => setShowGradeEntryModal(false)}
+            onSuccess={refreshGrades}
+          />
         )}
       </div>
     </DashboardLayout>

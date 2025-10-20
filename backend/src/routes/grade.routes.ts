@@ -4,6 +4,10 @@ import { authenticate, authorize } from '../middleware/auth.middleware';
 import { validateRequest } from '../middleware/validation.middleware';
 import { getGradeByIdHandler } from '../controllers/grade.controller'; // Ajouter cet import en haut
 import {
+  getCourseStudentsWithGrades, // ✅ Ajouter
+} from '../controllers/grade.controller';
+
+import {
   // Evaluations
   createEvaluationHandler,
   getTeacherEvaluationsHandler,
@@ -277,6 +281,20 @@ router.get(
   getGradeHistoryHandler
 );
 
+
+/**
+ * GET /api/grades/course/:courseId/students
+ * Liste des élèves d'un cours avec leurs notes
+ */
+router.get(
+  '/course/:courseId/students',
+  authenticate,
+  authorize('teacher', 'admin'),
+  param('courseId').isUUID(),
+  query('evaluationId').optional().isUUID(),
+  validateRequest,
+  getCourseStudentsWithGrades
+);
 // =========================
 // ROUTES NOTES - Consultation Élève
 // =========================

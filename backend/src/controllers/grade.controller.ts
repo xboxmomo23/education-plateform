@@ -970,3 +970,57 @@ export async function getClassAveragesHandler(req: Request, res: Response): Prom
     });
   }
 }
+
+
+/**
+ * GET /api/grades/course/:courseId/students
+ * Récupère tous les élèves d'un cours avec leurs notes pour une évaluation
+ */
+export async function getCourseStudentsWithGrades(req: Request, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: 'Non authentifié' });
+      return;
+    }
+
+    const { courseId } = req.params;
+    const { evaluationId } = req.query;
+
+    // Récupérer tous les élèves inscrits dans la classe du cours
+    const query = `
+      SELECT 
+        u.id as student_id,
+        u.full_name as student_name,
+        sp.student_no,
+        e.id as enrollment_id,
+        g.id as grade_id,
+        g.value,
+        g.absent,
+        g.comment
+      FROM courses c
+      INNER JOIN classes cl ON cl.id = c.class_id
+      INNER JOIN enrollments e ON e.class_id = cl.id
+      INNER JOIN users u ON u.id = e.student_id
+      INNER JOIN student_profiles sp ON sp.user_id = u.id
+      LEFT JOIN grades g ON g.student_id = u.id 
+        AND g.evaluation_id = $2
+      WHERE c.id = $1
+        AND e.end_date IS NULL
+        AND u.active = TRUE
+      ORDER BY u.full_name ASC
+    `;
+
+    const result = await pool.query(query, [courseId, evaluationId || null]);
+
+    res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error('Erreur récupération élèves:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la récupération des élèves',
+    });
+  }
+}
