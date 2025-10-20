@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { generalLimiter, helmetConfig } from './middleware/security.middleware';
 import authRoutes from './routes/auth.routes';
 import gradeRoutes from './routes/grade.routes';
+import courseRoutes from './routes/course.routes'; // ✅ AJOUTÉ
 
 // Charger les variables d'environnement
 dotenv.config();
@@ -57,6 +58,7 @@ app.get('/health', (req: Request, res: Response) => {
 // Routes d'authentification
 app.use('/api/auth', authRoutes);
 app.use('/api/grades', gradeRoutes);
+app.use('/api/courses', courseRoutes);  // ✅ AJOUTER CETTE LIGNE
 
 // Route 404
 app.use('*', (req: Request, res: Response) => {

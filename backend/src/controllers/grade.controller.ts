@@ -124,9 +124,25 @@ export async function getTeacherEvaluationsHandler(req: Request, res: Response):
       return;
     }
 
+    // ✅ CORRECTION : Mapper snake_case vers camelCase
+    const mappedEvaluations = evaluations.map(evaluation => ({
+      id: evaluation.id,
+      courseId: evaluation.course_id,
+      termId: evaluation.term_id,
+      title: evaluation.title,
+      type: evaluation.type,
+      coefficient: evaluation.coefficient,
+      maxScale: evaluation.max_scale,
+      evalDate: evaluation.eval_date,
+      description: evaluation.description,
+      createdBy: evaluation.created_by,
+      createdAt: evaluation.created_at,
+      establishmentId: evaluation.establishment_id
+    }));
+
     res.json({
       success: true,
-      data: evaluations,
+      data: mappedEvaluations,
     });
   } catch (error) {
     console.error('Erreur récupération évaluations:', error);
@@ -975,6 +991,7 @@ export async function getClassAveragesHandler(req: Request, res: Response): Prom
 /**
  * GET /api/grades/course/:courseId/students
  * Récupère tous les élèves d'un cours avec leurs notes pour une évaluation
+ * ✅ CORRIGÉ : La table enrollments n'a pas de colonne id
  */
 export async function getCourseStudentsWithGrades(req: Request, res: Response): Promise<void> {
   try {
@@ -992,21 +1009,17 @@ export async function getCourseStudentsWithGrades(req: Request, res: Response): 
         u.id as student_id,
         u.full_name as student_name,
         sp.student_no,
-        e.id as enrollment_id,
         g.id as grade_id,
         g.value,
         g.absent,
         g.comment
       FROM courses c
       INNER JOIN classes cl ON cl.id = c.class_id
-      INNER JOIN enrollments e ON e.class_id = cl.id
-      INNER JOIN users u ON u.id = e.student_id
+      INNER JOIN enrollments enr ON enr.class_id = cl.id AND enr.end_date IS NULL
+      INNER JOIN users u ON u.id = enr.student_id AND u.role = 'student' AND u.active = TRUE
       INNER JOIN student_profiles sp ON sp.user_id = u.id
-      LEFT JOIN grades g ON g.student_id = u.id 
-        AND g.evaluation_id = $2
+      LEFT JOIN grades g ON g.student_id = u.id AND g.evaluation_id = $2
       WHERE c.id = $1
-        AND e.end_date IS NULL
-        AND u.active = TRUE
       ORDER BY u.full_name ASC
     `;
 
