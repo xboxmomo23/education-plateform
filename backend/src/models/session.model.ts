@@ -216,16 +216,49 @@ export async function cleanupExpiredSessions(): Promise<number> {
   return result.rowCount || 0;
 }
 
-export async function limitUserSessions(userId: string, maxSessions: number = 5): Promise<void> {
-  const query = `
-    DELETE FROM user_sessions 
-    WHERE id IN (
-      SELECT id FROM user_sessions 
-      WHERE user_id = $1 
-      ORDER BY created_at ASC 
-      LIMIT (SELECT COUNT(*) - $2 FROM user_sessions WHERE user_id = $1)
-    )
-  `;
-  
-  await pool.query(query, [userId, maxSessions]);
+/**
+ * Limite le nombre de sessions par utilisateur
+ * ✅ CORRIGÉ : Gère les cas où il y a plus de sessions que la limite
+ */
+export async function limitUserSessions(
+  userId: string,
+  maxSessions: number = 5
+): Promise<number> {
+  try {
+    // Compter le nombre de sessions actives
+    const countResult = await pool.query(
+      `SELECT COUNT(*) as count 
+       FROM user_sessions 
+       WHERE user_id = $1`,
+      [userId]
+    );
+
+    const currentSessions = parseInt(countResult.rows[0].count);
+
+    // ✅ CORRECTION : Si on est sous la limite, rien à faire
+    if (currentSessions <= maxSessions) {
+      return 0;
+    }
+
+    // Calculer combien de sessions à supprimer
+    const sessionsToDelete = currentSessions - maxSessions;
+
+    // ✅ Supprimer les plus anciennes sessions (au-delà de la limite)
+    const deleteResult = await pool.query(
+      `DELETE FROM user_sessions 
+       WHERE id IN (
+         SELECT id 
+         FROM user_sessions 
+         WHERE user_id = $1 
+         ORDER BY created_at ASC 
+         LIMIT $2
+       )`,
+      [userId, sessionsToDelete] // ✅ Toujours positif !
+    );
+
+    return deleteResult.rowCount || 0;
+  } catch (error) {
+    console.error('Erreur limitation sessions:', error);
+    return 0;
+  }
 }
