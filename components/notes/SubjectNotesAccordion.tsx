@@ -31,7 +31,7 @@ interface SubjectNotesAccordionProps {
   subjects: SubjectNotes[]
 }
 
-export default function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) {
+export function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) {
   const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set())
 
   const toggleSubject = (subjectId: string) => {

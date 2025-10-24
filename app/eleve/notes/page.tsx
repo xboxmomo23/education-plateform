@@ -5,23 +5,28 @@ import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { AlertCircle, BookOpen } from "lucide-react"
+import { gradesApi } from "@/lib/api/grade"
+import { getUserSession } from "@/lib/auth"
 
-// ✅ Import des composants créés
+// ✅ Import des composants (noms corrigés)
 import { NotesSummaryCard } from "@/components/notes/NotesSummaryCard"
-import { SubjectSummaryTable } from "@/components/notes/SubjectSummaryTable"
-import SubjectNotesAccordion from "@/components/notes/SubjectNotesAccordion"
+import { SubjectSummTable } from "@/components/notes/SubjectSummTable"
+import { SubjectNotesAccordion } from "@/components/notes/SubjectNotesAccordion"
 import { StatsPanel } from "@/components/notes/StatsPanel"
 
-// ✅ Types (à conserver tels quels)
+// ============================================
+// TYPES
+// ============================================
+
 type Evaluation = {
   evaluationId: string
   title: string
-  date: string // ISO
+  date: string
   coefficient: number
-  gradeStudent: number // /20
-  avgClass?: number // /20
-  min?: number // /20
-  max?: number // /20
+  gradeStudent: number
+  avgClass?: number
+  min?: number
+  max?: number
   appreciation?: string
 }
 
@@ -29,143 +34,173 @@ type SubjectNotes = {
   subjectId: string
   subjectName: string
   subjectCoeffTotal: number
-  subjectAvgStudent: number // /20
-  subjectAvgClass?: number // /20
-  subjectMin?: number // /20
-  subjectMax?: number // /20
+  subjectAvgStudent: number
+  subjectAvgClass?: number
+  subjectMin?: number
+  subjectMax?: number
   appreciation?: string
   evaluations: Evaluation[]
 }
 
 type StudentNotesResponse = {
-  generalAverage: number // /20
+  generalAverage: number
   subjects: SubjectNotes[]
 }
 
-// ✅ MOCK DATA (à remplacer par ton fetch API)
-const MOCK_DATA: StudentNotesResponse = {
-  generalAverage: 14.25,
-  subjects: [
-    {
-      subjectId: "math-1",
-      subjectName: "Mathématiques",
-      subjectCoeffTotal: 6,
-      subjectAvgStudent: 15.5,
-      subjectAvgClass: 12.8,
-      subjectMin: 6.0,
-      subjectMax: 18.5,
-      appreciation: "Excellent travail, continuez ainsi !",
-      evaluations: [
-        {
-          evaluationId: "eval-1",
-          title: "Contrôle n°1 - Fonctions",
-          date: "2025-10-15T00:00:00Z",
-          coefficient: 2,
-          gradeStudent: 16.0,
-          avgClass: 13.2,
-          min: 7.0,
-          max: 18.5,
-          appreciation: "Très bon travail",
-        },
-        {
-          evaluationId: "eval-2",
-          title: "Devoir maison - Géométrie",
-          date: "2025-10-08T00:00:00Z",
-          coefficient: 1,
-          gradeStudent: 14.5,
-          avgClass: 12.0,
-          min: 6.0,
-          max: 17.0,
-          appreciation: "Bien, quelques imprécisions",
-        },
-        {
-          evaluationId: "eval-3",
-          title: "Contrôle n°2 - Algèbre",
-          date: "2025-10-20T00:00:00Z",
-          coefficient: 3,
-          gradeStudent: 15.5,
-          avgClass: 13.0,
-          min: 8.0,
-          max: 18.0,
-        },
-      ],
-    },
-    {
-      subjectId: "phys-1",
-      subjectName: "Physique-Chimie",
-      subjectCoeffTotal: 4,
-      subjectAvgStudent: 13.0,
-      subjectAvgClass: 11.5,
-      subjectMin: 5.0,
-      subjectMax: 16.0,
-      evaluations: [
-        {
-          evaluationId: "eval-4",
-          title: "TP - Électricité",
-          date: "2025-10-12T00:00:00Z",
-          coefficient: 2,
-          gradeStudent: 13.0,
-          avgClass: 11.5,
-          min: 5.0,
-          max: 16.0,
-        },
-        {
-          evaluationId: "eval-5",
-          title: "Contrôle - Mécanique",
-          date: "2025-10-19T00:00:00Z",
-          coefficient: 2,
-          gradeStudent: 13.0,
-          avgClass: 11.5,
-          min: 6.0,
-          max: 15.5,
-          appreciation: "Bon raisonnement",
-        },
-      ],
-    },
-  ],
+// ============================================
+// TYPES BACKEND (ce que ton API retourne)
+// ============================================
+
+interface BackendGrade {
+  id: string
+  evaluationId: string
+  evaluationTitle: string
+  evaluationType: string
+  subjectName: string
+  subjectCode: string
+  value: number | null
+  absent: boolean
+  coefficient: number
+  maxScale: number
+  normalizedValue: number | null
+  evalDate: string
+  comment?: string
+  classAverage?: number
+  classMin?: number
+  classMax?: number
 }
+
+// ============================================
+// FONCTION DE TRANSFORMATION DES DONNÉES
+// ============================================
+
+function transformBackendData(backendGrades: BackendGrade[]): StudentNotesResponse {
+  // Grouper par matière
+  const gradesBySubject = backendGrades.reduce((acc, grade) => {
+    const subject = grade.subjectName || "Autre"
+    if (!acc[subject]) {
+      acc[subject] = []
+    }
+    acc[subject].push(grade)
+    return acc
+  }, {} as Record<string, BackendGrade[]>)
+
+  // Calculer les moyennes par matière
+  const subjects: SubjectNotes[] = Object.entries(gradesBySubject).map(
+    ([subjectName, grades]) => {
+      // Filtrer les absences et notes nulles
+      const validGrades = grades.filter((g) => !g.absent && g.normalizedValue !== null)
+
+      let subjectAvgStudent = 0
+      let totalCoeff = 0
+
+      if (validGrades.length > 0) {
+        // Calculer la moyenne pondérée
+        let totalPoints = 0
+        validGrades.forEach((grade) => {
+          const normalized = grade.normalizedValue || 0
+          const coef = grade.coefficient || 1
+          totalPoints += normalized * coef
+          totalCoeff += coef
+        })
+        subjectAvgStudent = totalCoeff > 0 ? totalPoints / totalCoeff : 0
+      }
+
+      // Calculer min/max de la matière
+      const allStudentGrades = validGrades.map((g) => g.normalizedValue || 0)
+      const subjectMin = allStudentGrades.length > 0 ? Math.min(...allStudentGrades) : undefined
+      const subjectMax = allStudentGrades.length > 0 ? Math.max(...allStudentGrades) : undefined
+
+      // Transformer les évaluations
+      const evaluations: Evaluation[] = grades.map((grade) => ({
+        evaluationId: grade.evaluationId,
+        title: grade.evaluationTitle,
+        date: grade.evalDate,
+        coefficient: grade.coefficient,
+        gradeStudent: grade.normalizedValue || 0,
+        avgClass: grade.classAverage,
+        min: grade.classMin,
+        max: grade.classMax,
+        appreciation: grade.comment,
+      }))
+
+      return {
+        subjectId: grades[0].subjectCode || subjectName,
+        subjectName,
+        subjectCoeffTotal: totalCoeff,
+        subjectAvgStudent,
+        subjectAvgClass: undefined, // Calculé si dispo dans le backend
+        subjectMin,
+        subjectMax,
+        appreciation: undefined,
+        evaluations,
+      }
+    }
+  )
+
+  // Calculer la moyenne générale (moyenne de toutes les matières)
+  const validSubjects = subjects.filter((s) => s.evaluations.length > 0)
+  const generalAverage =
+    validSubjects.length > 0
+      ? validSubjects.reduce((acc, s) => acc + s.subjectAvgStudent, 0) / validSubjects.length
+      : 0
+
+  return {
+    generalAverage,
+    subjects,
+  }
+}
+
+// ============================================
+// COMPOSANT PAGE
+// ============================================
 
 export default function StudentNotesPage() {
   const [data, setData] = useState<StudentNotesResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const user = getUserSession()
+
   useEffect(() => {
-    loadNotes()
-  }, [])
+    if (user?.id) {
+      loadNotes()
+    } else {
+      setError("Utilisateur non connecté")
+      setIsLoading(false)
+    }
+  }, [user?.id])
 
   const loadNotes = async () => {
+    if (!user?.id) return
+
     try {
       setIsLoading(true)
       setError(null)
 
-      // ============================================
-      // 🔌 REMPLACE CETTE SECTION PAR TON FETCH API RÉEL
-      // ============================================
-      // Exemple d'appel API réel :
-      /*
-      const response = await fetch('/api/grades/student/me', {
-        headers: {
-          'Authorization': `Bearer ${getToken()}`,
-          'Content-Type': 'application/json'
-        }
-      })
-      
-      if (!response.ok) {
-        throw new Error('Erreur lors du chargement des notes')
-      }
-      
-      const data = await response.json()
-      setData(data)
-      */
-      
-      // Pour l'instant, on simule un délai réseau avec le mock
-      await new Promise((resolve) => setTimeout(resolve, 800))
-      setData(MOCK_DATA)
+      console.log("[API] Loading grades for student:", user.id)
 
+      // ✅ APPEL API RÉEL
+      const response = await gradesApi.getStudentGrades(user.id, {})
+
+      console.log("[API] Response:", response)
+
+      if (!response.success) {
+        setError(response.error || "Erreur lors du chargement des notes")
+        return
+      }
+
+      const backendGrades = response.data?.grades || []
+      console.log("[API] Backend grades:", backendGrades)
+
+      // ✅ TRANSFORMER les données backend vers le format UI
+      const transformedData = transformBackendData(backendGrades)
+      console.log("[API] Transformed data:", transformedData)
+
+      setData(transformedData)
     } catch (err) {
       console.error("[API] Error loading notes:", err)
-      setError(err instanceof Error ? err.message : "Erreur lors du chargement des notes")
+      setError("Impossible de charger les notes")
     } finally {
       setIsLoading(false)
     }
@@ -221,9 +256,9 @@ export default function StudentNotesPage() {
       <DashboardLayout requiredRole="student">
         <div className="space-y-6">
           {/* Header */}
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900">Mes notes</h1>
-            <p className="text-muted-foreground mt-1">
+          <div className="border-b pb-6">
+            <h1 className="text-4xl font-bold text-slate-900">Mes notes</h1>
+            <p className="text-muted-foreground mt-2 text-lg">
               Consultez vos résultats, moyennes et appréciations.
             </p>
           </div>
@@ -234,13 +269,14 @@ export default function StudentNotesPage() {
               <div className="text-center space-y-4">
                 <BookOpen className="h-16 w-16 text-muted-foreground mx-auto" />
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-900">
-                    Aucune note disponible
-                  </h3>
+                  <h3 className="text-lg font-semibold text-slate-900">Aucune note disponible</h3>
                   <p className="text-sm text-muted-foreground mt-2">
                     Vos notes apparaîtront ici dès qu'elles seront saisies par vos professeurs.
                   </p>
                 </div>
+                <Button onClick={loadNotes} variant="outline">
+                  Actualiser
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -261,10 +297,17 @@ export default function StudentNotesPage() {
         {/* HEADER */}
         {/* ============================================ */}
         <div className="border-b pb-6">
-          <h1 className="text-4xl font-bold text-slate-900">Mes notes</h1>
-          <p className="text-muted-foreground mt-2 text-lg">
-            Consultez vos résultats, moyennes et appréciations.
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-bold text-slate-900">Mes notes</h1>
+              <p className="text-muted-foreground mt-2 text-lg">
+                Consultez vos résultats, moyennes et appréciations.
+              </p>
+            </div>
+            <Button onClick={loadNotes} variant="outline" size="sm">
+              Actualiser
+            </Button>
+          </div>
         </div>
 
         {/* ============================================ */}
@@ -283,7 +326,7 @@ export default function StudentNotesPage() {
           {/* LEFT COLUMN: Tables & Accordion */}
           <div className="space-y-6">
             {/* Synthèse par matière */}
-            <SubjectSummaryTable subjects={data.subjects} />
+            <SubjectSummTable subjects={data.subjects} />
 
             {/* Notes détaillées (Accordion) */}
             <div>

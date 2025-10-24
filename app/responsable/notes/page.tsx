@@ -1,364 +1,458 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Download, Search, Edit, Trash2, Filter } from "lucide-react"
-import { useState } from "react"
-import { EditNoteModal } from "@/components/notes/EditNoteModal"
+import { Badge } from "@/components/ui/badge"
+import {
+  AlertCircle,
+  BookOpen,
+  Users,
+  Edit,
+  Trash2,
+  Clock,
+  History,
+  ChevronDown,
+} from "lucide-react"
+import { gradesApi } from "@/lib/api/grade"
+import { getUserSession } from "@/lib/auth"
 
-interface Student {
+// Types
+type Child = {
   id: string
-  name: string
-  class: string
+  fullName: string
+  email: string
+  className: string
 }
 
-interface Grade {
+type Grade = {
   id: string
-  studentId: string
-  value: number
-  date: string
-  type: "Contrôle" | "Devoir" | "Participation" | "Examen"
+  evaluationId: string
+  evaluationTitle: string
+  evaluationType: string
+  subjectName: string
+  subjectCode: string
+  className: string
+  value: number | null
+  absent: boolean
   coefficient: number
-  subject: string
-  enteredBy: string
-  enteredAt: string
-  modifiedBy?: string
-  modifiedAt?: string
+  maxScale: number
+  normalizedValue: number | null
+  evalDate: string
+  comment?: string
+  createdAt: string
+  createdBy: string
+  createdByRole: string
+  classAverage?: number
+  classMin?: number
+  classMax?: number
 }
 
-const DEMO_STUDENTS: Student[] = [
-  { id: "1", name: "Alice Dupont", class: "Terminale A" },
-  { id: "2", name: "Bob Martin", class: "Terminale A" },
-  { id: "3", name: "Claire Bernard", class: "Terminale A" },
-  { id: "4", name: "David Petit", class: "Première B" },
-  { id: "5", name: "Emma Dubois", class: "Première B" },
-  { id: "6", name: "François Moreau", class: "Seconde C" },
-  { id: "7", name: "Gabrielle Simon", class: "Seconde C" },
-]
-
-const DEMO_GRADES: Grade[] = [
-  {
-    id: "1",
-    studentId: "1",
-    value: 15,
-    date: "2025-10-10",
-    type: "Contrôle",
-    coefficient: 2,
-    subject: "Mathématiques",
-    enteredBy: "Prof. Demo",
-    enteredAt: "2025-10-10T14:30:00",
-  },
-  {
-    id: "2",
-    studentId: "2",
-    value: 12,
-    date: "2025-10-10",
-    type: "Contrôle",
-    coefficient: 2,
-    subject: "Mathématiques",
-    enteredBy: "Prof. Demo",
-    enteredAt: "2025-10-10T14:30:00",
-  },
-  {
-    id: "3",
-    studentId: "4",
-    value: 16,
-    date: "2025-10-08",
-    type: "Devoir",
-    coefficient: 1,
-    subject: "Français",
-    enteredBy: "Prof. Martin",
-    enteredAt: "2025-10-08T10:00:00",
-  },
-  {
-    id: "4",
-    studentId: "6",
-    value: 14,
-    date: "2025-10-09",
-    type: "Contrôle",
-    coefficient: 2,
-    subject: "Histoire-Géographie",
-    enteredBy: "Prof. Bernard",
-    enteredAt: "2025-10-09T11:00:00",
-  },
-]
-
-function calculateStats(grades: Grade[]) {
-  if (grades.length === 0) return { average: 0, min: 0, max: 0 }
-  const values = grades.map((g) => g.value)
-  return {
-    average: values.reduce((sum, v) => sum + v, 0) / values.length,
-    min: Math.min(...values),
-    max: Math.max(...values),
-  }
+type GradesBySubject = {
+  [subjectName: string]: Grade[]
 }
 
 export default function ResponsableNotesPage() {
-  const [selectedClass, setSelectedClass] = useState<string>("all")
-  const [selectedSubject, setSelectedSubject] = useState<string>("all")
-  const [selectedType, setSelectedType] = useState<string>("all")
-  const [searchQuery, setSearchQuery] = useState("")
-  const [grades, setGrades] = useState<Grade[]>(DEMO_GRADES)
-  const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
+  const [children, setChildren] = useState<Child[]>([])
+  const [selectedChildId, setSelectedChildId] = useState<string | null>(null)
+  const [grades, setGrades] = useState<Grade[]>([])
+  const [gradesBySubject, setGradesBySubject] = useState<GradesBySubject>({})
+  const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set())
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [editingGrade, setEditingGrade] = useState<Grade | null>(null)
 
-  const filteredGrades = grades.filter((grade) => {
-    const student = DEMO_STUDENTS.find((s) => s.id === grade.studentId)
-    const matchesClass = selectedClass === "all" || student?.class === selectedClass
-    const matchesSubject = selectedSubject === "all" || grade.subject === selectedSubject
-    const matchesType = selectedType === "all" || grade.type === selectedType
-    const matchesSearch =
-      student?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      grade.subject.toLowerCase().includes(searchQuery.toLowerCase())
-    return matchesClass && matchesSubject && matchesType && matchesSearch
-  })
+  const user = getUserSession()
 
-  const stats = calculateStats(filteredGrades)
+  useEffect(() => {
+    loadChildren()
+  }, [])
 
-  const deleteGrade = (gradeId: string) => {
-    if (confirm("Êtes-vous sûr de vouloir supprimer cette note ?")) {
-      setGrades(grades.filter((g) => g.id !== gradeId))
+  useEffect(() => {
+    if (selectedChildId) {
+      loadGrades(selectedChildId)
+    }
+  }, [selectedChildId])
+
+  const loadChildren = async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+
+      // ✅ APPEL API : Récupérer les enfants du responsable
+      // Pour l'instant, mock data
+      // TODO: Remplacer par gradesApi.getChildren() ou similar
+      
+      const mockChildren: Child[] = [
+        {
+          id: "alice-id",
+          fullName: "Alice Dupont",
+          email: "alice.dupont@student.test",
+          className: "6ème A",
+        },
+      ]
+
+      setChildren(mockChildren)
+      if (mockChildren.length > 0) {
+        setSelectedChildId(mockChildren[0].id)
+      }
+    } catch (err) {
+      console.error("Error loading children:", err)
+      setError("Impossible de charger la liste de vos enfants")
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const exportGrades = (format: "pdf" | "csv") => {
-    console.log("[v0] Exporting grades as:", format)
-    alert(`Export ${format.toUpperCase()} en cours de développement`)
+  const loadGrades = async (studentId: string) => {
+    try {
+      setIsLoading(true)
+      setError(null)
+
+      console.log("[API] Loading grades for child:", studentId)
+
+      const response = await gradesApi.getStudentGrades(studentId, {})
+
+      if (!response.success) {
+        setError(response.error || "Erreur lors du chargement des notes")
+        return
+      }
+
+      const gradesData = response.data?.grades || []
+      setGrades(gradesData)
+
+      // Grouper par matière
+      const grouped = gradesData.reduce((acc: GradesBySubject, grade: Grade) => {
+        const subject = grade.subjectName || "Autre"
+        if (!acc[subject]) {
+          acc[subject] = []
+        }
+        acc[subject].push(grade)
+        return acc
+      }, {})
+
+      setGradesBySubject(grouped)
+    } catch (err) {
+      console.error("Error loading grades:", err)
+      setError("Impossible de charger les notes")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const classesList = ["Terminale A", "Première B", "Seconde C"]
-  const classStats = classesList.map((className) => {
-    const classGrades = grades.filter((g) => {
-      const student = DEMO_STUDENTS.find((s) => s.id === g.studentId)
-      return student?.class === className
-    })
+  const canEditGrade = (grade: Grade): { canEdit: boolean; reason?: string } => {
+    const now = new Date()
+    const createdAt = new Date(grade.createdAt)
+    const daysSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24)
+
+    if (daysSinceCreation <= 30) {
+      return { canEdit: true }
+    }
+
     return {
-      class: className,
-      count: classGrades.length,
-      average: calculateStats(classGrades).average,
+      canEdit: false,
+      reason: `Délai de modification dépassé (${Math.floor(daysSinceCreation)} jours écoulés, limite 30 jours)`,
     }
-  })
+  }
 
-  const refreshGrades = async () => {
-    setEditingNoteId(null)
+  const handleEdit = (grade: Grade) => {
+    const permission = canEditGrade(grade)
+    if (!permission.canEdit) {
+      alert(permission.reason)
+      return
+    }
+
+    setEditingGrade(grade)
+    // TODO: Ouvrir un modal d'édition
+    alert(`Édition de la note ${grade.evaluationTitle} : ${grade.value}/20`)
+  }
+
+  const handleDelete = async (grade: Grade) => {
+    const permission = canEditGrade(grade)
+    if (!permission.canEdit) {
+      alert(permission.reason)
+      return
+    }
+
+    if (!confirm(`Voulez-vous vraiment supprimer cette note ?\n\n${grade.evaluationTitle}\nNote : ${grade.value}/20`)) {
+      return
+    }
+
+    try {
+      const response = await gradesApi.deleteGrade(grade.id)
+
+      if (response.success) {
+        alert("Note supprimée avec succès")
+        loadGrades(selectedChildId!)
+      } else {
+        alert(`Erreur : ${response.error}`)
+      }
+    } catch (err) {
+      console.error("Error deleting grade:", err)
+      alert("Impossible de supprimer la note")
+    }
+  }
+
+  const toggleSubject = (subjectName: string) => {
+    const newExpanded = new Set(expandedSubjects)
+    if (newExpanded.has(subjectName)) {
+      newExpanded.delete(subjectName)
+    } else {
+      newExpanded.add(subjectName)
+    }
+    setExpandedSubjects(newExpanded)
+  }
+
+  const getGradeColor = (value: number): string => {
+    if (value >= 16) return "text-green-600 font-bold"
+    if (value >= 14) return "text-green-500"
+    if (value >= 12) return "text-blue-500"
+    if (value >= 10) return "text-orange-500"
+    return "text-red-500 font-semibold"
+  }
+
+  const selectedChild = children.find((c) => c.id === selectedChildId)
+
+  if (isLoading && children.length === 0) {
+    return (
+      <DashboardLayout requiredRole="responsable">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Chargement...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    )
+  }
+
+  if (error && children.length === 0) {
+    return (
+      <DashboardLayout requiredRole="responsable">
+        <Card className="max-w-md mx-auto mt-8 border-red-200 bg-red-50/50">
+          <CardContent className="pt-6">
+            <div className="flex flex-col items-center text-center space-y-4">
+              <AlertCircle className="h-12 w-12 text-red-600" />
+              <div>
+                <h3 className="text-lg font-semibold">Erreur</h3>
+                <p className="text-sm text-muted-foreground mt-2">{error}</p>
+              </div>
+              <Button onClick={loadChildren} className="w-full">
+                Réessayer
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </DashboardLayout>
+    )
+  }
+
+  if (children.length === 0) {
+    return (
+      <DashboardLayout requiredRole="responsable">
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">Aucun enfant associé à votre compte</p>
+          </CardContent>
+        </Card>
+      </DashboardLayout>
+    )
   }
 
   return (
     <DashboardLayout requiredRole="responsable">
       <div className="space-y-6">
+        {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-3xl font-bold tracking-tight">Gestion des notes</h2>
-            <p className="text-muted-foreground">Vue globale des notes de toutes les classes</p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => exportGrades("pdf")}>
-              <Download className="mr-2 h-4 w-4" />
-              PDF
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => exportGrades("csv")}>
-              <Download className="mr-2 h-4 w-4" />
-              CSV
-            </Button>
+            <h2 className="text-3xl font-bold tracking-tight">Notes de mes enfants</h2>
+            <p className="text-muted-foreground">
+              Consultez et gérez les notes de vos enfants
+            </p>
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          {classStats.map((stat) => (
-            <Card key={stat.class}>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium">{stat.class}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-2xl font-bold">{stat.average.toFixed(2)}/20</div>
-                    <p className="text-xs text-muted-foreground">Moyenne</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xl font-medium">{stat.count}</div>
-                    <p className="text-xs text-muted-foreground">Notes</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
+        {/* Sélecteur d'enfant */}
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <Filter className="h-5 w-5" />
-              <CardTitle className="text-base">Filtres</CardTitle>
-            </div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Sélectionner un enfant
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-4">
-              <div>
-                <label className="text-sm font-medium">Classe</label>
-                <select
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
-                  value={selectedClass}
-                  onChange={(e) => setSelectedClass(e.target.value)}
-                >
-                  <option value="all">Toutes les classes</option>
-                  <option value="Terminale A">Terminale A</option>
-                  <option value="Première B">Première B</option>
-                  <option value="Seconde C">Seconde C</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Matière</label>
-                <select
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
-                  value={selectedSubject}
-                  onChange={(e) => setSelectedSubject(e.target.value)}
-                >
-                  <option value="all">Toutes les matières</option>
-                  <option value="Mathématiques">Mathématiques</option>
-                  <option value="Français">Français</option>
-                  <option value="Histoire-Géographie">Histoire-Géographie</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Type</label>
-                <select
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
-                  value={selectedType}
-                  onChange={(e) => setSelectedType(e.target.value)}
-                >
-                  <option value="all">Tous les types</option>
-                  <option value="Contrôle">Contrôle</option>
-                  <option value="Devoir">Devoir</option>
-                  <option value="Participation">Participation</option>
-                  <option value="Examen">Examen</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Recherche</label>
-                <div className="relative mt-1">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    type="text"
-                    placeholder="Élève ou matière..."
-                    className="w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-              </div>
+            <select
+              className="w-full max-w-2xl rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={selectedChildId || ""}
+              onChange={(e) => setSelectedChildId(e.target.value)}
+            >
+              {children.map((child) => (
+                <option key={child.id} value={child.id}>
+                  {child.fullName} - {child.className}
+                </option>
+              ))}
+            </select>
+          </CardContent>
+        </Card>
+
+        {/* Avertissement permissions */}
+        <Card className="border-blue-200 bg-blue-50/50">
+          <CardContent className="pt-6 flex items-start gap-3">
+            <Clock className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+            <div className="text-sm">
+              <p className="font-medium text-blue-900 mb-1">
+                Permissions de modification
+              </p>
+              <p className="text-blue-700">
+                En tant que responsable, vous pouvez modifier ou supprimer les notes pendant{" "}
+                <strong>30 jours</strong> après leur création. Au-delà, contactez
+                l'administration.
+              </p>
             </div>
           </CardContent>
         </Card>
 
-        <div className="grid gap-4 md:grid-cols-4">
+        {/* Notes par matière */}
+        {Object.entries(gradesBySubject).length === 0 ? (
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Total notes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{filteredGrades.length}</div>
+            <CardContent className="py-12 text-center">
+              <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">
+                {selectedChild?.fullName} n'a pas encore de notes
+              </p>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Moyenne générale</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.average.toFixed(2)}/20</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Note minimale</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-500">{stats.min}/20</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Note maximale</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-500">{stats.max}/20</div>
-            </CardContent>
-          </Card>
-        </div>
+        ) : (
+          <div className="space-y-4">
+            {Object.entries(gradesBySubject).map(([subjectName, subjectGrades]) => {
+              const isExpanded = expandedSubjects.has(subjectName)
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Notes ({filteredGrades.length})</CardTitle>
-            <CardDescription>Toutes les notes avec possibilité de modification</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {filteredGrades.length === 0 ? (
-              <div className="py-8 text-center text-muted-foreground">Aucune note trouvée</div>
-            ) : (
-              <div className="space-y-3">
-                {filteredGrades.map((grade) => {
-                  const student = DEMO_STUDENTS.find((s) => s.id === grade.studentId)
+              return (
+                <Card key={subjectName}>
+                  <button
+                    onClick={() => toggleSubject(subjectName)}
+                    className="w-full text-left hover:bg-slate-50 transition-colors"
+                  >
+                    <CardHeader className="flex flex-row items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <ChevronDown
+                          className={`h-5 w-5 transition-transform ${
+                            isExpanded ? "rotate-180" : ""
+                          }`}
+                        />
+                        <div>
+                          <CardTitle className="text-lg">{subjectName}</CardTitle>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {subjectGrades.length} note{subjectGrades.length > 1 ? "s" : ""}
+                          </p>
+                        </div>
+                      </div>
+                    </CardHeader>
+                  </button>
 
-                  return (
-                    <div key={grade.id} className="flex items-center justify-between rounded-lg border p-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                            <span className="text-sm font-medium text-primary">
-                              {student?.name
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")}
-                            </span>
-                          </div>
-                          <div>
-                            <p className="font-medium">{student?.name}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Badge variant="secondary">{student?.class}</Badge>
-                              <Badge variant="outline">{grade.subject}</Badge>
-                              <Badge variant="outline">{grade.type}</Badge>
-                              <span className="text-sm text-muted-foreground">
-                                {new Date(grade.date).toLocaleDateString("fr-FR")}
-                              </span>
+                  {isExpanded && (
+                    <CardContent className="border-t pt-4">
+                      <div className="space-y-3">
+                        {subjectGrades.map((grade) => {
+                          const permission = canEditGrade(grade)
+
+                          return (
+                            <div
+                              key={grade.id}
+                              className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
+                            >
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <h4 className="font-medium">{grade.evaluationTitle}</h4>
+                                  <Badge variant="outline">Coef. {grade.coefficient}</Badge>
+                                  {!permission.canEdit && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      <Clock className="h-3 w-3 mr-1" />
+                                      Verrouillé
+                                    </Badge>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                  <span>
+                                    {new Date(grade.evalDate).toLocaleDateString("fr-FR")}
+                                  </span>
+                                  {grade.classAverage && (
+                                    <span>Moy. classe : {grade.classAverage.toFixed(2)}</span>
+                                  )}
+                                  <span className="text-xs">
+                                    Créé le{" "}
+                                    {new Date(grade.createdAt).toLocaleDateString("fr-FR")}
+                                  </span>
+                                </div>
+
+                                {grade.comment && (
+                                  <p className="text-sm text-muted-foreground mt-2 italic">
+                                    💬 {grade.comment}
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-3 ml-4">
+                                {/* Note */}
+                                <div className="text-right">
+                                  {grade.absent ? (
+                                    <Badge variant="destructive">Absent</Badge>
+                                  ) : grade.value !== null ? (
+                                    <p className={`text-3xl font-bold ${getGradeColor(grade.normalizedValue || 0)}`}>
+                                      {grade.value}
+                                      <span className="text-lg text-muted-foreground">
+                                        /{grade.maxScale}
+                                      </span>
+                                    </p>
+                                  ) : (
+                                    <Badge variant="outline">Non noté</Badge>
+                                  )}
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleEdit(grade)}
+                                    disabled={!permission.canEdit}
+                                    title={
+                                      permission.canEdit
+                                        ? "Modifier la note"
+                                        : permission.reason
+                                    }
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-red-600 hover:bg-red-50"
+                                    onClick={() => handleDelete(grade)}
+                                    disabled={!permission.canEdit}
+                                    title={
+                                      permission.canEdit
+                                        ? "Supprimer la note"
+                                        : permission.reason
+                                    }
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
                             </div>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Saisi par {grade.enteredBy} le{" "}
-                              {new Date(grade.enteredAt).toLocaleDateString("fr-FR", {
-                                day: "2-digit",
-                                month: "2-digit",
-                                year: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </p>
-                          </div>
-                        </div>
+                          )
+                        })}
                       </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <div className="text-2xl font-bold">{grade.value}/20</div>
-                          <p className="text-xs text-muted-foreground">Coef. {grade.coefficient}</p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button variant="outline" size="icon" onClick={() => setEditingNoteId(grade.id)}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button variant="outline" size="icon" onClick={() => deleteGrade(grade.id)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {editingNoteId && (
-          <EditNoteModal noteId={editingNoteId} onClose={() => setEditingNoteId(null)} onSuccess={refreshGrades} />
+                    </CardContent>
+                  )}
+                </Card>
+              )
+            })}
+          </div>
         )}
       </div>
     </DashboardLayout>

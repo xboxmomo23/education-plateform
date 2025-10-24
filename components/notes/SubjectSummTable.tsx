@@ -14,11 +14,11 @@ type SubjectNotes = {
   evaluations: any[]
 }
 
-interface SubjectSummaryTableProps {
+interface SubjectSummTableProps {
   subjects: SubjectNotes[]
 }
 
-export function SubjectSummaryTable({ subjects }: SubjectSummaryTableProps) {
+export function SubjectSummTable({ subjects }: SubjectSummTableProps) {
   const getGradeColor = (grade: number): string => {
     if (grade >= 15) return "text-green-600 font-bold"
     if (grade >= 10) return "text-blue-600 font-semibold"
