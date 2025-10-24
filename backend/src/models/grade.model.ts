@@ -773,8 +773,12 @@ export async function getChildrenGrades(
     return [];
   }
 
-  // Récupérer les notes des enfants
-  const grades = await findGrades({ ...filters, studentId: childrenIds[0] });
+  // ✅ Récupérer les notes de TOUS les enfants
+  const allGrades: GradeWithDetails[] = [];
+    for (const childId of childrenIds) {
+    const grades = await findGrades({ ...filters, studentId: childId });
+    allGrades.push(...grades);
+  }
 
-  return grades.filter(grade => childrenIds.includes(grade.student_id));
+return allGrades;
 }

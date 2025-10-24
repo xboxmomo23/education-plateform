@@ -655,19 +655,19 @@ export async function getStudentGradesHandler(req: Request, res: Response): Prom
       subjectName: grade.subject_name,
       subjectCode: grade.subject_code,
       
-      // Note de l'élève
-      value: grade.value,
+      // Note de l'élève - ✅ CONVERSION EN NOMBRES
+      value: grade.value !== null && grade.value !== undefined ? parseFloat(grade.value.toString()) : null,
       absent: grade.absent,
-      coefficient: grade.coefficient,
-      maxScale: grade.max_scale,
-      normalizedValue: grade.normalized_value,
+      coefficient: grade.coefficient !== null && grade.coefficient !== undefined ? parseFloat(grade.coefficient.toString()) : 1,
+      maxScale: grade.max_scale !== null && grade.max_scale !== undefined ? parseFloat(grade.max_scale.toString()) : 20,
+      normalizedValue: grade.normalized_value !== null && grade.normalized_value !== undefined ? parseFloat(grade.normalized_value.toString()) : null,
       evalDate: grade.eval_date,
       comment: grade.comment,
       
-      // Statistiques de classe
-      classAverage: grade.class_average ? parseFloat(grade.class_average) : undefined,
-      classMin: grade.class_min ? parseFloat(grade.class_min) : undefined,
-      classMax: grade.class_max ? parseFloat(grade.class_max) : undefined,
+      // Statistiques de classe - ✅ CONVERSION EN NOMBRES
+      classAverage: grade.class_average ? parseFloat(grade.class_average.toString()) : undefined,
+      classMin: grade.class_min ? parseFloat(grade.class_min.toString()) : undefined,
+      classMax: grade.class_max ? parseFloat(grade.class_max.toString()) : undefined,
       
       // Dates
       createdAt: grade.created_at,
