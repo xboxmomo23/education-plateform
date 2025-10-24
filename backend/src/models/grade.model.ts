@@ -314,13 +314,109 @@ export async function findGradeById(id: string): Promise<GradeWithDetails | null
 }
 
 /**
- * Trouve les notes d'un étudiant
+ * ✅ FONCTION CORRIGÉE - Trouve les notes d'un étudiant avec TOUTES les infos nécessaires
+ * Cette fonction retourne les données complètes attendues par le frontend
  */
 export async function findStudentGrades(
   studentId: string,
   filters: Partial<GradeFilters> = {}
-): Promise<GradeWithDetails[]> {
-  return findGrades({ ...filters, studentId });
+): Promise<any[]> {
+  // Construire les conditions WHERE
+  const conditions = ['g.student_id = $1', 'g.absent = false OR g.absent = true'];
+  const values: any[] = [studentId];
+  let paramIndex = 2;
+
+  if (filters.termId) {
+    conditions.push(`e.term_id = $${paramIndex}`);
+    values.push(filters.termId);
+    paramIndex++;
+  }
+
+  if (filters.courseId) {
+    conditions.push(`c.id = $${paramIndex}`);
+    values.push(filters.courseId);
+    paramIndex++;
+  }
+
+  if (filters.establishmentId) {
+    conditions.push(`e.establishment_id = $${paramIndex}`);
+    values.push(filters.establishmentId);
+    paramIndex++;
+  }
+
+  const whereClause = conditions.join(' AND ');
+
+  // ✅ REQUÊTE COMPLÈTE avec toutes les statistiques de classe
+  const query = `
+    SELECT 
+      -- Informations de la note
+      g.id,
+      g.evaluation_id,
+      g.student_id,
+      g.value,
+      g.absent,
+      g.normalized_value,
+      g.comment,
+      g.created_by,
+      g.created_at,
+      g.updated_at,
+      
+      -- Informations de l'évaluation
+      e.title as evaluation_title,
+      e.type as evaluation_type,
+      e.coefficient,
+      e.max_scale,
+      e.eval_date,
+      e.description as evaluation_description,
+      
+      -- Informations du cours et de la matière
+      c.id as course_id,
+      s.name as subject_name,
+      s.code as subject_code,
+      cl.label as class_label,
+      cl.code as class_code,
+      
+      -- ✅ STATISTIQUES DE CLASSE (moyenne, min, max)
+      (
+        SELECT AVG(g2.normalized_value)
+        FROM grades g2
+        WHERE g2.evaluation_id = g.evaluation_id
+        AND g2.absent = false
+        AND g2.normalized_value IS NOT NULL
+      ) as class_average,
+      (
+        SELECT MIN(g2.normalized_value)
+        FROM grades g2
+        WHERE g2.evaluation_id = g.evaluation_id
+        AND g2.absent = false
+        AND g2.normalized_value IS NOT NULL
+      ) as class_min,
+      (
+        SELECT MAX(g2.normalized_value)
+        FROM grades g2
+        WHERE g2.evaluation_id = g.evaluation_id
+        AND g2.absent = false
+        AND g2.normalized_value IS NOT NULL
+      ) as class_max,
+      
+      -- Informations de l'élève
+      u.full_name as student_name,
+      u.email as student_email,
+      sp.student_no
+      
+    FROM grades g
+    INNER JOIN evaluations e ON e.id = g.evaluation_id
+    INNER JOIN courses c ON c.id = e.course_id
+    INNER JOIN subjects s ON s.id = c.subject_id
+    INNER JOIN classes cl ON cl.id = c.class_id
+    INNER JOIN users u ON u.id = g.student_id
+    INNER JOIN student_profiles sp ON sp.user_id = u.id
+    WHERE ${whereClause}
+    ORDER BY e.eval_date DESC, s.name ASC
+  `;
+
+  const result = await pool.query(query, values);
+  return result.rows;
 }
 
 /**
