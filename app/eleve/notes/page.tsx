@@ -23,7 +23,8 @@ type Evaluation = {
   title: string
   date: string
   coefficient: number
-  gradeStudent: number
+  gradeStudent: number | null  // ✅ CORRIGÉ : Peut être null
+  absent: boolean  // ✅ AJOUTÉ
   avgClass?: number
   min?: number
   max?: number
@@ -88,7 +89,7 @@ function transformBackendData(backendGrades: BackendGrade[]): StudentNotesRespon
   // Calculer les moyennes par matière
   const subjects: SubjectNotes[] = Object.entries(gradesBySubject).map(
     ([subjectName, grades]) => {
-      // Filtrer les absences et notes nulles
+      // ✅ CORRIGÉ : Filtrer les absences et notes nulles
       const validGrades = grades.filter((g) => !g.absent && g.normalizedValue !== null)
 
       let subjectAvgStudent = 0
@@ -98,7 +99,7 @@ function transformBackendData(backendGrades: BackendGrade[]): StudentNotesRespon
         // Calculer la moyenne pondérée
         let totalPoints = 0
         validGrades.forEach((grade) => {
-          const normalized = grade.normalizedValue || 0
+          const normalized = Number(grade.normalizedValue) || 0
           const coef = grade.coefficient || 1
           totalPoints += normalized * coef
           totalCoeff += coef
@@ -106,18 +107,19 @@ function transformBackendData(backendGrades: BackendGrade[]): StudentNotesRespon
         subjectAvgStudent = totalCoeff > 0 ? totalPoints / totalCoeff : 0
       }
 
-      // Calculer min/max de la matière
-      const allStudentGrades = validGrades.map((g) => g.normalizedValue || 0)
+      // Calculer min/max de la matière (seulement notes valides)
+      const allStudentGrades = validGrades.map((g) => Number(g.normalizedValue) || 0)
       const subjectMin = allStudentGrades.length > 0 ? Math.min(...allStudentGrades) : undefined
       const subjectMax = allStudentGrades.length > 0 ? Math.max(...allStudentGrades) : undefined
 
-      // Transformer les évaluations
+      // ✅ CORRIGÉ : Transformer les évaluations en gardant le champ absent
       const evaluations: Evaluation[] = grades.map((grade) => ({
         evaluationId: grade.evaluationId,
         title: grade.evaluationTitle,
         date: grade.evalDate,
         coefficient: grade.coefficient,
-        gradeStudent: grade.normalizedValue || 0,
+        gradeStudent: grade.normalizedValue,  // ✅ Garde null si absent
+        absent: grade.absent,  // ✅ IMPORTANT : Garde le statut absent
         avgClass: grade.classAverage,
         min: grade.classMin,
         max: grade.classMax,
@@ -139,7 +141,7 @@ function transformBackendData(backendGrades: BackendGrade[]): StudentNotesRespon
   )
 
   // Calculer la moyenne générale (moyenne de toutes les matières)
-  const validSubjects = subjects.filter((s) => s.evaluations.length > 0)
+  const validSubjects = subjects.filter((s) => s.evaluations.some(e => !e.absent))
   const generalAverage =
     validSubjects.length > 0
       ? validSubjects.reduce((acc, s) => acc + s.subjectAvgStudent, 0) / validSubjects.length

@@ -121,9 +121,21 @@ const createGradesValidation = [
 const updateGradeValidation = [
   param('id').isUUID().withMessage('ID invalide'),
   body('value')
-    .optional()
-    .isFloat({ min: 0, max: 100 })
-    .withMessage('La note doit être entre 0 et 100'),
+    .optional({ nullable: true })  // ✅ Permet null
+    .custom((value, { req }) => {
+      // Si absent = true, value peut être null
+      if (req.body.absent === true) {
+        return true;
+      }
+      // Si absent = false, value doit être un nombre valide
+      if (value !== null && value !== undefined) {
+        const num = parseFloat(value);
+        if (isNaN(num) || num < 0 || num > 100) {
+          throw new Error('La note doit être entre 0 et 100');
+        }
+      }
+      return true;
+    }),
   body('absent')
     .optional()
     .isBoolean()
@@ -254,47 +266,11 @@ router.delete(
 
 // Placer cette route vers la ligne 200, après les routes d'évaluations
 
-/**
- * GET /api/grades/:id
- * Récupère les détails complets d'une note
- * IMPORTANT : Cette route doit être AVANT /:id/history
- */
-router.get(
-  '/:id',
-  authenticate,
-  authorize('teacher', 'admin', 'responsable', 'student'),
-  param('id').isUUID().withMessage('ID de note invalide'),
-  validateRequest,
-  getGradeByIdHandler
-);
-
-/**
- * GET /api/grades/:id/history
- * Historique d'une note
- */
-router.get(
-  '/:id/history',
-  authenticate,
-  authorize('teacher', 'admin', 'responsable'),
-  param('id').isUUID(),
-  validateRequest,
-  getGradeHistoryHandler
-);
 
 
-/**
- * GET /api/grades/course/:courseId/students
- * Liste des élèves d'un cours avec leurs notes
- */
-router.get(
-  '/course/:courseId/students',
-  authenticate,
-  authorize('teacher', 'admin'),
-  param('courseId').isUUID(),
-  query('evaluationId').optional().isUUID(),
-  validateRequest,
-  getCourseStudentsWithGrades
-);
+
+
+
 // =========================
 // ROUTES NOTES - Consultation Élève
 // =========================
@@ -379,5 +355,50 @@ router.get(
   validateRequest,
   getClassAveragesHandler
 );
+
+
+/**
+ * GET /api/grades/course/:courseId/students
+ * Liste des élèves d'un cours avec leurs notes
+ */
+  router.get(
+    '/course/:courseId/students',
+    authenticate,
+    authorize('teacher', 'admin'),
+    param('courseId').isUUID(),
+    query('evaluationId').optional().isUUID(),
+    validateRequest,
+    getCourseStudentsWithGrades
+  );
+
+
+/**
+ * GET /api/grades/:id
+ * Récupère les détails complets d'une note
+ * IMPORTANT : Cette route doit être AVANT /:id/history
+ */
+router.get(
+  '/:id',
+  authenticate,
+  authorize('teacher', 'admin', 'responsable', 'student'),
+  param('id').isUUID().withMessage('ID de note invalide'),
+  validateRequest,
+  getGradeByIdHandler
+);
+
+
+/**
+ * GET /api/grades/:id/history
+ * Historique d'une note
+ */
+router.get(
+  '/:id/history',
+  authenticate,
+  authorize('teacher', 'admin', 'responsable'),
+  param('id').isUUID(),
+  validateRequest,
+  getGradeHistoryHandler
+);
+
 
 export default router;

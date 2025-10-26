@@ -759,26 +759,99 @@ export async function getChildrenGrades(
   responsableId: string,
   filters: Partial<GradeFilters> = {}
 ): Promise<GradeWithDetails[]> {
-  // D'abord récupérer les IDs des enfants
-  const childrenQuery = `
-    SELECT student_id 
-    FROM student_responsables 
-    WHERE responsable_id = $1
+  // Construction de la requête SQL avec TOUS les détails
+  let query = `
+    SELECT 
+      g.id,
+      g.evaluation_id,
+      g.student_id,
+      g.value,
+      g.absent,
+      g.normalized_value,
+      g.comment,
+      g.created_at,
+      g.created_by,
+      
+      -- Infos évaluation
+      e.title as evaluation_title,
+      e.type as evaluation_type,
+      e.coefficient,
+      e.max_scale,
+      e.eval_date,
+      
+      -- Infos matière
+      s.id as subject_id,
+      s.name as subject_name,
+      s.code as subject_code,
+      
+      -- Infos classe
+      cl.label as class_name,
+      
+      -- ✅ IMPORTANT : Infos élève
+      u.full_name as student_name,
+      u.email as student_email,
+      
+      -- Statistiques de classe
+      (
+        SELECT AVG(g2.normalized_value)
+        FROM grades g2
+        WHERE g2.evaluation_id = g.evaluation_id
+        AND g2.absent = false
+        AND g2.normalized_value IS NOT NULL
+      ) as class_average,
+      (
+        SELECT MIN(g2.normalized_value)
+        FROM grades g2
+        WHERE g2.evaluation_id = g.evaluation_id
+        AND g2.absent = false
+        AND g2.normalized_value IS NOT NULL
+      ) as class_min,
+      (
+        SELECT MAX(g2.normalized_value)
+        FROM grades g2
+        WHERE g2.evaluation_id = g.evaluation_id
+        AND g2.absent = false
+        AND g2.normalized_value IS NOT NULL
+      ) as class_max
+      
+    FROM grades g
+    INNER JOIN evaluations e ON e.id = g.evaluation_id
+    INNER JOIN courses c ON c.id = e.course_id
+    INNER JOIN subjects s ON s.id = c.subject_id
+    INNER JOIN classes cl ON cl.id = c.class_id
+    INNER JOIN users u ON u.id = g.student_id
+    INNER JOIN student_responsables sr ON sr.student_id = g.student_id
+    
+    WHERE sr.responsable_id = $1
+    AND sr.can_view_grades = true
   `;
 
-  const childrenResult = await pool.query(childrenQuery, [responsableId]);
-  const childrenIds = childrenResult.rows.map(row => row.student_id);
+  const params: any[] = [responsableId];
+  let paramIndex = 2;
 
-  if (childrenIds.length === 0) {
-    return [];
+  // Filtre par trimestre
+  if (filters.termId) {
+    query += ` AND e.term_id = $${paramIndex}`;
+    params.push(filters.termId);
+    paramIndex++;
   }
 
-  // ✅ Récupérer les notes de TOUS les enfants
-  const allGrades: GradeWithDetails[] = [];
-    for (const childId of childrenIds) {
-    const grades = await findGrades({ ...filters, studentId: childId });
-    allGrades.push(...grades);
+  // Filtre par étudiant spécifique
+  if (filters.studentId) {
+    query += ` AND g.student_id = $${paramIndex}`;
+    params.push(filters.studentId);
+    paramIndex++;
   }
 
-return allGrades;
+  // Filtre par établissement
+  if (filters.establishmentId) {
+    query += ` AND c.establishment_id = $${paramIndex}`;
+    params.push(filters.establishmentId);
+    paramIndex++;
+  }
+
+  query += ` ORDER BY e.eval_date DESC, s.name ASC`;
+
+  const result = await pool.query(query, params);
+  return result.rows;
 }

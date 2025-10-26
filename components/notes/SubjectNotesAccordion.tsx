@@ -8,7 +8,8 @@ type Evaluation = {
   title: string
   date: string
   coefficient: number
-  gradeStudent: number
+  gradeStudent: number | null
+  absent: boolean  // ✅ AJOUTÉ
   avgClass?: number
   min?: number
   max?: number
@@ -194,20 +195,28 @@ export function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) 
 
                             {/* Student grade */}
                             <td className="py-3 px-3 text-center">
-                              <div
-                                className={`inline-flex items-center justify-center rounded-md px-3 py-1.5 border ${getGradeBg(
-                                  evaluation.gradeStudent
-                                )}`}
-                              >
-                                <span
-                                  className={`text-base font-bold ${getGradeColor(
+                              {evaluation.absent ? (
+                                <Badge variant="secondary" className="text-sm">
+                                  Absent
+                                </Badge>
+                              ) : evaluation.gradeStudent != null ? (
+                                <div
+                                  className={`inline-flex items-center justify-center rounded-md px-3 py-1.5 border ${getGradeBg(
                                     evaluation.gradeStudent
                                   )}`}
                                 >
-                                  {evaluation.gradeStudent.toFixed(2)}
-                                </span>
-                                <span className="text-xs text-muted-foreground ml-1">/20</span>
-                              </div>
+                                  <span
+                                    className={`text-base font-bold ${getGradeColor(
+                                      evaluation.gradeStudent
+                                    )}`}
+                                  >
+                                    {Number(evaluation.gradeStudent).toFixed(2)}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground ml-1">/20</span>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
                             </td>
 
                             {/* Class average */}

@@ -764,12 +764,19 @@ export async function getStudentAveragesHandler(req: Request, res: Response): Pr
  */
 export async function getChildrenGradesHandler(req: Request, res: Response): Promise<void> {
   try {
+    console.log('🔍 [DEBUG] getChildrenGradesHandler appelé');
+    console.log('🔍 [DEBUG] req.user:', req.user);
+
     if (!req.user) {
+      console.log('❌ [DEBUG] Pas d\'utilisateur authentifié');
       res.status(401).json({ success: false, error: 'Non authentifié' });
       return;
     }
 
+    console.log('🔍 [DEBUG] Role:', req.user.role);
+
     if (req.user.role !== 'responsable') {
+      console.log('❌ [DEBUG] Rôle incorrect:', req.user.role);
       res.status(403).json({
         success: false,
         error: 'Cette fonctionnalité est réservée aux responsables',
@@ -778,14 +785,19 @@ export async function getChildrenGradesHandler(req: Request, res: Response): Pro
     }
 
     const { termId, studentId } = req.query;
+    console.log('🔍 [DEBUG] Query params:', { termId, studentId });
 
     const filters = {
       termId: termId as string,
       studentId: studentId as string,
       establishmentId: req.user.establishmentId,
     };
+    console.log('🔍 [DEBUG] Filters:', filters);
+    console.log('🔍 [DEBUG] User ID (responsable):', req.user.userId);
 
     const grades = await getChildrenGrades(req.user.userId, filters);
+    console.log('📦 [DEBUG] Grades récupérées:', grades.length);
+    console.log('📦 [DEBUG] Premier grade:', grades[0]);
 
     // Grouper les notes par enfant
     const gradesByStudent = grades.reduce((acc, grade) => {
@@ -802,12 +814,14 @@ export async function getChildrenGradesHandler(req: Request, res: Response): Pro
       return acc;
     }, {} as Record<string, any>);
 
+    console.log('✅ [DEBUG] Données groupées:', Object.keys(gradesByStudent));
+
     res.json({
       success: true,
       data: Object.values(gradesByStudent),
     });
   } catch (error) {
-    console.error('Erreur récupération notes enfants:', error);
+    console.error('❌ [ERROR] Erreur récupération notes enfants:', error);
     res.status(500).json({
       success: false,
       error: 'Erreur lors de la récupération des notes',
