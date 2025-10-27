@@ -114,21 +114,18 @@ export interface StudentAverage {
 export async function createGrade(data: CreateGradeData): Promise<Grade> {
   const { evaluationId, studentId, value, absent = false, comment, createdBy } = data;
 
-  // Vérifier qu'une note n'existe pas déjà pour cet élève et cette évaluation
-  const existingCheck = await pool.query(
-    'SELECT id FROM grades WHERE evaluation_id = $1 AND student_id = $2',
-    [evaluationId, studentId]
-  );
-
-  if (existingCheck.rows.length > 0) {
-    throw new Error('Une note existe déjà pour cet élève et cette évaluation');
-  }
-
+  // ✅ Utiliser ON CONFLICT au lieu de vérifier manuellement
   const query = `
     INSERT INTO grades (
       evaluation_id, student_id, value, absent, comment, created_by
     )
     VALUES ($1, $2, $3, $4, $5, $6)
+    ON CONFLICT (student_id, evaluation_id)
+    DO UPDATE SET
+      value = EXCLUDED.value,
+      absent = EXCLUDED.absent,
+      comment = EXCLUDED.comment,
+      updated_at = NOW()
     RETURNING *
   `;
 
@@ -161,61 +158,45 @@ export async function createGrades(grades: CreateGradeData[]): Promise<Grade[]> 
     for (const gradeData of grades) {
       const { evaluationId, studentId, value, absent = false, comment, createdBy } = gradeData;
 
-      // Vérifier/update si existe déjà
-      const existingQuery = `
-        SELECT id FROM grades 
-        WHERE evaluation_id = $1 AND student_id = $2
+      // ✅ UTILISER ON CONFLICT pour gérer les doublons automatiquement
+      const upsertQuery = `
+        INSERT INTO grades (
+          evaluation_id, student_id, value, absent, comment, created_by
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (student_id, evaluation_id)
+        DO UPDATE SET
+          value = EXCLUDED.value,
+          absent = EXCLUDED.absent,
+          comment = EXCLUDED.comment,
+          updated_at = NOW()
+        RETURNING *
       `;
-      
-      const existing = await client.query(existingQuery, [evaluationId, studentId]);
 
-      if (existing.rows.length > 0) {
-        // Mettre à jour la note existante
-        const updateQuery = `
-          UPDATE grades 
-          SET value = $1, absent = $2, comment = $3, updated_at = NOW()
-          WHERE evaluation_id = $4 AND student_id = $5
-          RETURNING *
-        `;
-        
-        const result = await client.query(updateQuery, [
-          absent ? null : value,
-          absent,
-          comment || null,
-          evaluationId,
-          studentId,
-        ]);
-        
-        createdGrades.push(result.rows[0]);
+      const result = await client.query(upsertQuery, [
+        evaluationId,
+        studentId,
+        absent ? null : value,
+        absent,
+        comment || null,
+        createdBy,
+      ]);
 
-        // Créer l'entrée d'historique
+      createdGrades.push(result.rows[0]);
+
+      // Créer l'entrée d'historique si c'était une mise à jour
+      if (result.rows[0].updated_at !== null) {
         await createGradeHistory(
           client,
-          existing.rows[0].id,
+          result.rows[0].id,
           createdBy,
           'teacher',
-          { value: { from: null, to: value }, comment: { from: null, to: comment } }
+          { 
+            value: { from: null, to: value }, 
+            absent: { from: null, to: absent },
+            comment: { from: null, to: comment } 
+          }
         );
-      } else {
-        // Créer une nouvelle note
-        const insertQuery = `
-          INSERT INTO grades (
-            evaluation_id, student_id, value, absent, comment, created_by
-          )
-          VALUES ($1, $2, $3, $4, $5, $6)
-          RETURNING *
-        `;
-
-        const result = await client.query(insertQuery, [
-          evaluationId,
-          studentId,
-          absent ? null : value,
-          absent,
-          comment || null,
-          createdBy,
-        ]);
-
-        createdGrades.push(result.rows[0]);
       }
     }
 

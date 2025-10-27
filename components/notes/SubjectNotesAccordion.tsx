@@ -4,12 +4,13 @@ import { ChevronDown, Calendar, Award } from "lucide-react"
 import { useState } from "react"
 
 type Evaluation = {
+  gradeId?: string  // ✅ AJOUTÉ : ID unique de la note
   evaluationId: string
   title: string
   date: string
   coefficient: number
   gradeStudent: number | null
-  absent: boolean  // ✅ AJOUTÉ
+  absent: boolean
   avgClass?: number
   min?: number
   max?: number
@@ -163,9 +164,9 @@ export function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) 
                         </tr>
                       </thead>
                       <tbody>
-                        {subject.evaluations.map((evaluation) => (
+                        {subject.evaluations.map((evaluation, evalIndex) => (
                           <tr
-                            key={evaluation.evaluationId}
+                            key={evaluation.gradeId || `${evaluation.evaluationId}-${evalIndex}`}
                             className="border-b border-slate-100 hover:bg-slate-50 transition-colors"
                           >
                             {/* Title */}

@@ -176,6 +176,7 @@ function transformBackendData(backendGrades: any[]): StudentNotesResponse {
 
       // Transformer les évaluations en gardant le champ absent
       const evaluations: Evaluation[] = grades.map((grade) => ({
+        gradeId: grade.id,  // ✅ AJOUTÉ : ID unique de la note
         evaluationId: grade.evaluationId,
         title: grade.evaluationTitle,
         date: grade.evalDate,
