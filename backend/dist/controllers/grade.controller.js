@@ -14,8 +14,9 @@ exports.getStudentGradesHandler = getStudentGradesHandler;
 exports.getStudentAveragesHandler = getStudentAveragesHandler;
 exports.getChildrenGradesHandler = getChildrenGradesHandler;
 exports.getCourseGradesHandler = getCourseGradesHandler;
+exports.getCourseStudentsWithGrades = getCourseStudentsWithGrades;
 exports.getClassAveragesHandler = getClassAveragesHandler;
-const database_1 = require("../config/database"); // ✅ Ajoute cet import
+const database_1 = require("../config/database");
 const evaluation_model_1 = require("../models/evaluation.model");
 const grade_model_1 = require("../models/grade.model");
 // =========================
@@ -98,9 +99,24 @@ async function getTeacherEvaluationsHandler(req, res) {
             res.status(403).json({ success: false, error: 'Accès refusé' });
             return;
         }
+        // ✅ CORRECTION : Mapper snake_case vers camelCase
+        const mappedEvaluations = evaluations.map(evaluation => ({
+            id: evaluation.id,
+            courseId: evaluation.course_id,
+            termId: evaluation.term_id,
+            title: evaluation.title,
+            type: evaluation.type,
+            coefficient: evaluation.coefficient,
+            maxScale: evaluation.max_scale,
+            evalDate: evaluation.eval_date,
+            description: evaluation.description,
+            createdBy: evaluation.created_by,
+            createdAt: evaluation.created_at,
+            establishmentId: evaluation.establishment_id
+        }));
         res.json({
             success: true,
-            data: evaluations,
+            data: mappedEvaluations,
         });
     }
     catch (error) {
@@ -251,11 +267,11 @@ async function deleteEvaluationHandler(req, res) {
     }
 }
 // =========================
-// NOTES - Saisie et modification
+// NOTES - Saisie et Modification
 // =========================
 /**
  * POST /api/grades
- * Saisie/modification de notes en batch
+ * Crée ou met à jour des notes en batch
  */
 async function createOrUpdateGradesHandler(req, res) {
     try {
@@ -264,11 +280,10 @@ async function createOrUpdateGradesHandler(req, res) {
             return;
         }
         const { evaluationId, grades } = req.body;
-        if (!evaluationId || !grades || !Array.isArray(grades)) {
+        if (!evaluationId || !Array.isArray(grades) || grades.length === 0) {
             res.status(400).json({
                 success: false,
-                error: 'Données invalides',
-                required: ['evaluationId', 'grades'],
+                error: 'Données manquantes ou invalides',
             });
             return;
         }
@@ -283,8 +298,8 @@ async function createOrUpdateGradesHandler(req, res) {
                 return;
             }
         }
-        // Préparer les données des notes
-        const gradesData = grades.map((g) => ({
+        // Préparer les données de notes
+        const gradeData = grades.map(g => ({
             evaluationId,
             studentId: g.studentId,
             value: g.value,
@@ -292,16 +307,16 @@ async function createOrUpdateGradesHandler(req, res) {
             comment: g.comment,
             createdBy: req.user.userId,
         }));
-        // Créer/mettre à jour les notes
-        const createdGrades = await (0, grade_model_1.createGrades)(gradesData);
-        res.json({
+        // Créer ou mettre à jour les notes
+        const createdGrades = await (0, grade_model_1.createGrades)(gradeData);
+        res.status(201).json({
             success: true,
             message: `${createdGrades.length} note(s) enregistrée(s)`,
             data: createdGrades,
         });
     }
     catch (error) {
-        console.error('Erreur saisie notes:', error);
+        console.error('Erreur création notes:', error);
         res.status(500).json({
             success: false,
             error: 'Erreur lors de la saisie des notes',
@@ -329,27 +344,13 @@ async function updateGradeHandler(req, res) {
             });
             return;
         }
-        // Vérifier les délais de modification selon le rôle
-        const createdAt = new Date(grade.created_at);
-        const now = new Date();
-        const hoursSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
-        const daysSinceCreation = hoursSinceCreation / 24;
+        // Vérifier les permissions
         if (req.user.role === 'teacher') {
-            if (hoursSinceCreation > 48) {
+            const canModify = await (0, evaluation_model_1.canTeacherModifyEvaluation)(grade.evaluation_id, req.user.userId, req.user.establishmentId);
+            if (!canModify) {
                 res.status(403).json({
                     success: false,
-                    error: `Délai de modification dépassé (${Math.floor(hoursSinceCreation)}h écoulées, limite 48h)`,
-                    canEdit: false,
-                });
-                return;
-            }
-        }
-        else if (req.user.role === 'responsable') {
-            if (daysSinceCreation > 30) {
-                res.status(403).json({
-                    success: false,
-                    error: `Délai de modification dépassé (${Math.floor(daysSinceCreation)} jours écoulés, limite 30 jours)`,
-                    canEdit: false,
+                    error: 'Vous ne pouvez modifier que vos propres notes',
                 });
                 return;
             }
@@ -397,16 +398,16 @@ async function deleteGradeHandler(req, res) {
             });
             return;
         }
-        // Mêmes règles de délai que pour la modification
-        const createdAt = new Date(grade.created_at);
-        const now = new Date();
-        const hoursSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
-        if (req.user.role === 'teacher' && hoursSinceCreation > 48) {
-            res.status(403).json({
-                success: false,
-                error: 'Délai de suppression dépassé (48h maximum)',
-            });
-            return;
+        // Vérifier les permissions
+        if (req.user.role === 'teacher') {
+            const canModify = await (0, evaluation_model_1.canTeacherModifyEvaluation)(grade.evaluation_id, req.user.userId, req.user.establishmentId);
+            if (!canModify) {
+                res.status(403).json({
+                    success: false,
+                    error: 'Vous ne pouvez supprimer que vos propres notes',
+                });
+                return;
+            }
         }
         const deleted = await (0, grade_model_1.deleteGrade)(id);
         if (!deleted) {
@@ -429,14 +430,9 @@ async function deleteGradeHandler(req, res) {
         });
     }
 }
-// ============================================
-// À AJOUTER dans src/backend/controllers/grade.controller.ts
-// APRÈS les autres handlers (vers la ligne 500-600)
-// ============================================
-const grade_model_2 = require("../models/grade.model"); // ✅ Ajouter cet import en haut
 /**
  * GET /api/grades/:id
- * Récupère les détails complets d'une note pour l'édition
+ * Récupère les détails complets d'une note
  */
 async function getGradeByIdHandler(req, res) {
     try {
@@ -445,9 +441,7 @@ async function getGradeByIdHandler(req, res) {
             return;
         }
         const { id } = req.params;
-        console.log(`[API] Fetching grade ${id} for user ${req.user.email}`);
-        // Récupérer la note avec tous les détails
-        const grade = await (0, grade_model_2.findGradeByIdWithDetails)(id, req.user.establishmentId);
+        const grade = await (0, grade_model_1.findGradeById)(id);
         if (!grade) {
             res.status(404).json({
                 success: false,
@@ -455,116 +449,18 @@ async function getGradeByIdHandler(req, res) {
             });
             return;
         }
-        // Vérifier les permissions selon le rôle
-        const hasPermission = await checkGradeAccessPermission(grade, req.user.userId, req.user.role);
-        if (!hasPermission) {
-            res.status(403).json({
-                success: false,
-                error: 'Vous n\'avez pas accès à cette note',
-            });
-            return;
-        }
-        // Récupérer l'historique des modifications
-        const history = await (0, grade_model_1.getGradeHistory)(id);
-        // Calculer les statistiques de la classe pour cette évaluation
-        const stats = await (0, evaluation_model_1.getEvaluationStats)(grade.evaluation_id, req.user.establishmentId);
-        // Retourner toutes les données nécessaires
         res.json({
             success: true,
-            data: {
-                grade: {
-                    id: grade.id,
-                    evaluationId: grade.evaluation_id,
-                    studentId: grade.student_id,
-                    studentName: grade.student_name,
-                    studentEmail: grade.student_email,
-                    studentNo: grade.student_no,
-                    value: grade.value,
-                    absent: grade.absent,
-                    normalizedValue: grade.normalized_value,
-                    comment: grade.comment,
-                    createdAt: grade.created_at,
-                    updatedAt: grade.updated_at,
-                    createdBy: grade.created_by_name,
-                    createdByRole: grade.created_by_role,
-                    evaluation: {
-                        id: grade.evaluation_id,
-                        title: grade.evaluation_title,
-                        type: grade.evaluation_type,
-                        coefficient: grade.evaluation_coefficient,
-                        maxScale: grade.evaluation_max_scale,
-                        date: grade.evaluation_date,
-                        description: grade.evaluation_description,
-                    },
-                    /* The above code is defining a TypeScript object with properties related to a course. It is
-                    extracting information from a `grade` object and assigning it to the corresponding
-                    properties in the `course` object. The properties being extracted include `id`,
-                    `subjectName`, `subjectCode`, `className`, and `classCode`. */
-                    course: {
-                        id: grade.course_id,
-                        subjectName: grade.subject_name,
-                        subjectCode: grade.subject_code,
-                        className: grade.class_label,
-                        classCode: grade.class_code,
-                    },
-                },
-                history,
-                stats: {
-                    classAverage: stats?.average || 0,
-                    classMin: stats?.min || 0,
-                    classMax: stats?.max || 0,
-                    totalStudents: stats?.total || 0,
-                    completedGrades: stats?.completed || 0,
-                },
-            },
+            data: grade,
         });
-        console.log(`[API] Grade ${id} fetched successfully`);
     }
     catch (error) {
-        console.error('[API] Error fetching grade:', error);
+        console.error('Erreur récupération note:', error);
         res.status(500).json({
             success: false,
             error: 'Erreur lors de la récupération de la note',
         });
     }
-}
-/**
- * Vérifie si l'utilisateur a accès à cette note
- * Fonction helper pour getGradeByIdHandler
- */
-async function checkGradeAccessPermission(grade, userId, userRole) {
-    // Admin : accès complet
-    if (userRole === 'admin') {
-        return true;
-    }
-    // Professeur : doit être le prof du cours
-    if (userRole === 'teacher') {
-        const query = `
-      SELECT COUNT(*) as count
-      FROM grades g
-      INNER JOIN evaluations e ON e.id = g.evaluation_id
-      INNER JOIN courses c ON c.id = e.course_id
-      WHERE g.id = $1 AND c.teacher_id = $2
-    `;
-        const result = await database_1.pool.query(query, [grade.id, userId]);
-        return parseInt(result.rows[0].count) > 0;
-    }
-    // Responsable : doit être le parent de l'élève
-    if (userRole === 'responsable') {
-        const query = `
-      SELECT COUNT(*) as count
-      FROM grades g
-      INNER JOIN student_responsables sr ON sr.student_id = g.student_id
-      WHERE g.id = $1 AND sr.responsable_id = $2
-    `;
-        const result = await database_1.pool.query(query, [grade.id, userId]);
-        return result.rows.length > 0 && parseInt(result.rows[0].count) > 0;
-    }
-    // Élève : doit être sa propre note
-    if (userRole === 'student') {
-        return grade.student_id === userId;
-    }
-    return false;
 }
 /**
  * GET /api/grades/:id/history
@@ -592,11 +488,11 @@ async function getGradeHistoryHandler(req, res) {
     }
 }
 // =========================
-// NOTES - Consultation pour élèves
+// NOTES - Consultation Élève
 // =========================
 /**
- * GET /api/grades/student/:studentId
- * Récupère toutes les notes d'un élève
+ * ✅ FONCTION CORRIGÉE - GET /api/grades/student/:studentId
+ * Récupère les notes d'un élève avec MAPPING COMPLET en camelCase
  */
 async function getStudentGradesHandler(req, res) {
     try {
@@ -606,6 +502,9 @@ async function getStudentGradesHandler(req, res) {
         }
         const { studentId } = req.params;
         const { termId, courseId } = req.query;
+        console.log('[API] getStudentGradesHandler called');
+        console.log('[API] studentId:', studentId);
+        console.log('[API] req.user:', req.user);
         // Vérifier les permissions
         if (req.user.role === 'student' && req.user.userId !== studentId) {
             res.status(403).json({
@@ -632,7 +531,39 @@ async function getStudentGradesHandler(req, res) {
             courseId: courseId,
             establishmentId: req.user.establishmentId,
         };
+        // ✅ Récupérer les notes avec toutes les infos
         const grades = await (0, grade_model_1.findStudentGrades)(studentId, filters);
+        console.log('[API] Grades found:', grades.length);
+        console.log('[API] First grade sample:', grades[0]);
+        // ✅ MAPPER les données snake_case vers camelCase pour le frontend
+        const mappedGrades = grades.map(grade => ({
+            // Identifiants
+            id: grade.id,
+            evaluationId: grade.evaluation_id,
+            studentId: grade.student_id,
+            // Informations de l'évaluation
+            evaluationTitle: grade.evaluation_title,
+            evaluationType: grade.evaluation_type,
+            // Informations de la matière
+            subjectName: grade.subject_name,
+            subjectCode: grade.subject_code,
+            // Note de l'élève - ✅ CONVERSION EN NOMBRES
+            value: grade.value !== null && grade.value !== undefined ? parseFloat(grade.value.toString()) : null,
+            absent: grade.absent,
+            coefficient: grade.coefficient !== null && grade.coefficient !== undefined ? parseFloat(grade.coefficient.toString()) : 1,
+            maxScale: grade.max_scale !== null && grade.max_scale !== undefined ? parseFloat(grade.max_scale.toString()) : 20,
+            normalizedValue: grade.normalized_value !== null && grade.normalized_value !== undefined ? parseFloat(grade.normalized_value.toString()) : null,
+            evalDate: grade.eval_date,
+            comment: grade.comment,
+            // Statistiques de classe - ✅ CONVERSION EN NOMBRES
+            classAverage: grade.class_average ? parseFloat(grade.class_average.toString()) : undefined,
+            classMin: grade.class_min ? parseFloat(grade.class_min.toString()) : undefined,
+            classMax: grade.class_max ? parseFloat(grade.class_max.toString()) : undefined,
+            // Dates
+            createdAt: grade.created_at,
+            updatedAt: grade.updated_at,
+        }));
+        console.log('[API] Mapped grades sample:', mappedGrades[0]);
         res.json({
             success: true,
             data: {
@@ -640,12 +571,12 @@ async function getStudentGradesHandler(req, res) {
                     id: studentId,
                     fullName: grades[0]?.student_name || 'Étudiant',
                 },
-                grades,
+                grades: mappedGrades,
             },
         });
     }
     catch (error) {
-        console.error('Erreur récupération notes élève:', error);
+        console.error('[API] Erreur récupération notes élève:', error);
         res.status(500).json({
             success: false,
             error: 'Erreur lors de la récupération des notes',
@@ -680,7 +611,7 @@ async function getStudentAveragesHandler(req, res) {
                 averages: {
                     general: overallAverage,
                     bySubject: averages.reduce((acc, avg) => {
-                        if (avg.subject_name) { // ✅ Vérification ajoutée
+                        if (avg.subject_name) {
                             acc[avg.subject_name] = avg.weighted_average;
                         }
                         return acc;
@@ -707,11 +638,16 @@ async function getStudentAveragesHandler(req, res) {
  */
 async function getChildrenGradesHandler(req, res) {
     try {
+        console.log('🔍 [DEBUG] getChildrenGradesHandler appelé');
+        console.log('🔍 [DEBUG] req.user:', req.user);
         if (!req.user) {
+            console.log('❌ [DEBUG] Pas d\'utilisateur authentifié');
             res.status(401).json({ success: false, error: 'Non authentifié' });
             return;
         }
+        console.log('🔍 [DEBUG] Role:', req.user.role);
         if (req.user.role !== 'responsable') {
+            console.log('❌ [DEBUG] Rôle incorrect:', req.user.role);
             res.status(403).json({
                 success: false,
                 error: 'Cette fonctionnalité est réservée aux responsables',
@@ -719,12 +655,17 @@ async function getChildrenGradesHandler(req, res) {
             return;
         }
         const { termId, studentId } = req.query;
+        console.log('🔍 [DEBUG] Query params:', { termId, studentId });
         const filters = {
             termId: termId,
             studentId: studentId,
             establishmentId: req.user.establishmentId,
         };
+        console.log('🔍 [DEBUG] Filters:', filters);
+        console.log('🔍 [DEBUG] User ID (responsable):', req.user.userId);
         const grades = await (0, grade_model_1.getChildrenGrades)(req.user.userId, filters);
+        console.log('📦 [DEBUG] Grades récupérées:', grades.length);
+        console.log('📦 [DEBUG] Premier grade:', grades[0]);
         // Grouper les notes par enfant
         const gradesByStudent = grades.reduce((acc, grade) => {
             if (!acc[grade.student_id]) {
@@ -739,13 +680,14 @@ async function getChildrenGradesHandler(req, res) {
             acc[grade.student_id].grades.push(grade);
             return acc;
         }, {});
+        console.log('✅ [DEBUG] Données groupées:', Object.keys(gradesByStudent));
         res.json({
             success: true,
             data: Object.values(gradesByStudent),
         });
     }
     catch (error) {
-        console.error('Erreur récupération notes enfants:', error);
+        console.error('❌ [ERROR] Erreur récupération notes enfants:', error);
         res.status(500).json({
             success: false,
             error: 'Erreur lors de la récupération des notes',
@@ -783,6 +725,51 @@ async function getCourseGradesHandler(req, res) {
         res.status(500).json({
             success: false,
             error: 'Erreur lors de la récupération des notes du cours',
+        });
+    }
+}
+/**
+ * GET /api/grades/course/:courseId/students
+ * Récupère tous les élèves d'un cours avec leurs notes pour une évaluation
+ */
+async function getCourseStudentsWithGrades(req, res) {
+    try {
+        if (!req.user) {
+            res.status(401).json({ success: false, error: 'Non authentifié' });
+            return;
+        }
+        const { courseId } = req.params;
+        const { evaluationId } = req.query;
+        // Récupérer tous les élèves inscrits dans la classe du cours
+        const query = `
+      SELECT 
+        u.id as student_id,
+        u.full_name as student_name,
+        sp.student_no,
+        g.id as grade_id,
+        g.value,
+        g.absent,
+        g.comment
+      FROM courses c
+      INNER JOIN classes cl ON cl.id = c.class_id
+      INNER JOIN enrollments enr ON enr.class_id = cl.id AND enr.end_date IS NULL
+      INNER JOIN users u ON u.id = enr.student_id AND u.role = 'student' AND u.active = TRUE
+      INNER JOIN student_profiles sp ON sp.user_id = u.id
+      LEFT JOIN grades g ON g.student_id = u.id AND g.evaluation_id = $2
+      WHERE c.id = $1
+      ORDER BY u.full_name ASC
+    `;
+        const result = await database_1.pool.query(query, [courseId, evaluationId || null]);
+        res.json({
+            success: true,
+            data: result.rows,
+        });
+    }
+    catch (error) {
+        console.error('Erreur récupération élèves:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Erreur lors de la récupération des élèves',
         });
     }
 }

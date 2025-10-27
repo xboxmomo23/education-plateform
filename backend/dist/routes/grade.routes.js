@@ -6,6 +6,7 @@ const auth_middleware_1 = require("../middleware/auth.middleware");
 const validation_middleware_1 = require("../middleware/validation.middleware");
 const grade_controller_1 = require("../controllers/grade.controller"); // Ajouter cet import en haut
 const grade_controller_2 = require("../controllers/grade.controller");
+const grade_controller_3 = require("../controllers/grade.controller");
 const router = (0, express_1.Router)();
 // =========================
 // Validation Schemas
@@ -76,9 +77,27 @@ const createGradesValidation = [
         .isUUID()
         .withMessage('ID d\'élève invalide'),
     (0, express_validator_1.body)('grades.*.value')
-        .optional()
-        .isFloat({ min: 0, max: 100 })
-        .withMessage('La note doit être entre 0 et 100'),
+        .optional({ nullable: true }) // ✅ Permet null ET undefined
+        .custom((value, { req, path }) => {
+        // Extraire l'index du grade depuis le path (ex: "grades[0].value")
+        const match = path.match(/grades\[(\d+)\]\.value/);
+        if (!match)
+            return true;
+        const index = parseInt(match[1]);
+        const grade = req.body.grades[index];
+        // Si absent = true, value peut être null
+        if (grade && grade.absent === true) {
+            return true;
+        }
+        // Sinon, value doit être un nombre valide
+        if (value !== null && value !== undefined) {
+            const num = parseFloat(value);
+            if (isNaN(num) || num < 0 || num > 100) {
+                throw new Error('La note doit être entre 0 et 100');
+            }
+        }
+        return true;
+    }),
     (0, express_validator_1.body)('grades.*.absent')
         .optional()
         .isBoolean()
@@ -92,9 +111,21 @@ const createGradesValidation = [
 const updateGradeValidation = [
     (0, express_validator_1.param)('id').isUUID().withMessage('ID invalide'),
     (0, express_validator_1.body)('value')
-        .optional()
-        .isFloat({ min: 0, max: 100 })
-        .withMessage('La note doit être entre 0 et 100'),
+        .optional({ nullable: true }) // ✅ Permet null
+        .custom((value, { req }) => {
+        // Si absent = true, value peut être null
+        if (req.body.absent === true) {
+            return true;
+        }
+        // Si absent = false, value doit être un nombre valide
+        if (value !== null && value !== undefined) {
+            const num = parseFloat(value);
+            if (isNaN(num) || num < 0 || num > 100) {
+                throw new Error('La note doit être entre 0 et 100');
+            }
+        }
+        return true;
+    }),
     (0, express_validator_1.body)('absent')
         .optional()
         .isBoolean()
@@ -112,27 +143,27 @@ const updateGradeValidation = [
  * POST /api/grades/evaluations
  * Créer une évaluation
  */
-router.post('/evaluations', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin'), createEvaluationValidation, validation_middleware_1.validateRequest, grade_controller_2.createEvaluationHandler);
+router.post('/evaluations', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin'), createEvaluationValidation, validation_middleware_1.validateRequest, grade_controller_3.createEvaluationHandler);
 /**
  * GET /api/grades/evaluations
  * Liste des évaluations (selon rôle)
  */
-router.get('/evaluations', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin', 'responsable'), grade_controller_2.getTeacherEvaluationsHandler);
+router.get('/evaluations', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin', 'responsable'), grade_controller_3.getTeacherEvaluationsHandler);
 /**
  * GET /api/grades/evaluations/:id
  * Détails d'une évaluation avec notes
  */
-router.get('/evaluations/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin', 'responsable'), (0, express_validator_1.param)('id').isUUID(), validation_middleware_1.validateRequest, grade_controller_2.getEvaluationDetailsHandler);
+router.get('/evaluations/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin', 'responsable'), (0, express_validator_1.param)('id').isUUID(), validation_middleware_1.validateRequest, grade_controller_3.getEvaluationDetailsHandler);
 /**
  * PUT /api/grades/evaluations/:id
  * Modifier une évaluation
  */
-router.put('/evaluations/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin', 'responsable'), updateEvaluationValidation, validation_middleware_1.validateRequest, grade_controller_2.updateEvaluationHandler);
+router.put('/evaluations/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin', 'responsable'), updateEvaluationValidation, validation_middleware_1.validateRequest, grade_controller_3.updateEvaluationHandler);
 /**
  * DELETE /api/grades/evaluations/:id
  * Supprimer une évaluation
  */
-router.delete('/evaluations/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin'), (0, express_validator_1.param)('id').isUUID(), validation_middleware_1.validateRequest, grade_controller_2.deleteEvaluationHandler);
+router.delete('/evaluations/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin'), (0, express_validator_1.param)('id').isUUID(), validation_middleware_1.validateRequest, grade_controller_3.deleteEvaluationHandler);
 // =========================
 // ROUTES NOTES - Saisie/Modification
 // =========================
@@ -140,23 +171,65 @@ router.delete('/evaluations/:id', auth_middleware_1.authenticate, (0, auth_middl
  * POST /api/grades
  * Saisir/modifier des notes en batch
  */
-router.post('/', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin', 'responsable'), createGradesValidation, validation_middleware_1.validateRequest, grade_controller_2.createOrUpdateGradesHandler);
+router.post('/', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin', 'responsable'), createGradesValidation, validation_middleware_1.validateRequest, grade_controller_3.createOrUpdateGradesHandler);
 /**
  * PUT /api/grades/:id
  * Modifier une note individuelle
  */
-router.put('/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin', 'responsable'), updateGradeValidation, validation_middleware_1.validateRequest, grade_controller_2.updateGradeHandler);
+router.put('/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin', 'responsable'), updateGradeValidation, validation_middleware_1.validateRequest, grade_controller_3.updateGradeHandler);
 /**
  * DELETE /api/grades/:id
  * Supprimer une note
  */
-router.delete('/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin'), (0, express_validator_1.param)('id').isUUID(), validation_middleware_1.validateRequest, grade_controller_2.deleteGradeHandler);
+router.delete('/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin'), (0, express_validator_1.param)('id').isUUID(), validation_middleware_1.validateRequest, grade_controller_3.deleteGradeHandler);
 // ============================================
 // IMPORTANT : Ordre des routes
 // Cette route doit être placée APRÈS les routes d'évaluations
 // mais AVANT la route /:id/history pour éviter les conflits
 // ============================================
 // Placer cette route vers la ligne 200, après les routes d'évaluations
+// =========================
+// ROUTES NOTES - Consultation Élève
+// =========================
+/**
+ * GET /api/grades/student/:studentId
+ * Notes d'un élève
+ */
+router.get('/student/:studentId', auth_middleware_1.authenticate, (0, express_validator_1.param)('studentId').isUUID(), (0, express_validator_1.query)('termId').optional().isUUID(), (0, express_validator_1.query)('courseId').optional().isUUID(), validation_middleware_1.validateRequest, grade_controller_3.getStudentGradesHandler);
+/**
+ * GET /api/grades/student/:studentId/averages
+ * Moyennes d'un élève
+ */
+router.get('/student/:studentId/averages', auth_middleware_1.authenticate, (0, express_validator_1.param)('studentId').isUUID(), (0, express_validator_1.query)('termId').optional().isUUID(), validation_middleware_1.validateRequest, grade_controller_3.getStudentAveragesHandler);
+// =========================
+// ROUTES NOTES - Responsables
+// =========================
+/**
+ * GET /api/grades/children
+ * Notes des enfants d'un responsable
+ */
+router.get('/children', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('responsable'), (0, express_validator_1.query)('termId').optional().isUUID(), (0, express_validator_1.query)('studentId').optional().isUUID(), validation_middleware_1.validateRequest, grade_controller_3.getChildrenGradesHandler);
+// =========================
+// ROUTES NOTES - Par Cours
+// =========================
+/**
+ * GET /api/grades/course/:courseId
+ * Notes d'un cours
+ */
+router.get('/course/:courseId', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin', 'responsable'), (0, express_validator_1.param)('courseId').isUUID(), (0, express_validator_1.query)('evaluationId').optional().isUUID(), validation_middleware_1.validateRequest, grade_controller_3.getCourseGradesHandler);
+// =========================
+// ROUTES STATISTIQUES
+// =========================
+/**
+ * GET /api/grades/class/:classId/averages
+ * Moyennes d'une classe
+ */
+router.get('/class/:classId/averages', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin', 'responsable'), (0, express_validator_1.param)('classId').isUUID(), (0, express_validator_1.query)('termId').optional().isUUID(), validation_middleware_1.validateRequest, grade_controller_3.getClassAveragesHandler);
+/**
+ * GET /api/grades/course/:courseId/students
+ * Liste des élèves d'un cours avec leurs notes
+ */
+router.get('/course/:courseId/students', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin'), (0, express_validator_1.param)('courseId').isUUID(), (0, express_validator_1.query)('evaluationId').optional().isUUID(), validation_middleware_1.validateRequest, grade_controller_2.getCourseStudentsWithGrades);
 /**
  * GET /api/grades/:id
  * Récupère les détails complets d'une note
@@ -167,43 +240,6 @@ router.get('/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authori
  * GET /api/grades/:id/history
  * Historique d'une note
  */
-router.get('/:id/history', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin', 'responsable'), (0, express_validator_1.param)('id').isUUID(), validation_middleware_1.validateRequest, grade_controller_2.getGradeHistoryHandler);
-// =========================
-// ROUTES NOTES - Consultation Élève
-// =========================
-/**
- * GET /api/grades/student/:studentId
- * Notes d'un élève
- */
-router.get('/student/:studentId', auth_middleware_1.authenticate, (0, express_validator_1.param)('studentId').isUUID(), (0, express_validator_1.query)('termId').optional().isUUID(), (0, express_validator_1.query)('courseId').optional().isUUID(), validation_middleware_1.validateRequest, grade_controller_2.getStudentGradesHandler);
-/**
- * GET /api/grades/student/:studentId/averages
- * Moyennes d'un élève
- */
-router.get('/student/:studentId/averages', auth_middleware_1.authenticate, (0, express_validator_1.param)('studentId').isUUID(), (0, express_validator_1.query)('termId').optional().isUUID(), validation_middleware_1.validateRequest, grade_controller_2.getStudentAveragesHandler);
-// =========================
-// ROUTES NOTES - Responsables
-// =========================
-/**
- * GET /api/grades/children
- * Notes des enfants d'un responsable
- */
-router.get('/children', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('responsable'), (0, express_validator_1.query)('termId').optional().isUUID(), (0, express_validator_1.query)('studentId').optional().isUUID(), validation_middleware_1.validateRequest, grade_controller_2.getChildrenGradesHandler);
-// =========================
-// ROUTES NOTES - Par Cours
-// =========================
-/**
- * GET /api/grades/course/:courseId
- * Notes d'un cours
- */
-router.get('/course/:courseId', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin', 'responsable'), (0, express_validator_1.param)('courseId').isUUID(), (0, express_validator_1.query)('evaluationId').optional().isUUID(), validation_middleware_1.validateRequest, grade_controller_2.getCourseGradesHandler);
-// =========================
-// ROUTES STATISTIQUES
-// =========================
-/**
- * GET /api/grades/class/:classId/averages
- * Moyennes d'une classe
- */
-router.get('/class/:classId/averages', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin', 'responsable'), (0, express_validator_1.param)('classId').isUUID(), (0, express_validator_1.query)('termId').optional().isUUID(), validation_middleware_1.validateRequest, grade_controller_2.getClassAveragesHandler);
+router.get('/:id/history', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'admin', 'responsable'), (0, express_validator_1.param)('id').isUUID(), validation_middleware_1.validateRequest, grade_controller_3.getGradeHistoryHandler);
 exports.default = router;
 //# sourceMappingURL=grade.routes.js.map

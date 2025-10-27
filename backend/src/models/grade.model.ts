@@ -302,8 +302,8 @@ export async function findStudentGrades(
   studentId: string,
   filters: Partial<GradeFilters> = {}
 ): Promise<any[]> {
-  // Construire les conditions WHERE
-  const conditions = ['g.student_id = $1', 'g.absent = false OR g.absent = true'];
+  // ✅ CORRECTION : Construire les conditions WHERE sans redondance
+  const conditions = ['g.student_id = $1'];  // Suppression de la condition redondante
   const values: any[] = [studentId];
   let paramIndex = 2;
 
@@ -327,9 +327,9 @@ export async function findStudentGrades(
 
   const whereClause = conditions.join(' AND ');
 
-  // ✅ REQUÊTE COMPLÈTE avec toutes les statistiques de classe
+  // ✅ REQUÊTE CORRIGÉE avec DISTINCT ON pour éviter les doublons
   const query = `
-    SELECT 
+    SELECT DISTINCT ON (g.id)
       -- Informations de la note
       g.id,
       g.evaluation_id,
@@ -382,8 +382,7 @@ export async function findStudentGrades(
       
       -- Informations de l'élève
       u.full_name as student_name,
-      u.email as student_email,
-      sp.student_no
+      u.email as student_email
       
     FROM grades g
     INNER JOIN evaluations e ON e.id = g.evaluation_id
@@ -391,9 +390,8 @@ export async function findStudentGrades(
     INNER JOIN subjects s ON s.id = c.subject_id
     INNER JOIN classes cl ON cl.id = c.class_id
     INNER JOIN users u ON u.id = g.student_id
-    INNER JOIN student_profiles sp ON sp.user_id = u.id
     WHERE ${whereClause}
-    ORDER BY e.eval_date DESC, s.name ASC
+    ORDER BY g.id, e.eval_date DESC, s.name ASC
   `;
 
   const result = await pool.query(query, values);

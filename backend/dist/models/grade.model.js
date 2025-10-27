@@ -24,16 +24,18 @@ const query_builder_1 = require("../utils/query-builder");
  */
 async function createGrade(data) {
     const { evaluationId, studentId, value, absent = false, comment, createdBy } = data;
-    // Vérifier qu'une note n'existe pas déjà pour cet élève et cette évaluation
-    const existingCheck = await database_1.pool.query('SELECT id FROM grades WHERE evaluation_id = $1 AND student_id = $2', [evaluationId, studentId]);
-    if (existingCheck.rows.length > 0) {
-        throw new Error('Une note existe déjà pour cet élève et cette évaluation');
-    }
+    // ✅ Utiliser ON CONFLICT au lieu de vérifier manuellement
     const query = `
     INSERT INTO grades (
       evaluation_id, student_id, value, absent, comment, created_by
     )
     VALUES ($1, $2, $3, $4, $5, $6)
+    ON CONFLICT (student_id, evaluation_id)
+    DO UPDATE SET
+      value = EXCLUDED.value,
+      absent = EXCLUDED.absent,
+      comment = EXCLUDED.comment,
+      updated_at = NOW()
     RETURNING *
   `;
     const values = [
@@ -59,49 +61,36 @@ async function createGrades(grades) {
         const createdGrades = [];
         for (const gradeData of grades) {
             const { evaluationId, studentId, value, absent = false, comment, createdBy } = gradeData;
-            // Vérifier/update si existe déjà
-            const existingQuery = `
-        SELECT id FROM grades 
-        WHERE evaluation_id = $1 AND student_id = $2
+            // ✅ UTILISER ON CONFLICT pour gérer les doublons automatiquement
+            const upsertQuery = `
+        INSERT INTO grades (
+          evaluation_id, student_id, value, absent, comment, created_by
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (student_id, evaluation_id)
+        DO UPDATE SET
+          value = EXCLUDED.value,
+          absent = EXCLUDED.absent,
+          comment = EXCLUDED.comment,
+          updated_at = NOW()
+        RETURNING *
       `;
-            const existing = await client.query(existingQuery, [evaluationId, studentId]);
-            if (existing.rows.length > 0) {
-                // Mettre à jour la note existante
-                const updateQuery = `
-          UPDATE grades 
-          SET value = $1, absent = $2, comment = $3, updated_at = NOW()
-          WHERE evaluation_id = $4 AND student_id = $5
-          RETURNING *
-        `;
-                const result = await client.query(updateQuery, [
-                    absent ? null : value,
-                    absent,
-                    comment || null,
-                    evaluationId,
-                    studentId,
-                ]);
-                createdGrades.push(result.rows[0]);
-                // Créer l'entrée d'historique
-                await createGradeHistory(client, existing.rows[0].id, createdBy, 'teacher', { value: { from: null, to: value }, comment: { from: null, to: comment } });
-            }
-            else {
-                // Créer une nouvelle note
-                const insertQuery = `
-          INSERT INTO grades (
-            evaluation_id, student_id, value, absent, comment, created_by
-          )
-          VALUES ($1, $2, $3, $4, $5, $6)
-          RETURNING *
-        `;
-                const result = await client.query(insertQuery, [
-                    evaluationId,
-                    studentId,
-                    absent ? null : value,
-                    absent,
-                    comment || null,
-                    createdBy,
-                ]);
-                createdGrades.push(result.rows[0]);
+            const result = await client.query(upsertQuery, [
+                evaluationId,
+                studentId,
+                absent ? null : value,
+                absent,
+                comment || null,
+                createdBy,
+            ]);
+            createdGrades.push(result.rows[0]);
+            // Créer l'entrée d'historique si c'était une mise à jour
+            if (result.rows[0].updated_at !== null) {
+                await createGradeHistory(client, result.rows[0].id, createdBy, 'teacher', {
+                    value: { from: null, to: value },
+                    absent: { from: null, to: absent },
+                    comment: { from: null, to: comment }
+                });
             }
         }
         await client.commit();
@@ -183,10 +172,100 @@ async function findGradeById(id) {
     return grades[0] || null;
 }
 /**
- * Trouve les notes d'un étudiant
+ * ✅ FONCTION CORRIGÉE - Trouve les notes d'un étudiant avec TOUTES les infos nécessaires
+ * Cette fonction retourne les données complètes attendues par le frontend
  */
 async function findStudentGrades(studentId, filters = {}) {
-    return findGrades({ ...filters, studentId });
+    // Construire les conditions WHERE
+    const conditions = ['g.student_id = $1', 'g.absent = false OR g.absent = true'];
+    const values = [studentId];
+    let paramIndex = 2;
+    if (filters.termId) {
+        conditions.push(`e.term_id = $${paramIndex}`);
+        values.push(filters.termId);
+        paramIndex++;
+    }
+    if (filters.courseId) {
+        conditions.push(`c.id = $${paramIndex}`);
+        values.push(filters.courseId);
+        paramIndex++;
+    }
+    if (filters.establishmentId) {
+        conditions.push(`e.establishment_id = $${paramIndex}`);
+        values.push(filters.establishmentId);
+        paramIndex++;
+    }
+    const whereClause = conditions.join(' AND ');
+    // ✅ REQUÊTE COMPLÈTE avec toutes les statistiques de classe
+    const query = `
+    SELECT DISTINCT ON (g.id)
+      -- Informations de la note
+      g.id,
+      g.evaluation_id,
+      g.student_id,
+      g.value,
+      g.absent,
+      g.normalized_value,
+      g.comment,
+      g.created_by,
+      g.created_at,
+      g.updated_at,
+      
+      -- Informations de l'évaluation
+      e.title as evaluation_title,
+      e.type as evaluation_type,
+      e.coefficient,
+      e.max_scale,
+      e.eval_date,
+      e.description as evaluation_description,
+      
+      -- Informations du cours et de la matière
+      c.id as course_id,
+      s.name as subject_name,
+      s.code as subject_code,
+      cl.label as class_label,
+      cl.code as class_code,
+      
+      -- ✅ STATISTIQUES DE CLASSE (moyenne, min, max)
+      (
+        SELECT AVG(g2.normalized_value)
+        FROM grades g2
+        WHERE g2.evaluation_id = g.evaluation_id
+        AND g2.absent = false
+        AND g2.normalized_value IS NOT NULL
+      ) as class_average,
+      (
+        SELECT MIN(g2.normalized_value)
+        FROM grades g2
+        WHERE g2.evaluation_id = g.evaluation_id
+        AND g2.absent = false
+        AND g2.normalized_value IS NOT NULL
+      ) as class_min,
+      (
+        SELECT MAX(g2.normalized_value)
+        FROM grades g2
+        WHERE g2.evaluation_id = g.evaluation_id
+        AND g2.absent = false
+        AND g2.normalized_value IS NOT NULL
+      ) as class_max,
+      
+      -- Informations de l'élève
+      u.full_name as student_name,
+      u.email as student_email,
+      sp.student_no
+      
+    FROM grades g
+    INNER JOIN evaluations e ON e.id = g.evaluation_id
+    INNER JOIN courses c ON c.id = e.course_id
+    INNER JOIN subjects s ON s.id = c.subject_id
+    INNER JOIN classes cl ON cl.id = c.class_id
+    INNER JOIN users u ON u.id = g.student_id
+    INNER JOIN student_profiles sp ON sp.user_id = u.id
+    WHERE ${whereClause}
+    ORDER BY g.id, e.eval_date DESC, s.name ASC
+  `;
+    const result = await database_1.pool.query(query, values);
+    return result.rows;
 }
 /**
  * Trouve les notes d'une évaluation
@@ -450,19 +529,94 @@ async function getClassAverages(classId, termId, establishmentId) {
  * Récupère les notes des enfants d'un responsable
  */
 async function getChildrenGrades(responsableId, filters = {}) {
-    // D'abord récupérer les IDs des enfants
-    const childrenQuery = `
-    SELECT student_id 
-    FROM student_responsables 
-    WHERE responsable_id = $1
+    // Construction de la requête SQL avec TOUS les détails
+    let query = `
+    SELECT 
+      g.id,
+      g.evaluation_id,
+      g.student_id,
+      g.value,
+      g.absent,
+      g.normalized_value,
+      g.comment,
+      g.created_at,
+      g.created_by,
+      
+      -- Infos évaluation
+      e.title as evaluation_title,
+      e.type as evaluation_type,
+      e.coefficient,
+      e.max_scale,
+      e.eval_date,
+      
+      -- Infos matière
+      s.id as subject_id,
+      s.name as subject_name,
+      s.code as subject_code,
+      
+      -- Infos classe
+      cl.label as class_name,
+      
+      -- ✅ IMPORTANT : Infos élève
+      u.full_name as student_name,
+      u.email as student_email,
+      
+      -- Statistiques de classe
+      (
+        SELECT AVG(g2.normalized_value)
+        FROM grades g2
+        WHERE g2.evaluation_id = g.evaluation_id
+        AND g2.absent = false
+        AND g2.normalized_value IS NOT NULL
+      ) as class_average,
+      (
+        SELECT MIN(g2.normalized_value)
+        FROM grades g2
+        WHERE g2.evaluation_id = g.evaluation_id
+        AND g2.absent = false
+        AND g2.normalized_value IS NOT NULL
+      ) as class_min,
+      (
+        SELECT MAX(g2.normalized_value)
+        FROM grades g2
+        WHERE g2.evaluation_id = g.evaluation_id
+        AND g2.absent = false
+        AND g2.normalized_value IS NOT NULL
+      ) as class_max
+      
+    FROM grades g
+    INNER JOIN evaluations e ON e.id = g.evaluation_id
+    INNER JOIN courses c ON c.id = e.course_id
+    INNER JOIN subjects s ON s.id = c.subject_id
+    INNER JOIN classes cl ON cl.id = c.class_id
+    INNER JOIN users u ON u.id = g.student_id
+    INNER JOIN student_responsables sr ON sr.student_id = g.student_id
+    
+    WHERE sr.responsable_id = $1
+    AND sr.can_view_grades = true
   `;
-    const childrenResult = await database_1.pool.query(childrenQuery, [responsableId]);
-    const childrenIds = childrenResult.rows.map(row => row.student_id);
-    if (childrenIds.length === 0) {
-        return [];
+    const params = [responsableId];
+    let paramIndex = 2;
+    // Filtre par trimestre
+    if (filters.termId) {
+        query += ` AND e.term_id = $${paramIndex}`;
+        params.push(filters.termId);
+        paramIndex++;
     }
-    // Récupérer les notes des enfants
-    const grades = await findGrades({ ...filters, studentId: childrenIds[0] });
-    return grades.filter(grade => childrenIds.includes(grade.student_id));
+    // Filtre par étudiant spécifique
+    if (filters.studentId) {
+        query += ` AND g.student_id = $${paramIndex}`;
+        params.push(filters.studentId);
+        paramIndex++;
+    }
+    // Filtre par établissement
+    if (filters.establishmentId) {
+        query += ` AND c.establishment_id = $${paramIndex}`;
+        params.push(filters.establishmentId);
+        paramIndex++;
+    }
+    query += ` ORDER BY e.eval_date DESC, s.name ASC`;
+    const result = await database_1.pool.query(query, params);
+    return result.rows;
 }
 //# sourceMappingURL=grade.model.js.map

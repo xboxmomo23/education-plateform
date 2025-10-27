@@ -35,5 +35,9 @@ export declare function revokeSession(token: string): Promise<boolean>;
 export declare function revokeAllUserSessions(userId: string): Promise<number>;
 export declare function revokeOtherSessions(userId: string, currentToken: string): Promise<number>;
 export declare function cleanupExpiredSessions(): Promise<number>;
-export declare function limitUserSessions(userId: string, maxSessions?: number): Promise<void>;
+/**
+ * Limite le nombre de sessions par utilisateur
+ * ✅ CORRIGÉ : Gère les cas où il y a plus de sessions que la limite
+ */
+export declare function limitUserSessions(userId: string, maxSessions?: number): Promise<number>;
 //# sourceMappingURL=session.model.d.ts.map
