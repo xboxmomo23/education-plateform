@@ -104,16 +104,20 @@ export function SubjectSummTable({ subjects }: SubjectSummTableProps) {
 
                   {/* Moyenne élève */}
                   <td className="text-center py-3 px-3">
-                    <div
-                      className={`inline-flex items-center justify-center rounded-lg px-3 py-1.5 ${getGradeBg(
-                        subject.subjectAvgStudent
-                      )}`}
-                    >
-                      <span className={`text-lg font-bold ${getGradeColor(subject.subjectAvgStudent)}`}>
-                        {subject.subjectAvgStudent.toFixed(2)}
-                      </span>
-                      <span className="text-xs text-muted-foreground ml-1">/20</span>
-                    </div>
+                    {subject.subjectAvgStudent > 0 ? (
+                      <div
+                        className={`inline-flex items-center justify-center rounded-lg px-3 py-1.5 ${getGradeBg(
+                          subject.subjectAvgStudent
+                        )}`}
+                      >
+                        <span className={`text-lg font-bold ${getGradeColor(subject.subjectAvgStudent)}`}>
+                          {subject.subjectAvgStudent.toFixed(2)}
+                        </span>
+                        <span className="text-xs text-muted-foreground ml-1">/20</span>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">—</span>
+                    )}
                   </td>
 
                   {/* Moyenne classe */}

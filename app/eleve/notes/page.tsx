@@ -69,15 +69,51 @@ interface BackendGrade {
   classAverage?: number
   classMin?: number
   classMax?: number
+  // ✅ AJOUT : Support des snake_case aussi
+  class_average?: number
+  class_min?: number
+  class_max?: number
+}
+
+// ============================================
+// FONCTION DE NORMALISATION DES CHAMPS
+// ============================================
+
+/**
+ * Normalise les champs backend (snake_case ou camelCase) vers camelCase
+ */
+function normalizeBackendGrade(grade: any): BackendGrade {
+  return {
+    id: grade.id,
+    evaluationId: grade.evaluationId || grade.evaluation_id,
+    evaluationTitle: grade.evaluationTitle || grade.evaluation_title,
+    evaluationType: grade.evaluationType || grade.evaluation_type,
+    subjectName: grade.subjectName || grade.subject_name,
+    subjectCode: grade.subjectCode || grade.subject_code,
+    value: grade.value,
+    absent: grade.absent,
+    coefficient: grade.coefficient,
+    maxScale: grade.maxScale || grade.max_scale,
+    normalizedValue: grade.normalizedValue || grade.normalized_value,
+    evalDate: grade.evalDate || grade.eval_date,
+    comment: grade.comment,
+    // ✅ Support des deux formats pour les stats de classe
+    classAverage: grade.classAverage ?? grade.class_average ?? undefined,
+    classMin: grade.classMin ?? grade.class_min ?? undefined,
+    classMax: grade.classMax ?? grade.class_max ?? undefined,
+  }
 }
 
 // ============================================
 // FONCTION DE TRANSFORMATION DES DONNÉES
 // ============================================
 
-function transformBackendData(backendGrades: BackendGrade[]): StudentNotesResponse {
+function transformBackendData(backendGrades: any[]): StudentNotesResponse {
+  // ✅ NOUVEAU : Normaliser tous les grades d'abord
+  const normalizedGrades = backendGrades.map(g => normalizeBackendGrade(g))
+  
   // Grouper par matière
-  const gradesBySubject = backendGrades.reduce((acc, grade) => {
+  const gradesBySubject = normalizedGrades.reduce((acc, grade) => {
     const subject = grade.subjectName || "Autre"
     if (!acc[subject]) {
       acc[subject] = []
@@ -89,7 +125,7 @@ function transformBackendData(backendGrades: BackendGrade[]): StudentNotesRespon
   // Calculer les moyennes par matière
   const subjects: SubjectNotes[] = Object.entries(gradesBySubject).map(
     ([subjectName, grades]) => {
-      // ✅ CORRIGÉ : Filtrer les absences et notes nulles
+      // ✅ Filtrer les absences et notes nulles SEULEMENT pour le calcul de la moyenne élève
       const validGrades = grades.filter((g) => !g.absent && g.normalizedValue !== null)
 
       let subjectAvgStudent = 0
@@ -107,41 +143,77 @@ function transformBackendData(backendGrades: BackendGrade[]): StudentNotesRespon
         subjectAvgStudent = totalCoeff > 0 ? totalPoints / totalCoeff : 0
       }
 
-      // Calculer min/max de la matière (seulement notes valides)
+      // ✅ NOUVEAU : Calculer le coefficient total de TOUTES les évaluations (même absents)
+      const totalCoeffAll = grades.reduce((sum, g) => sum + (g.coefficient || 1), 0)
+
+      // ✅ NOUVEAU : Calculer les stats de classe (moyenne de toutes les moyennes de classe)
+      const classAverages = grades
+        .filter(g => g.classAverage != null)
+        .map(g => Number(g.classAverage))
+      
+      console.log(`[Transform] ${subjectName} - classAverages:`, classAverages)
+      
+      const subjectAvgClass = classAverages.length > 0
+        ? classAverages.reduce((sum, avg) => sum + avg, 0) / classAverages.length
+        : undefined
+
+      // ✅ NOUVEAU : Calculer min/max de classe (prendre le min/max parmi toutes les évaluations)
+      const allClassMins = grades.filter(g => g.classMin != null).map(g => Number(g.classMin))
+      const allClassMaxs = grades.filter(g => g.classMax != null).map(g => Number(g.classMax))
+      const subjectClassMin = allClassMins.length > 0 ? Math.min(...allClassMins) : undefined
+      const subjectClassMax = allClassMaxs.length > 0 ? Math.max(...allClassMaxs) : undefined
+      
+      console.log(`[Transform] ${subjectName} - Stats:`, {
+        avgClass: subjectAvgClass,
+        min: subjectClassMin,
+        max: subjectClassMax,
+      })
+
+      // Calculer min/max de la matière pour l'élève (seulement notes valides)
       const allStudentGrades = validGrades.map((g) => Number(g.normalizedValue) || 0)
       const subjectMin = allStudentGrades.length > 0 ? Math.min(...allStudentGrades) : undefined
       const subjectMax = allStudentGrades.length > 0 ? Math.max(...allStudentGrades) : undefined
 
-      // ✅ CORRIGÉ : Transformer les évaluations en gardant le champ absent
+      // Transformer les évaluations en gardant le champ absent
       const evaluations: Evaluation[] = grades.map((grade) => ({
         evaluationId: grade.evaluationId,
         title: grade.evaluationTitle,
         date: grade.evalDate,
         coefficient: grade.coefficient,
-        gradeStudent: grade.normalizedValue,  // ✅ Garde null si absent
-        absent: grade.absent,  // ✅ IMPORTANT : Garde le statut absent
+        gradeStudent: grade.normalizedValue,
+        absent: grade.absent,
         avgClass: grade.classAverage,
         min: grade.classMin,
         max: grade.classMax,
         appreciation: grade.comment,
       }))
+      
+      console.log(`[Transform] ${subjectName} - Evaluations:`, evaluations.map(e => ({
+        title: e.title,
+        absent: e.absent,
+        avgClass: e.avgClass,
+        min: e.min,
+        max: e.max,
+      })))
 
       return {
         subjectId: grades[0].subjectCode || subjectName,
         subjectName,
-        subjectCoeffTotal: totalCoeff,
+        subjectCoeffTotal: totalCoeffAll,  // ✅ Tous les coefficients
         subjectAvgStudent,
-        subjectAvgClass: undefined, // Calculé si dispo dans le backend
-        subjectMin,
-        subjectMax,
+        subjectAvgClass,  // ✅ Moyenne de classe
+        subjectMin: subjectClassMin,  // ✅ Min de CLASSE (pas élève)
+        subjectMax: subjectClassMax,  // ✅ Max de CLASSE (pas élève)
         appreciation: undefined,
         evaluations,
       }
     }
   )
 
-  // Calculer la moyenne générale (moyenne de toutes les matières)
-  const validSubjects = subjects.filter((s) => s.evaluations.some(e => !e.absent))
+  // Calculer la moyenne générale (moyenne de toutes les matières avec notes valides)
+  const validSubjects = subjects.filter((s) => 
+    s.subjectAvgStudent > 0 && s.evaluations.some(e => !e.absent)
+  )
   const generalAverage =
     validSubjects.length > 0
       ? validSubjects.reduce((acc, s) => acc + s.subjectAvgStudent, 0) / validSubjects.length
@@ -193,7 +265,13 @@ export default function StudentNotesPage() {
       }
 
       const backendGrades = response.data?.grades || []
-      console.log("[API] Backend grades:", backendGrades)
+      console.log("[API] Backend grades (raw):", backendGrades)
+      console.log("[API] First grade stats:", {
+        classAverage: backendGrades[0]?.classAverage,
+        class_average: backendGrades[0]?.class_average,
+        classMin: backendGrades[0]?.classMin,
+        class_min: backendGrades[0]?.class_min,
+      })
 
       // ✅ TRANSFORMER les données backend vers le format UI
       const transformedData = transformBackendData(backendGrades)

@@ -14,8 +14,10 @@ interface StatsPanelProps {
 }
 
 export function StatsPanel({ generalAverage, subjects }: StatsPanelProps) {
-  // Find best and worst subjects
-  const sortedSubjects = [...subjects].sort(
+  // Find best and worst subjects (ignorer ceux sans notes)
+  const validSubjects = subjects.filter(s => s.subjectAvgStudent > 0)
+  
+  const sortedSubjects = [...validSubjects].sort(
     (a, b) => b.subjectAvgStudent - a.subjectAvgStudent
   )
 
@@ -74,7 +76,7 @@ export function StatsPanel({ generalAverage, subjects }: StatsPanelProps) {
       )}
 
       {/* Worst subject */}
-      {worstSubject && subjects.length > 1 && (
+      {worstSubject && validSubjects.length > 1 && worstSubject.subjectId !== bestSubject?.subjectId && (
         <Card className="border-orange-200 bg-orange-50/50">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2 text-orange-700">
@@ -116,7 +118,7 @@ export function StatsPanel({ generalAverage, subjects }: StatsPanelProps) {
               {subjects.reduce((acc, s) => acc + s.evaluations.length, 0)}
             </span>
           </div>
-          {subjects.length > 0 && (
+          {validSubjects.length > 0 && (
             <>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Moy. la + haute</span>
@@ -124,12 +126,14 @@ export function StatsPanel({ generalAverage, subjects }: StatsPanelProps) {
                   {bestSubject.subjectAvgStudent.toFixed(2)}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Moy. la + basse</span>
-                <span className="font-semibold text-orange-600">
-                  {worstSubject.subjectAvgStudent.toFixed(2)}
-                </span>
-              </div>
+              {validSubjects.length > 1 && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Moy. la + basse</span>
+                  <span className="font-semibold text-orange-600">
+                    {worstSubject.subjectAvgStudent.toFixed(2)}
+                  </span>
+                </div>
+              )}
             </>
           )}
         </CardContent>

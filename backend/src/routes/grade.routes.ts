@@ -104,9 +104,30 @@ const createGradesValidation = [
     .isUUID()
     .withMessage('ID d\'élève invalide'),
   body('grades.*.value')
-    .optional()
-    .isFloat({ min: 0, max: 100 })
-    .withMessage('La note doit être entre 0 et 100'),
+    .optional({ nullable: true })  // ✅ Permet null ET undefined
+    .custom((value, { req, path }) => {
+      // Extraire l'index du grade depuis le path (ex: "grades[0].value")
+      const match = path.match(/grades\[(\d+)\]\.value/)
+      if (!match) return true
+      
+      const index = parseInt(match[1])
+      const grade = req.body.grades[index]
+      
+      // Si absent = true, value peut être null
+      if (grade && grade.absent === true) {
+        return true
+      }
+      
+      // Sinon, value doit être un nombre valide
+      if (value !== null && value !== undefined) {
+        const num = parseFloat(value)
+        if (isNaN(num) || num < 0 || num > 100) {
+          throw new Error('La note doit être entre 0 et 100')
+        }
+      }
+      
+      return true
+    }),
   body('grades.*.absent')
     .optional()
     .isBoolean()
