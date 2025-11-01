@@ -329,8 +329,7 @@ export async function findStudentGrades(
   filters: Partial<GradeFilters> = {}
 ): Promise<any[]> {
   // Construire les conditions WHERE
-  const conditions = ['g.student_id = $1', 'g.absent = false OR g.absent = true'];
-  const values: any[] = [studentId];
+  const conditions = ['g.student_id = $1'];  const values: any[] = [studentId];
   let paramIndex = 2;
 
   if (filters.termId) {
