@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -19,6 +19,7 @@ import { StatsPanel } from "@/components/notes/StatsPanel"
 // ============================================
 
 type Evaluation = {
+  gradeId: string              // ✅ AJOUTÉ - ID unique de la note
   evaluationId: string
   title: string
   date: string
@@ -176,6 +177,7 @@ function transformBackendData(backendGrades: any[]): StudentNotesResponse {
 
       // Transformer les évaluations en gardant le champ absent
       const evaluations: Evaluation[] = grades.map((grade) => ({
+        gradeId: grade.id,  // ✅ AJOUTÉ - ID unique de la note
         evaluationId: grade.evaluationId,
         title: grade.evaluationTitle,
         date: grade.evalDate,
@@ -190,6 +192,7 @@ function transformBackendData(backendGrades: any[]): StudentNotesResponse {
       
       console.log(`[Transform] ${subjectName} - Evaluations:`, evaluations.map(e => ({
         title: e.title,
+        gradeId: e.gradeId,  // ✅ Log du gradeId
         absent: e.absent,
         avgClass: e.avgClass,
         min: e.min,
@@ -234,12 +237,16 @@ export default function StudentNotesPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // ✅ AJOUT : Guard pour éviter double fetch en React 18 StrictMode
+  const hasFetchedRef = useRef(false)
+
   const user = getUserSession()
 
   useEffect(() => {
-    if (user?.id) {
+    if (user?.id && !hasFetchedRef.current) {
+      hasFetchedRef.current = true
       loadNotes()
-    } else {
+    } else if (!user?.id) {
       setError("Utilisateur non connecté")
       setIsLoading(false)
     }
@@ -265,16 +272,23 @@ export default function StudentNotesPage() {
       }
 
       const backendGrades = response.data?.grades || []
-      console.log("[API] Backend grades (raw):", backendGrades)
-      console.log("[API] First grade stats:", {
-        classAverage: backendGrades[0]?.classAverage,
-        class_average: backendGrades[0]?.class_average,
-        classMin: backendGrades[0]?.classMin,
-        class_min: backendGrades[0]?.class_min,
-      })
+      console.log("[API] Backend grades (raw):", backendGrades.length, "grades")
+
+      // ✅ DÉDUPLICATION par ID de note
+      const uniqueGrades = Array.from(
+        new Map(backendGrades.map((grade: any) => [grade.id, grade])).values()
+      )
+      
+      console.log("[API] After deduplication:", uniqueGrades.length, "unique grades")
+      
+      if (backendGrades.length !== uniqueGrades.length) {
+        console.warn(
+          `[API] ⚠️ Removed ${backendGrades.length - uniqueGrades.length} duplicate grades`
+        )
+      }
 
       // ✅ TRANSFORMER les données backend vers le format UI
-      const transformedData = transformBackendData(backendGrades)
+      const transformedData = transformBackendData(uniqueGrades)
       console.log("[API] Transformed data:", transformedData)
 
       setData(transformedData)
