@@ -317,13 +317,19 @@ export async function findGradeById(id: string): Promise<GradeWithDetails | null
  * ✅ FONCTION CORRIGÉE - Trouve les notes d'un étudiant avec TOUTES les infos nécessaires
  * Cette fonction retourne les données complètes attendues par le frontend
  */
+// ===================================================================
+// PATCH DEBUG pour grade_model.ts
+// ===================================================================
+// Remplacez la fonction findStudentGrades (lignes 320-420)
+// par cette version avec logs de debug
+// ===================================================================
+
 export async function findStudentGrades(
   studentId: string,
   filters: Partial<GradeFilters> = {}
 ): Promise<any[]> {
   // Construire les conditions WHERE
-  const conditions = ['g.student_id = $1', 'g.absent = false OR g.absent = true'];
-  const values: any[] = [studentId];
+  const conditions = ['g.student_id = $1'];  const values: any[] = [studentId];
   let paramIndex = 2;
 
   if (filters.termId) {
@@ -415,7 +421,59 @@ export async function findStudentGrades(
     ORDER BY e.eval_date DESC, s.name ASC
   `;
 
+  // ===================================================================
+  // ✅ AJOUT : LOGS DE DEBUG
+  // ===================================================================
+  console.log('');
+  console.log('='.repeat(70));
+  console.log('[DEBUG] findStudentGrades() called');
+  console.log('='.repeat(70));
+  console.log('[DEBUG] Input studentId:', studentId);
+  console.log('[DEBUG] Input filters:', JSON.stringify(filters, null, 2));
+  console.log('[DEBUG] WHERE clause:', whereClause);
+  console.log('[DEBUG] SQL values:', values);
+  console.log('='.repeat(70));
+
   const result = await pool.query(query, values);
+  
+  // ===================================================================
+  // ✅ AJOUT : VÉRIFICATION DES RÉSULTATS
+  // ===================================================================
+  console.log('[DEBUG] SQL query returned:', result.rows.length, 'rows');
+  console.log('');
+  
+  if (result.rows.length > 0) {
+    console.log('[DEBUG] Rows details:');
+    result.rows.forEach((row, index) => {
+      console.log(`  Row ${index + 1}:`, {
+        gradeId: row.id?.substring(0, 8) + '...',
+        studentId: row.student_id?.substring(0, 8) + '...',
+        evaluationTitle: row.evaluation_title,
+        subjectName: row.subject_name,
+        absent: row.absent,
+        value: row.value,
+      });
+      
+      // ✅ SÉCURITÉ : Détecter si un student_id ne correspond pas
+      if (row.student_id !== studentId) {
+        console.error('');
+        console.error('🚨 '.repeat(35));
+        console.error('[ERROR] SECURITY VIOLATION!');
+        console.error(`[ERROR] Row ${index + 1} has student_id: ${row.student_id}`);
+        console.error(`[ERROR] Expected student_id: ${studentId}`);
+        console.error('[ERROR] This row belongs to another student!');
+        console.error('[ERROR] Full row:', JSON.stringify(row, null, 2));
+        console.error('🚨 '.repeat(35));
+        console.error('');
+      }
+    });
+  } else {
+    console.log('[DEBUG] No rows returned');
+  }
+  
+  console.log('='.repeat(70));
+  console.log('');
+  
   return result.rows;
 }
 

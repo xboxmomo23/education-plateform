@@ -4,6 +4,7 @@ import { ChevronDown, Calendar, Award } from "lucide-react"
 import { useState } from "react"
 
 type Evaluation = {
+  gradeId: string              // ✅ AJOUTÉ - ID unique de la note
   evaluationId: string
   title: string
   date: string
@@ -165,7 +166,7 @@ export function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) 
                       <tbody>
                         {subject.evaluations.map((evaluation) => (
                           <tr
-                            key={evaluation.evaluationId}
+                            key={evaluation.gradeId}  
                             className="border-b border-slate-100 hover:bg-slate-50 transition-colors"
                           >
                             {/* Title */}
