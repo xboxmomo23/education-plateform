@@ -357,8 +357,8 @@ async function register(req, res) {
             case 'teacher':
                 profile = await (0, user_model_1.createTeacherProfile)(user.id, profile_data || {});
                 break;
-            case 'responsable':
-                profile = await (0, user_model_1.createResponsableProfile)(user.id, profile_data || {});
+            case 'staff':
+                profile = await (0, user_model_1.createStaffProfile)(user.id, profile_data || {});
                 break;
         }
         // Ne pas renvoyer le password_hash
@@ -367,8 +367,11 @@ async function register(req, res) {
             success: true,
             message: 'Utilisateur créé avec succès',
             data: {
-                user: userWithoutPassword,
-                profile,
+                id: user.id,
+                email: user.email,
+                role: user.role,
+                full_name: user.full_name,
+                profile: profile || undefined, // où 'profile' peut être StaffProfile, etc.
             },
         });
     }

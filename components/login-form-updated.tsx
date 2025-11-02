@@ -54,7 +54,7 @@ export function LoginFormUpdated({ role, title, description, redirectPath }: Log
     switch (role) {
       case "student": return "élève"
       case "teacher": return "professeur"
-      case "responsable": return "responsable"
+      case "staff": return "staff"
       case "admin": return "administrateur"
     }
   }
@@ -118,7 +118,7 @@ export function LoginFormUpdated({ role, title, description, redirectPath }: Log
               <p className="font-semibold mb-1">Comptes de test :</p>
               <p>• {role === "student" && "eleve@example.com / eleve123"}</p>
               <p>• {role === "teacher" && "prof@example.com / prof123"}</p>
-              <p>• {role === "responsable" && "responsable1@test.com / 123456"}</p>
+              <p>• {role === "staff" && "staff1@test.com / 123456"}</p>
               <p>• {role === "admin" && "admin@example.com / admin123"}</p>
             </div>
           )}

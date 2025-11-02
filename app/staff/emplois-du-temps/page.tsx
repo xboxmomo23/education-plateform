@@ -359,7 +359,7 @@ export default function ResponsableEmploisDuTempsPage() {
   const filteredCourses = courses.filter((c) => c.week === weekType || c.week === "both")
 
   return (
-    <DashboardLayout requiredRole="responsable">
+    <DashboardLayout requiredRole="staff">
       <div className="space-y-6">
         {/* En-tête */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

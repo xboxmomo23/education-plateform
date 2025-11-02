@@ -46,7 +46,7 @@ const registerValidation = [
     .isLength({ min: 2 })
     .withMessage('Le nom complet doit contenir au moins 2 caractères'),
   body('role')
-    .isIn(['student', 'teacher', 'responsable', 'admin'])
+    .isIn(['student', 'teacher', 'staff', 'parent', 'admin'])
     .withMessage('Rôle invalide'),
 ];
 

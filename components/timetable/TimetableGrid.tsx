@@ -11,7 +11,7 @@ const HOURS = ["8h", "9h", "10h", "11h", "12h", "13h", "14h", "15h", "16h", "17h
 const DAYS: DayOfWeek[] = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"]
 
 interface TimetableGridProps {
-  mode: "student" | "teacher" | "responsable"
+  mode: "student" | "teacher" | "staff"
   entries: TimetableEntry[]
   weekType: WeekType
   currentWeek: number
@@ -94,7 +94,7 @@ export function TimetableGrid({
       </div>
 
       {/* Conflicts alert */}
-      {conflicts.length > 0 && mode === "responsable" && (
+      {conflicts.length > 0 && mode === "staff" && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4">
           <div className="flex items-start gap-3">
             <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
@@ -117,7 +117,7 @@ export function TimetableGrid({
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Planning hebdomadaire</CardTitle>
-            {mode === "responsable" && (
+            {mode === "staff" && (
               <Button
                 variant="ghost"
                 size="sm"

@@ -6,7 +6,7 @@ import { Users, BookOpen, AlertCircle, Calendar } from "lucide-react"
 
 export default function DashboardResponsablePage() {
   return (
-    <DashboardLayout requiredRole="responsable">
+    <DashboardLayout requiredRole="staff">
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold">Tableau de bord</h1>

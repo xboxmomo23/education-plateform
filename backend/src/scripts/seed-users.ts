@@ -1,6 +1,8 @@
 import dotenv from 'dotenv';
 import { pool } from '../config/database';
-import { createUser, createStudentProfile, createTeacherProfile, createResponsableProfile } from '../models/user.model';
+import { createUser, createStudentProfile, createTeacherProfile, createStaffProfile } from '../models/user.model';
+import type { UserRole } from '../types'
+
 
 dotenv.config();
 
@@ -35,24 +37,30 @@ const DEMO_USERS = [
     full_name: 'Administrateur Demo',
   },
   {
-    email: 'responsable1@test.com',
+    email: 'staff1@test.com',
     password: '123456',
-    role: 'responsable' as const,
-    full_name: 'Responsable 1',
+    role: 'staff' as const,
+    full_name: 'staff 1',
     profile: {
       phone: '0612345680',
-      relation_type: 'parent',
-    },
+      department: 'Vie scolaire',      
+      office_room: 'B102',
+      employee_no: 'STF-0001',
+      hire_date: '2024-09-01'
+  },
   },
   {
-    email: 'responsable2@test.com',
+    email: 'staff2@test.com',
     password: '123456',
-    role: 'responsable' as const,
-    full_name: 'Responsable 2',
+    role: 'staff' as const,
+    full_name: 'staff 2',
     profile: {
-      phone: '0612345681',
-      relation_type: 'tuteur',
-    },
+      phone: '0612385680',
+      department: 'Vie scolaire',     
+      office_room: 'B103',
+      employee_no: 'STF-0002',
+      hire_date: '2024-09-01'
+  },
   },
 ];
 
@@ -89,9 +97,9 @@ async function seedUsers() {
       } else if (userData.role === 'teacher' && userData.profile) {
         await createTeacherProfile(user.id, userData.profile);
         console.log('   ✅ Profil enseignant créé');
-      } else if (userData.role === 'responsable' && userData.profile) {
-        await createResponsableProfile(user.id, userData.profile);
-        console.log('   ✅ Profil responsable créé');
+      } else if (userData.role === 'staff' && userData.profile) {
+        await createStaffProfile(user.id, userData.profile);
+        console.log('   ✅ Profil staff créé');
       }
 
       console.log('');
@@ -102,8 +110,8 @@ async function seedUsers() {
     console.log('   - eleve@example.com (mot de passe: eleve123)');
     console.log('   - prof@example.com (mot de passe: prof123)');
     console.log('   - admin@example.com (mot de passe: admin123)');
-    console.log('   - responsable1@test.com (mot de passe: 123456)');
-    console.log('   - responsable2@test.com (mot de passe: 123456)');
+    console.log('   - staff1@test.com (mot de passe: 123456)');
+    console.log('   - staff2@test.com (mot de passe: 123456)');
     console.log('');
 
     process.exit(0);

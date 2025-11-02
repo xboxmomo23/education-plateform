@@ -98,9 +98,10 @@ export declare function findGrades(filters?: GradeFilters): Promise<GradeWithDet
  */
 export declare function findGradeById(id: string): Promise<GradeWithDetails | null>;
 /**
- * Trouve les notes d'un étudiant
+ * ✅ FONCTION CORRIGÉE - Trouve les notes d'un étudiant avec TOUTES les infos nécessaires
+ * Cette fonction retourne les données complètes attendues par le frontend
  */
-export declare function findStudentGrades(studentId: string, filters?: Partial<GradeFilters>): Promise<GradeWithDetails[]>;
+export declare function findStudentGrades(studentId: string, filters?: Partial<GradeFilters>): Promise<any[]>;
 /**
  * Trouve les notes d'une évaluation
  */

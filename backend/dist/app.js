@@ -10,6 +10,7 @@ const dotenv_1 = __importDefault(require("dotenv"));
 const security_middleware_1 = require("./middleware/security.middleware");
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const grade_routes_1 = __importDefault(require("./routes/grade.routes"));
+const course_routes_1 = __importDefault(require("./routes/course.routes")); // ✅ AJOUTÉ
 // Charger les variables d'environnement
 dotenv_1.default.config();
 const app = (0, express_1.default)();
@@ -52,6 +53,7 @@ app.get('/health', (req, res) => {
 // Routes d'authentification
 app.use('/api/auth', auth_routes_1.default);
 app.use('/api/grades', grade_routes_1.default);
+app.use('/api/courses', course_routes_1.default); // ✅ AJOUTER CETTE LIGNE
 // Route 404
 app.use('*', (req, res) => {
     res.status(404).json({

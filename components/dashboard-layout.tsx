@@ -4,7 +4,7 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { getUserSession, clearUserSession, type User, type UserRole } from "@/lib/auth"
+import { getUserSession, clearUserSession, type User, type UserRole } from "@/lib/auth-new"
 import {
   BookOpen,
   Users,
@@ -42,8 +42,8 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
           ? "eleve"
           : requiredRole === "teacher"
             ? "professeur"
-            : requiredRole === "responsable"
-              ? "responsable"
+            : requiredRole === "staff"
+              ? "staff"
               : "admin"
       router.push(`/login-${loginPath}`)
       return
@@ -55,8 +55,8 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
           ? "eleve"
           : requiredRole === "teacher"
             ? "professeur"
-            : requiredRole === "responsable"
-              ? "responsable"
+            : requiredRole === "staff"
+              ? "staff"
               : "admin"
       router.push(`/login-${loginPath}`)
       return
@@ -73,8 +73,8 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
         ? "eleve"
         : requiredRole === "teacher"
           ? "professeur"
-          : requiredRole === "responsable"
-            ? "responsable"
+          : requiredRole === "staff"
+            ? "staff"
             : "admin"
     router.push(`/login-${loginPath}`)
   }
@@ -100,16 +100,16 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
           { icon: BookOpen, label: "Mes classes", href: "#" },
           { icon: Users, label: "Élèves", href: "#" },
         ]
-      case "responsable":
+      case "staff":
         return [
-          { icon: BookOpen, label: "Tableau de bord", href: "/dashboard-responsable" },
-          { icon: ClipboardCheck, label: "Présences", href: "/responsable/presences" },
-          { icon: AlertCircle, label: "Absences", href: "/responsable/absences" },
-          { icon: Calendar, label: "Emplois du temps", href: "/responsable/emplois-du-temps" },
-          { icon: FileText, label: "Devoirs", href: "/responsable/devoirs" },
-          { icon: BarChart, label: "Notes", href: "/responsable/notes" },
-          { icon: Users, label: "Gestion des utilisateurs", href: "/responsable/gestion-utilisateurs" },
-          { icon: Settings, label: "Paramètres", href: "/responsable/parametres" },
+          { icon: BookOpen, label: "Tableau de bord", href: "/dashboard-staff" },
+          { icon: ClipboardCheck, label: "Présences", href: "/staff/presences" },
+          { icon: AlertCircle, label: "Absences", href: "/staff/absences" },
+          { icon: Calendar, label: "Emplois du temps", href: "/staff/emplois-du-temps" },
+          { icon: FileText, label: "Devoirs", href: "/staff/devoirs" },
+          { icon: BarChart, label: "Notes", href: "/staff/notes" },
+          { icon: Users, label: "Gestion des utilisateurs", href: "/staff/gestion-utilisateurs" },
+          { icon: Settings, label: "Paramètres", href: "/staff/parametres" },
         ]
       case "admin":
         return [
@@ -129,7 +129,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
         return <UserCircle className="h-5 w-5" />
       case "teacher":
         return <GraduationCap className="h-5 w-5" />
-      case "responsable":
+      case "staff":
         return <UserCog className="h-5 w-5" />
       case "admin":
         return <Shield className="h-5 w-5" />
@@ -142,8 +142,8 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
         return "Espace Élève"
       case "teacher":
         return "Espace Professeur"
-      case "responsable":
-        return "Espace Responsable"
+      case "staff":
+        return "Espace staff"
       case "admin":
         return "Espace Administrateur"
     }
@@ -192,7 +192,9 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
           {user && (
             <div className="border-t p-4">
               <div className="mb-3 rounded-lg bg-muted p-3">
-                <p className="text-sm font-medium">{user.name}</p>
+                <p className="text-sm font-medium">
+                  {user.full_name || user.email}
+                </p>
                 <p className="text-xs text-muted-foreground">{user.email}</p>
               </div>
               <Button variant="outline" className="w-full bg-transparent" onClick={handleLogout}>

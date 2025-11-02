@@ -183,10 +183,153 @@ async function findGradeById(id) {
     return grades[0] || null;
 }
 /**
- * Trouve les notes d'un étudiant
+ * ✅ FONCTION CORRIGÉE - Trouve les notes d'un étudiant avec TOUTES les infos nécessaires
+ * Cette fonction retourne les données complètes attendues par le frontend
  */
+// ===================================================================
+// PATCH DEBUG pour grade_model.ts
+// ===================================================================
+// Remplacez la fonction findStudentGrades (lignes 320-420)
+// par cette version avec logs de debug
+// ===================================================================
 async function findStudentGrades(studentId, filters = {}) {
-    return findGrades({ ...filters, studentId });
+    // Construire les conditions WHERE
+    const conditions = ['g.student_id = $1'];
+    const values = [studentId];
+    let paramIndex = 2;
+    if (filters.termId) {
+        conditions.push(`e.term_id = $${paramIndex}`);
+        values.push(filters.termId);
+        paramIndex++;
+    }
+    if (filters.courseId) {
+        conditions.push(`c.id = $${paramIndex}`);
+        values.push(filters.courseId);
+        paramIndex++;
+    }
+    if (filters.establishmentId) {
+        conditions.push(`e.establishment_id = $${paramIndex}`);
+        values.push(filters.establishmentId);
+        paramIndex++;
+    }
+    const whereClause = conditions.join(' AND ');
+    // ✅ REQUÊTE COMPLÈTE avec toutes les statistiques de classe
+    const query = `
+    SELECT 
+      -- Informations de la note
+      g.id,
+      g.evaluation_id,
+      g.student_id,
+      g.value,
+      g.absent,
+      g.normalized_value,
+      g.comment,
+      g.created_by,
+      g.created_at,
+      g.updated_at,
+      
+      -- Informations de l'évaluation
+      e.title as evaluation_title,
+      e.type as evaluation_type,
+      e.coefficient,
+      e.max_scale,
+      e.eval_date,
+      e.description as evaluation_description,
+      
+      -- Informations du cours et de la matière
+      c.id as course_id,
+      s.name as subject_name,
+      s.code as subject_code,
+      cl.label as class_label,
+      cl.code as class_code,
+      
+      -- ✅ STATISTIQUES DE CLASSE (moyenne, min, max)
+      (
+        SELECT AVG(g2.normalized_value)
+        FROM grades g2
+        WHERE g2.evaluation_id = g.evaluation_id
+        AND g2.absent = false
+        AND g2.normalized_value IS NOT NULL
+      ) as class_average,
+      (
+        SELECT MIN(g2.normalized_value)
+        FROM grades g2
+        WHERE g2.evaluation_id = g.evaluation_id
+        AND g2.absent = false
+        AND g2.normalized_value IS NOT NULL
+      ) as class_min,
+      (
+        SELECT MAX(g2.normalized_value)
+        FROM grades g2
+        WHERE g2.evaluation_id = g.evaluation_id
+        AND g2.absent = false
+        AND g2.normalized_value IS NOT NULL
+      ) as class_max,
+      
+      -- Informations de l'élève
+      u.full_name as student_name,
+      u.email as student_email,
+      sp.student_no
+      
+    FROM grades g
+    INNER JOIN evaluations e ON e.id = g.evaluation_id
+    INNER JOIN courses c ON c.id = e.course_id
+    INNER JOIN subjects s ON s.id = c.subject_id
+    INNER JOIN classes cl ON cl.id = c.class_id
+    INNER JOIN users u ON u.id = g.student_id
+    INNER JOIN student_profiles sp ON sp.user_id = u.id
+    WHERE ${whereClause}
+    ORDER BY e.eval_date DESC, s.name ASC
+  `;
+    // ===================================================================
+    // ✅ AJOUT : LOGS DE DEBUG
+    // ===================================================================
+    console.log('');
+    console.log('='.repeat(70));
+    console.log('[DEBUG] findStudentGrades() called');
+    console.log('='.repeat(70));
+    console.log('[DEBUG] Input studentId:', studentId);
+    console.log('[DEBUG] Input filters:', JSON.stringify(filters, null, 2));
+    console.log('[DEBUG] WHERE clause:', whereClause);
+    console.log('[DEBUG] SQL values:', values);
+    console.log('='.repeat(70));
+    const result = await database_1.pool.query(query, values);
+    // ===================================================================
+    // ✅ AJOUT : VÉRIFICATION DES RÉSULTATS
+    // ===================================================================
+    console.log('[DEBUG] SQL query returned:', result.rows.length, 'rows');
+    console.log('');
+    if (result.rows.length > 0) {
+        console.log('[DEBUG] Rows details:');
+        result.rows.forEach((row, index) => {
+            console.log(`  Row ${index + 1}:`, {
+                gradeId: row.id?.substring(0, 8) + '...',
+                studentId: row.student_id?.substring(0, 8) + '...',
+                evaluationTitle: row.evaluation_title,
+                subjectName: row.subject_name,
+                absent: row.absent,
+                value: row.value,
+            });
+            // ✅ SÉCURITÉ : Détecter si un student_id ne correspond pas
+            if (row.student_id !== studentId) {
+                console.error('');
+                console.error('🚨 '.repeat(35));
+                console.error('[ERROR] SECURITY VIOLATION!');
+                console.error(`[ERROR] Row ${index + 1} has student_id: ${row.student_id}`);
+                console.error(`[ERROR] Expected student_id: ${studentId}`);
+                console.error('[ERROR] This row belongs to another student!');
+                console.error('[ERROR] Full row:', JSON.stringify(row, null, 2));
+                console.error('🚨 '.repeat(35));
+                console.error('');
+            }
+        });
+    }
+    else {
+        console.log('[DEBUG] No rows returned');
+    }
+    console.log('='.repeat(70));
+    console.log('');
+    return result.rows;
 }
 /**
  * Trouve les notes d'une évaluation
@@ -450,19 +593,94 @@ async function getClassAverages(classId, termId, establishmentId) {
  * Récupère les notes des enfants d'un responsable
  */
 async function getChildrenGrades(responsableId, filters = {}) {
-    // D'abord récupérer les IDs des enfants
-    const childrenQuery = `
-    SELECT student_id 
-    FROM student_responsables 
-    WHERE responsable_id = $1
+    // Construction de la requête SQL avec TOUS les détails
+    let query = `
+    SELECT 
+      g.id,
+      g.evaluation_id,
+      g.student_id,
+      g.value,
+      g.absent,
+      g.normalized_value,
+      g.comment,
+      g.created_at,
+      g.created_by,
+      
+      -- Infos évaluation
+      e.title as evaluation_title,
+      e.type as evaluation_type,
+      e.coefficient,
+      e.max_scale,
+      e.eval_date,
+      
+      -- Infos matière
+      s.id as subject_id,
+      s.name as subject_name,
+      s.code as subject_code,
+      
+      -- Infos classe
+      cl.label as class_name,
+      
+      -- ✅ IMPORTANT : Infos élève
+      u.full_name as student_name,
+      u.email as student_email,
+      
+      -- Statistiques de classe
+      (
+        SELECT AVG(g2.normalized_value)
+        FROM grades g2
+        WHERE g2.evaluation_id = g.evaluation_id
+        AND g2.absent = false
+        AND g2.normalized_value IS NOT NULL
+      ) as class_average,
+      (
+        SELECT MIN(g2.normalized_value)
+        FROM grades g2
+        WHERE g2.evaluation_id = g.evaluation_id
+        AND g2.absent = false
+        AND g2.normalized_value IS NOT NULL
+      ) as class_min,
+      (
+        SELECT MAX(g2.normalized_value)
+        FROM grades g2
+        WHERE g2.evaluation_id = g.evaluation_id
+        AND g2.absent = false
+        AND g2.normalized_value IS NOT NULL
+      ) as class_max
+      
+    FROM grades g
+    INNER JOIN evaluations e ON e.id = g.evaluation_id
+    INNER JOIN courses c ON c.id = e.course_id
+    INNER JOIN subjects s ON s.id = c.subject_id
+    INNER JOIN classes cl ON cl.id = c.class_id
+    INNER JOIN users u ON u.id = g.student_id
+    INNER JOIN student_responsables sr ON sr.student_id = g.student_id
+    
+    WHERE sr.responsable_id = $1
+    AND sr.can_view_grades = true
   `;
-    const childrenResult = await database_1.pool.query(childrenQuery, [responsableId]);
-    const childrenIds = childrenResult.rows.map(row => row.student_id);
-    if (childrenIds.length === 0) {
-        return [];
+    const params = [responsableId];
+    let paramIndex = 2;
+    // Filtre par trimestre
+    if (filters.termId) {
+        query += ` AND e.term_id = $${paramIndex}`;
+        params.push(filters.termId);
+        paramIndex++;
     }
-    // Récupérer les notes des enfants
-    const grades = await findGrades({ ...filters, studentId: childrenIds[0] });
-    return grades.filter(grade => childrenIds.includes(grade.student_id));
+    // Filtre par étudiant spécifique
+    if (filters.studentId) {
+        query += ` AND g.student_id = $${paramIndex}`;
+        params.push(filters.studentId);
+        paramIndex++;
+    }
+    // Filtre par établissement
+    if (filters.establishmentId) {
+        query += ` AND c.establishment_id = $${paramIndex}`;
+        params.push(filters.establishmentId);
+        paramIndex++;
+    }
+    query += ` ORDER BY e.eval_date DESC, s.name ASC`;
+    const result = await database_1.pool.query(query, params);
+    return result.rows;
 }
 //# sourceMappingURL=grade.model.js.map

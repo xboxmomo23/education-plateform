@@ -226,7 +226,7 @@ export default function ResponsablePresencesPage() {
   }
 
   return (
-    <DashboardLayout requiredRole="responsable">
+    <DashboardLayout requiredRole="staff">
       <div className="space-y-6">
         {/* En-tête */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

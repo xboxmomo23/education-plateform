@@ -3,13 +3,15 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.createUser = createUser;
 exports.createStudentProfile = createStudentProfile;
 exports.createTeacherProfile = createTeacherProfile;
-exports.createResponsableProfile = createResponsableProfile;
+exports.createStaffProfile = createStaffProfile;
+exports.createParentProfile = createParentProfile;
 exports.findUsers = findUsers;
 exports.findUserByEmail = findUserByEmail;
 exports.findUserById = findUserById;
 exports.getUserWithProfile = getUserWithProfile;
 exports.getStudentProfile = getStudentProfile;
 exports.getTeacherProfile = getTeacherProfile;
+exports.getParentProfile = getParentProfile;
 exports.getResponsableProfile = getResponsableProfile;
 exports.updateLastLogin = updateLastLogin;
 exports.incrementFailedAttempts = incrementFailedAttempts;
@@ -21,6 +23,8 @@ exports.deactivateUser = deactivateUser;
 const database_1 = require("../config/database");
 const auth_utils_1 = require("../utils/auth.utils");
 const query_builder_1 = require("../utils/query-builder");
+// ✅ CORRECTION : Supprimer createStaffProfile de l'import pour éviter le conflit
+const staff_model_1 = require("./staff.model");
 async function createUser(userData) {
     const { email, password, role, full_name, establishmentId } = userData;
     const password_hash = await (0, auth_utils_1.hashPassword)(password);
@@ -79,9 +83,31 @@ async function createTeacherProfile(userId, profileData) {
     const result = await database_1.pool.query(query, values);
     return result.rows[0];
 }
-async function createResponsableProfile(userId, profileData) {
+// ✅ CORRECTION : Cette fonction insère dans staff_profiles (pas responsable_profiles)
+async function createStaffProfile(userId, profileData) {
     const query = `
-    INSERT INTO responsable_profiles (
+    INSERT INTO staff_profiles (
+      user_id, phone, department, office_room, employee_no, hire_date
+    )
+    VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING user_id, phone, department, office_room, employee_no, hire_date, created_at
+  `;
+    const values = [
+        userId,
+        profileData.phone || null,
+        profileData.department || null,
+        profileData.office_room || null,
+        profileData.employee_no || null,
+        profileData.hire_date || null,
+    ];
+    const result = await database_1.pool.query(query, values);
+    return result.rows[0];
+}
+// ✅ NOUVEAU : Fonction pour créer un profil parent (si vous avez une table parent_profiles)
+async function createParentProfile(userId, profileData) {
+    // Si vous avez créé une table parent_profiles
+    const query = `
+    INSERT INTO parent_profiles (
       user_id, phone, address, relation_type, is_primary_contact,
       can_view_grades, can_view_attendance, emergency_contact
     )
@@ -165,8 +191,11 @@ async function getUserWithProfile(userId, role, establishmentId) {
         case 'teacher':
             profile = await getTeacherProfile(userId);
             break;
-        case 'responsable':
-            profile = await getResponsableProfile(userId);
+        case 'staff':
+            profile = await (0, staff_model_1.getStaffProfile)(userId);
+            break;
+        case 'parent':
+            profile = await getParentProfile(userId);
             break;
         case 'admin':
             break;
@@ -183,10 +212,16 @@ async function getTeacherProfile(userId) {
     const result = await database_1.pool.query(query, [userId]);
     return result.rows[0] || null;
 }
-async function getResponsableProfile(userId) {
-    const query = `SELECT * FROM responsable_profiles WHERE user_id = $1`;
+// ✅ NOUVEAU : Fonction pour récupérer un profil parent
+async function getParentProfile(userId) {
+    const query = `SELECT * FROM parent_profiles WHERE user_id = $1`;
     const result = await database_1.pool.query(query, [userId]);
     return result.rows[0] || null;
+}
+// ✅ Alias pour compatibilité (si vous aviez du code qui utilisait getResponsableProfile)
+async function getResponsableProfile(userId) {
+    // Décidez si vous voulez chercher dans staff_profiles ou parent_profiles
+    return getParentProfile(userId);
 }
 // =========================
 // Mise à jour utilisateur

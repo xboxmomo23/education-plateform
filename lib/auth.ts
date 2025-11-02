@@ -1,7 +1,7 @@
 import { api, saveToken, clearToken, ApiResponse } from './api/client';
 import { API_ENDPOINTS } from './api/config';
 
-export type UserRole = "student" | "teacher" | "admin" | "responsable";
+export type UserRole = "student" | "teacher" | "admin" | "staff" | "parent";
 
 export interface User {
   id: string;

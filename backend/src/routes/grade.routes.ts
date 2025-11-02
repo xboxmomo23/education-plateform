@@ -22,12 +22,13 @@ import {
   // Consultation élève
   getStudentGradesHandler,
   getStudentAveragesHandler,
-  // Responsable
+  // staff
   getChildrenGradesHandler,
   // Cours
   getCourseGradesHandler,
   // Statistiques
   getClassAveragesHandler,
+  getStaffManagedStudentsGradesHandler,
 } from '../controllers/grade.controller';
 
 const router = Router();
@@ -192,7 +193,7 @@ router.post(
 router.get(
   '/evaluations',
   authenticate,
-  authorize('teacher', 'admin', 'responsable'),
+  authorize('teacher', 'admin', 'staff', 'parent'),
   getTeacherEvaluationsHandler
 );
 
@@ -203,7 +204,7 @@ router.get(
 router.get(
   '/evaluations/:id',
   authenticate,
-  authorize('teacher', 'admin', 'responsable'),
+  authorize('teacher', 'admin', 'staff', 'parent'),
   param('id').isUUID(),
   validateRequest,
   getEvaluationDetailsHandler
@@ -216,7 +217,7 @@ router.get(
 router.put(
   '/evaluations/:id',
   authenticate,
-  authorize('teacher', 'admin', 'responsable'),
+  authorize('teacher', 'admin', 'staff', 'parent'),
   updateEvaluationValidation,
   validateRequest,
   updateEvaluationHandler
@@ -246,7 +247,7 @@ router.delete(
 router.post(
   '/',
   authenticate,
-  authorize('teacher', 'admin', 'responsable'),
+  authorize('teacher', 'admin', 'staff', 'parent'),
   createGradesValidation,
   validateRequest,
   createOrUpdateGradesHandler
@@ -259,7 +260,7 @@ router.post(
 router.put(
   '/:id',
   authenticate,
-  authorize('teacher', 'admin', 'responsable'),
+  authorize('teacher', 'admin', 'staff', 'parent'),
   updateGradeValidation,
   validateRequest,
   updateGradeHandler
@@ -323,23 +324,46 @@ router.get(
   getStudentAveragesHandler
 );
 
+
+
+
 // =========================
-// ROUTES NOTES - Responsables
+// ROUTES NOTES - responsables
 // =========================
 
 /**
  * GET /api/grades/children
- * Notes des enfants d'un responsable
+ * Notes des enfants d'un staff
  */
 router.get(
   '/children',
   authenticate,
-  authorize('responsable'),
+  authorize('staff'),
   query('termId').optional().isUUID(),
   query('studentId').optional().isUUID(),
   validateRequest,
   getChildrenGradesHandler
 );
+
+
+
+// Après la ligne (route /children)
+
+/**
+ * GET /api/grades/managed-students
+ * Notes des élèves gérés par le staff
+ */
+router.get(
+  '/managed-students',
+  authenticate,
+  authorize('staff'),
+  query('termId').optional().isUUID(),
+  query('courseId').optional().isUUID(),
+  query('classId').optional().isUUID(),
+  validateRequest,
+  getStaffManagedStudentsGradesHandler
+);
+
 
 // =========================
 // ROUTES NOTES - Par Cours
@@ -352,7 +376,7 @@ router.get(
 router.get(
   '/course/:courseId',
   authenticate,
-  authorize('teacher', 'admin', 'responsable'),
+  authorize('teacher', 'admin', 'staff'),
   param('courseId').isUUID(),
   query('evaluationId').optional().isUUID(),
   validateRequest,
@@ -370,7 +394,7 @@ router.get(
 router.get(
   '/class/:classId/averages',
   authenticate,
-  authorize('teacher', 'admin', 'responsable'),
+  authorize('teacher', 'admin', 'staff'),
   param('classId').isUUID(),
   query('termId').optional().isUUID(),
   validateRequest,
@@ -401,7 +425,7 @@ router.get(
 router.get(
   '/:id',
   authenticate,
-  authorize('teacher', 'admin', 'responsable', 'student'),
+  authorize('teacher', 'admin', 'staff', 'student', 'parent'),
   param('id').isUUID().withMessage('ID de note invalide'),
   validateRequest,
   getGradeByIdHandler
@@ -415,7 +439,7 @@ router.get(
 router.get(
   '/:id/history',
   authenticate,
-  authorize('teacher', 'admin', 'responsable'),
+  authorize('teacher', 'admin', 'staff'),
   param('id').isUUID(),
   validateRequest,
   getGradeHistoryHandler

@@ -1,7 +1,10 @@
 import { pool } from '../config/database';
-import { User, UserRole, StudentProfile, TeacherProfile, ResponsableProfile } from '../types';
+import { User, UserRole, StudentProfile, TeacherProfile, StaffProfile } from '../types';
 import { hashPassword } from '../utils/auth.utils';
 import { QueryBuilder, addBaseFilters } from '../utils/query-builder';
+// ✅ CORRECTION : Supprimer createStaffProfile de l'import pour éviter le conflit
+import { getStaffProfile } from './staff.model';
+
 
 // =========================
 // Interfaces de filtres
@@ -103,12 +106,40 @@ export async function createTeacherProfile(
   return result.rows[0];
 }
 
-export async function createResponsableProfile(
+// ✅ CORRECTION : Cette fonction insère dans staff_profiles (pas responsable_profiles)
+export async function createStaffProfile(
   userId: string,
-  profileData: Partial<ResponsableProfile>
-): Promise<ResponsableProfile> {
+  profileData: Partial<StaffProfile>
+): Promise<StaffProfile> {
   const query = `
-    INSERT INTO responsable_profiles (
+    INSERT INTO staff_profiles (
+      user_id, phone, department, office_room, employee_no, hire_date
+    )
+    VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING user_id, phone, department, office_room, employee_no, hire_date, created_at
+  `;
+  
+  const values = [
+    userId,
+    profileData.phone || null,
+    profileData.department || null,
+    profileData.office_room || null,
+    profileData.employee_no || null,
+    profileData.hire_date || null,
+  ];
+  
+  const result = await pool.query(query, values);
+  return result.rows[0];
+}
+
+// ✅ NOUVEAU : Fonction pour créer un profil parent (si vous avez une table parent_profiles)
+export async function createParentProfile(
+  userId: string,
+  profileData: Partial<StaffProfile>
+): Promise<StaffProfile> {
+  // Si vous avez créé une table parent_profiles
+  const query = `
+    INSERT INTO parent_profiles (
       user_id, phone, address, relation_type, is_primary_contact,
       can_view_grades, can_view_attendance, emergency_contact
     )
@@ -198,7 +229,7 @@ export async function getUserWithProfile(userId: string, role: UserRole, establi
   const user = await findUserById(userId, establishmentId);
   if (!user) return null;
   
-  let profile: StudentProfile | TeacherProfile | ResponsableProfile | null = null;
+  let profile: StudentProfile | TeacherProfile | StaffProfile | null = null;
   
   switch (role) {
     case 'student':
@@ -207,8 +238,11 @@ export async function getUserWithProfile(userId: string, role: UserRole, establi
     case 'teacher':
       profile = await getTeacherProfile(userId);
       break;
-    case 'responsable':
-      profile = await getResponsableProfile(userId);
+    case 'staff':
+      profile = await getStaffProfile(userId);
+      break;
+    case 'parent':
+      profile = await getParentProfile(userId);
       break;
     case 'admin':
       break;
@@ -229,10 +263,17 @@ export async function getTeacherProfile(userId: string): Promise<TeacherProfile 
   return result.rows[0] || null;
 }
 
-export async function getResponsableProfile(userId: string): Promise<ResponsableProfile | null> {
-  const query = `SELECT * FROM responsable_profiles WHERE user_id = $1`;
+// ✅ NOUVEAU : Fonction pour récupérer un profil parent
+export async function getParentProfile(userId: string): Promise<StaffProfile | null> {
+  const query = `SELECT * FROM parent_profiles WHERE user_id = $1`;
   const result = await pool.query(query, [userId]);
   return result.rows[0] || null;
+}
+
+// ✅ Alias pour compatibilité (si vous aviez du code qui utilisait getResponsableProfile)
+export async function getResponsableProfile(userId: string): Promise<StaffProfile | null> {
+  // Décidez si vous voulez chercher dans staff_profiles ou parent_profiles
+  return getParentProfile(userId);
 }
 
 // =========================

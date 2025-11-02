@@ -5,6 +5,7 @@ import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+
 import { EditNoteModal } from "@/components/notes/EditNoteModal"
 import { NotesSummaryCard } from "@/components/notes/NotesSummaryCard"
 import { SubjectSummTable } from "@/components/notes/SubjectSummTable"
@@ -364,7 +365,7 @@ export default function ResponsableNotesPage() {
 
   if (isLoading && children.length === 0) {
     return (
-      <DashboardLayout requiredRole="responsable">
+      <DashboardLayout requiredRole="student">
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center space-y-4">
             <div className="animate-spin rounded-full h-16 w-16 border-4 border-primary border-t-transparent mx-auto" />
@@ -381,7 +382,7 @@ export default function ResponsableNotesPage() {
 
   if (error && children.length === 0) {
     return (
-      <DashboardLayout requiredRole="responsable">
+      <DashboardLayout requiredRole="student">
         <Card className="max-w-md mx-auto mt-8 border-red-200 bg-red-50/50">
           <CardContent className="pt-6">
             <div className="flex flex-col items-center text-center space-y-4">
@@ -407,7 +408,7 @@ export default function ResponsableNotesPage() {
 
   if (children.length === 0) {
     return (
-      <DashboardLayout requiredRole="responsable">
+      <DashboardLayout requiredRole="student">
         <Card>
           <CardContent className="py-12 text-center">
             <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -426,7 +427,7 @@ export default function ResponsableNotesPage() {
   // ============================================
 
   return (
-    <DashboardLayout requiredRole="responsable">
+    <DashboardLayout requiredRole="student">
       <div className="space-y-6 pb-8">
         {/* ========================================== */}
         {/* HEADER */}

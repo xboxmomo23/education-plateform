@@ -412,7 +412,7 @@ export default function ResponsableNotesPage() {
       console.log("🔍 [DEBUG] Chargement des notes des enfants...")
 
       // ✅ Appel API unique
-      const response = await api.get("/grades/children")
+      const response = await api.get("/grades/managed-students")
 
       console.log("📦 [DEBUG] Réponse API:", response)
 
@@ -482,7 +482,7 @@ export default function ResponsableNotesPage() {
 
   if (loading && childrenData.length === 0) {
     return (
-      <DashboardLayout requiredRole="responsable">
+      <DashboardLayout requiredRole="staff">
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center space-y-4">
             <div className="animate-spin rounded-full h-16 w-16 border-4 border-primary border-t-transparent mx-auto" />
@@ -501,7 +501,7 @@ export default function ResponsableNotesPage() {
 
   if (error && childrenData.length === 0) {
     return (
-      <DashboardLayout requiredRole="responsable">
+      <DashboardLayout requiredRole="staff">
         <Card className="max-w-md mx-auto mt-8 border-red-200 bg-red-50/50">
           <CardContent className="pt-6">
             <div className="flex flex-col items-center text-center space-y-4">
@@ -529,7 +529,7 @@ export default function ResponsableNotesPage() {
 
   if (childrenData.length === 0) {
     return (
-      <DashboardLayout requiredRole="responsable">
+      <DashboardLayout requiredRole="staff">
         <Card>
           <CardContent className="py-12 text-center">
             <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -555,7 +555,7 @@ export default function ResponsableNotesPage() {
   const allChildren: Child[] = childrenData.map((c) => c.child)
 
   return (
-    <DashboardLayout requiredRole="responsable">
+    <DashboardLayout requiredRole="staff">
       <div className="space-y-6 pb-8">
         {/* ============================================ */}
         {/* HEADER */}

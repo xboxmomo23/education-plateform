@@ -117,7 +117,7 @@ export async function getTeacherEvaluationsHandler(req: Request, res: Response):
     
     if (req.user.role === 'teacher') {
       evaluations = await findTeacherEvaluations(req.user.userId, filters);
-    } else if (req.user.role === 'admin' || req.user.role === 'responsable') {
+    } else if (req.user.role === 'admin' || req.user.role === 'staff') {
       evaluations = await findEvaluations(filters);
     } else {
       res.status(403).json({ success: false, error: 'Accès refusé' });
@@ -614,7 +614,7 @@ export async function getStudentGradesHandler(req: Request, res: Response): Prom
     }
 
     // Pour les responsables, vérifier que c'est bien leur enfant
-    if (req.user.role === 'responsable') {
+    if (req.user.role === 'staff') {
       const childrenGrades = await getChildrenGrades(req.user.userId);
       const isParent = childrenGrades.some(g => g.student_id === studentId);
       
@@ -775,7 +775,7 @@ export async function getChildrenGradesHandler(req: Request, res: Response): Pro
 
     console.log('🔍 [DEBUG] Role:', req.user.role);
 
-    if (req.user.role !== 'responsable') {
+    if (req.user.role !== 'staff') {
       console.log('❌ [DEBUG] Rôle incorrect:', req.user.role);
       res.status(403).json({
         success: false,
@@ -793,7 +793,7 @@ export async function getChildrenGradesHandler(req: Request, res: Response): Pro
       establishmentId: req.user.establishmentId,
     };
     console.log('🔍 [DEBUG] Filters:', filters);
-    console.log('🔍 [DEBUG] User ID (responsable):', req.user.userId);
+    console.log('🔍 [DEBUG] User ID (staff):', req.user.userId);
 
     const grades = await getChildrenGrades(req.user.userId, filters);
     console.log('📦 [DEBUG] Grades récupérées:', grades.length);
@@ -822,6 +822,132 @@ export async function getChildrenGradesHandler(req: Request, res: Response): Pro
     });
   } catch (error) {
     console.error('❌ [ERROR] Erreur récupération notes enfants:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la récupération des notes',
+    });
+  }
+}
+
+// Nouveau : Pour le staff
+// ✅ VERSION FINALE CORRIGÉE - Avec les vrais noms de colonnes
+
+// ✅ VERSION SANS class_students - Fonctionne à coup sûr !
+
+/**
+ * GET /api/grades/managed-students
+ * Récupère les notes des élèves que le staff peut gérer
+ */
+export async function getStaffManagedStudentsGradesHandler(
+  req: Request,
+  res: Response
+) {
+  try {
+    const { termId, courseId } = req.query;
+    const staffId = req.user?.userId;
+
+    console.log('[Staff Grades] Fetching grades for staff:', staffId);
+    console.log('[Staff Grades] Filters:', { termId, courseId });
+
+    // ✅ Requête SANS class_students (qui n'existe pas)
+    let query = `
+      SELECT 
+        sp.user_id as student_id,
+        u.full_name as student_name,
+        c.id as course_id,
+        c.title as course_title,
+        e.id as evaluation_id,
+        e.title as evaluation_title,
+        e.type as evaluation_type,
+        e.eval_date,
+        e.coefficient,
+        e.max_scale,
+        g.id as grade_id,
+        g.value as grade_value,
+        g.absent,
+        g.comment as grade_comment,
+        g.created_at as grade_created_at,
+        t.full_name as teacher_name
+      FROM student_profiles sp
+      INNER JOIN users u ON sp.user_id = u.id
+      LEFT JOIN grades g ON g.student_id = sp.user_id
+      LEFT JOIN evaluations e ON g.evaluation_id = e.id
+      LEFT JOIN courses c ON e.course_id = c.id
+      LEFT JOIN teacher_profiles tp ON c.teacher_id = tp.user_id
+      LEFT JOIN users t ON tp.user_id = t.id
+      WHERE u.active = true
+    `;
+
+    const params: any[] = [];
+
+    // Filtre par trimestre (optionnel)
+    if (termId) {
+      params.push(termId);
+      query += ` AND e.term_id = $${params.length}`;
+    }
+
+    // Filtre par cours (optionnel)
+    if (courseId) {
+      params.push(courseId);
+      query += ` AND c.id = $${params.length}`;
+    }
+
+    query += ` ORDER BY u.full_name ASC, e.eval_date DESC, c.title ASC LIMIT 100`;
+
+    console.log('[Staff Grades] Executing query...');
+
+    const result = await pool.query(query, params);
+
+    console.log(`[Staff Grades] Raw results: ${result.rows.length} rows`);
+
+    // Grouper les données par étudiant
+    const studentsMap = new Map();
+
+    result.rows.forEach((row) => {
+      const studentId = row.student_id;
+
+      if (!studentsMap.has(studentId)) {
+        studentsMap.set(studentId, {
+          student: {
+            id: studentId,
+            name: row.student_name,
+          },
+          grades: [],
+        });
+      }
+
+      // Ajouter la note si elle existe
+      if (row.grade_id) {
+        studentsMap.get(studentId).grades.push({
+          id: row.grade_id,
+          evaluation_id: row.evaluation_id,
+          evaluation_title: row.evaluation_title,
+          evaluation_type: row.evaluation_type,
+          subject_name: row.course_title || 'Matière inconnue',
+          subject_code: '', 
+          normalized_value: row.grade_value,
+          coefficient: parseFloat(row.coefficient) || 1,
+          max_scale: parseFloat(row.max_scale) || 20,
+          eval_date: row.eval_date,
+          comment: row.grade_comment,
+          class_name: '', 
+          absent: row.absent || false,
+          student_name: row.student_name,
+        });
+      }
+    });
+
+    const students = Array.from(studentsMap.values());
+
+    console.log(`[Staff Grades] ✅ SUCCESS: ${students.length} students grouped`);
+
+    res.json({
+      success: true,
+      data: students,
+    });
+  } catch (error: any) {
+    console.error('[Staff Grades] ❌ ERROR:', error.message);
+    console.error('[Staff Grades] Error code:', error.code);
     res.status(500).json({
       success: false,
       error: 'Erreur lors de la récupération des notes',

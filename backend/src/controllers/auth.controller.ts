@@ -9,7 +9,7 @@ import {
   createUser,
   createStudentProfile,
   createTeacherProfile,
-  createResponsableProfile,
+  createStaffProfile,
 } from '../models/user.model';
 import {
   createSession,
@@ -25,6 +25,8 @@ import {
   extractTokenFromHeader,
 } from '../utils/auth.utils';
 import { LoginResponse, RegisterRequest, UserRole } from '../types';
+
+
 
 // Configuration
 const MAX_FAILED_ATTEMPTS = 5;
@@ -418,9 +420,10 @@ export async function register(req: Request, res: Response): Promise<void> {
       case 'teacher':
         profile = await createTeacherProfile(user.id, profile_data || {});
         break;
-      case 'responsable':
-        profile = await createResponsableProfile(user.id, profile_data || {});
+      case 'staff':
+        profile = await createStaffProfile(user.id, profile_data || {});       
         break;
+
     }
 
     // Ne pas renvoyer le password_hash
@@ -430,8 +433,11 @@ export async function register(req: Request, res: Response): Promise<void> {
       success: true,
       message: 'Utilisateur créé avec succès',
       data: {
-        user: userWithoutPassword,
-        profile,
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        full_name: user.full_name,
+        profile: profile || undefined, // où 'profile' peut être StaffProfile, etc.
       },
     });
   } catch (error) {

@@ -26,7 +26,7 @@ export declare function updateEvaluationHandler(req: Request, res: Response): Pr
 export declare function deleteEvaluationHandler(req: Request, res: Response): Promise<void>;
 /**
  * POST /api/grades
- * Saisie/modification de notes en batch
+ * Crée ou met à jour des notes en batch
  */
 export declare function createOrUpdateGradesHandler(req: Request, res: Response): Promise<void>;
 /**
@@ -41,7 +41,7 @@ export declare function updateGradeHandler(req: Request, res: Response): Promise
 export declare function deleteGradeHandler(req: Request, res: Response): Promise<void>;
 /**
  * GET /api/grades/:id
- * Récupère les détails complets d'une note pour l'édition
+ * Récupère les détails complets d'une note
  */
 export declare function getGradeByIdHandler(req: Request, res: Response): Promise<void>;
 /**
@@ -50,8 +50,8 @@ export declare function getGradeByIdHandler(req: Request, res: Response): Promis
  */
 export declare function getGradeHistoryHandler(req: Request, res: Response): Promise<void>;
 /**
- * GET /api/grades/student/:studentId
- * Récupère toutes les notes d'un élève
+ * ✅ FONCTION CORRIGÉE - GET /api/grades/student/:studentId
+ * Récupère les notes d'un élève avec MAPPING COMPLET en camelCase
  */
 export declare function getStudentGradesHandler(req: Request, res: Response): Promise<void>;
 /**
@@ -65,10 +65,20 @@ export declare function getStudentAveragesHandler(req: Request, res: Response): 
  */
 export declare function getChildrenGradesHandler(req: Request, res: Response): Promise<void>;
 /**
+ * GET /api/grades/managed-students
+ * Récupère les notes des élèves que le staff peut gérer
+ */
+export declare function getStaffManagedStudentsGradesHandler(req: Request, res: Response): Promise<void>;
+/**
  * GET /api/grades/course/:courseId
  * Récupère toutes les notes d'un cours
  */
 export declare function getCourseGradesHandler(req: Request, res: Response): Promise<void>;
+/**
+ * GET /api/grades/course/:courseId/students
+ * Récupère tous les élèves d'un cours avec leurs notes pour une évaluation
+ */
+export declare function getCourseStudentsWithGrades(req: Request, res: Response): Promise<void>;
 /**
  * GET /api/grades/class/:classId/averages
  * Récupère les moyennes d'une classe

@@ -2,7 +2,7 @@
 // Types des ENUMs PostgreSQL
 // =========================
 
-export type UserRole = 'student' | 'teacher' | 'responsable' | 'admin';
+export type UserRole = 'student' | 'teacher' | 'staff' | 'admin' | 'parent';
 export type EvaluationType = 'controle' | 'devoir' | 'participation' | 'examen';
 export type AssignmentStatus = 'draft' | 'published' | 'archived';
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excluded';
@@ -20,6 +20,7 @@ export interface User {
   password_hash: string;
   role: UserRole;
   full_name: string;
+  establishment_id: string | null;
   active: boolean;
   email_verified: boolean;
   last_login: Date | null;
@@ -65,16 +66,37 @@ export interface TeacherProfile {
   office_room: string | null;
 }
 
-export interface ResponsableProfile {
+// ✅ NOUVEAU: profil du personnel (administration, vie scolaire, CPE...)
+export interface StaffProfile {
   user_id: string;
-  phone: string;
-  address: string | null;
-  relation_type: string | null;
-  is_primary_contact: boolean;
-  can_view_grades: boolean;
-  can_view_attendance: boolean;
-  emergency_contact: boolean;
+  phone?: string;
+  address?: string;
+  office_room?: string;
+  relation_type?: string;
+  is_primary_contact?: boolean;
+  can_view_grades?: boolean;
+  can_view_attendance?: boolean;
+  emergency_contact?: string;
+  department?: string;
+  employee_no?: string;
+  hire_date?: string;   // ou Date selon ton choix
+  created_at?: string;  // idem
 }
+
+/** ✅ Compat: tout ancien "ResponsableProfile" = StaffProfile */
+export type ResponsableProfile = StaffProfile;
+
+/** (facultatif mais pratique) */
+export type AnyProfile = StudentProfile | TeacherProfile | StaffProfile;
+
+export type UserWithProfile = {
+  id: string;
+  email: string;
+  role: UserRole;
+  full_name: string;
+  profile?: StudentProfile | TeacherProfile | StaffProfile; // ✅
+};
+
 
 // =========================
 // JWT Payload
@@ -110,7 +132,7 @@ export interface LoginResponse {
     email: string;
     role: UserRole;
     full_name: string;
-    profile?: StudentProfile | TeacherProfile | ResponsableProfile;
+    profile?: StudentProfile | TeacherProfile | StaffProfile;
   };
 }
 
