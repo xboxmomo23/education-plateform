@@ -305,14 +305,65 @@ export async function findGrades(filters: GradeFilters = {}): Promise<GradeWithD
   return result.rows;
 }
 
+
+
 /**
- * Trouve une note par ID
+ * Trouve une note par ID avec toutes les informations nécessaires
+ * Version optimisée qui ne dépend pas de findGrades()
  */
 export async function findGradeById(id: string): Promise<GradeWithDetails | null> {
-  const grades = await findGrades({ id });
-  return grades[0] || null;
-}
+  try {
+    // ✅ Requête SQL directe sans QueryBuilder
+    const query = `
+      SELECT 
+        g.id,
+        g.evaluation_id,
+        g.student_id,
+        g.value,
+        g.absent,
+        g.normalized_value,
+        g.comment,
+        g.created_by,
+        g.created_at,
+        g.updated_at,
+        -- Infos évaluation
+        e.title as evaluation_title,
+        e.type as evaluation_type,
+        e.coefficient as evaluation_coefficient,
+        e.max_scale as evaluation_max_scale,
+        e.eval_date as evaluation_date,
+        e.description as evaluation_description,
+        -- Infos cours (c.title au lieu de c.name)
+        c.id as course_id,
+        c.title as subject_name,
+        c.subject_id,
+        -- Infos étudiant
+        u.full_name as student_name,
+        u.email as student_email,
+        -- Infos créateur
+        creator.full_name as created_by_name
+      FROM grades g
+      INNER JOIN evaluations e ON g.evaluation_id = e.id
+      INNER JOIN courses c ON e.course_id = c.id
+      INNER JOIN users u ON g.student_id = u.id
+      LEFT JOIN users creator ON g.created_by = creator.id
+      WHERE g.id = $1
+    `;
 
+    const result = await pool.query(query, [id]);
+
+    if (result.rows.length === 0) {
+      console.log(`[findGradeById] Grade ${id} not found`);
+      return null;
+    }
+
+    console.log(`[findGradeById] ✅ Grade ${id} found for ${result.rows[0].student_name}`);
+    return result.rows[0];
+  } catch (error) {
+    console.error('[findGradeById] Error:', error);
+    return null;
+  }
+}
 /**
  * ✅ FONCTION CORRIGÉE - Trouve les notes d'un étudiant avec TOUTES les infos nécessaires
  * Cette fonction retourne les données complètes attendues par le frontend

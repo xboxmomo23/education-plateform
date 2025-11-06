@@ -94,7 +94,8 @@ export declare function createGrades(grades: CreateGradeData[]): Promise<Grade[]
  */
 export declare function findGrades(filters?: GradeFilters): Promise<GradeWithDetails[]>;
 /**
- * Trouve une note par ID
+ * Trouve une note par ID avec toutes les informations nécessaires
+ * Version optimisée qui ne dépend pas de findGrades()
  */
 export declare function findGradeById(id: string): Promise<GradeWithDetails | null>;
 /**
