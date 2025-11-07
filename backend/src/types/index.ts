@@ -1,188 +1,105 @@
 // =========================
-// Types des ENUMs PostgreSQL
+// MISE À JOUR DU FICHIER types/index.ts
+// Ajouter ces types aux types existants
 // =========================
 
-export type UserRole = 'student' | 'teacher' | 'staff' | 'admin' | 'parent';
-export type EvaluationType = 'controle' | 'devoir' | 'participation' | 'examen';
-export type AssignmentStatus = 'draft' | 'published' | 'archived';
-export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excluded';
-export type TimetableStatus = 'confirmed' | 'cancelled' | 'changed';
-export type WeekType = 'A' | 'B';
-export type ClassLevel = '6eme' | '5eme' | '4eme' | '3eme' | 'seconde' | 'premiere' | 'terminale';
+// Modifier l'export du type AttendanceStatus existant
+export type AttendanceStatus = 
+  | 'present' 
+  | 'absent' 
+  | 'late' 
+  | 'excused'   // ✅ NOUVEAU
+  | 'remote'    // ✅ NOUVEAU
+  | 'excluded';
 
-// =========================
-// Interfaces Utilisateurs
-// =========================
+// Ajouter ces nouvelles interfaces
 
-export interface User {
+export interface AttendanceSession {
   id: string;
-  email: string;
-  password_hash: string;
-  role: UserRole;
-  full_name: string;
+  course_id: string;
+  session_date: Date;
+  scheduled_start: string;
+  scheduled_end: string;
+  status: TimetableStatus;
+  recorded_by: string | null;
+  created_at: Date;
   establishment_id: string | null;
-  active: boolean;
-  email_verified: boolean;
-  last_login: Date | null;
-  failed_login_attempts: number;
-  account_locked_until: Date | null;
-  password_changed_at: Date;
-  verification_token: string | null;
-  reset_token: string | null;
-  reset_token_expires: Date | null;
-  created_at: Date;
-  updated_at: Date | null;
-  deleted_at: Date | null;
 }
 
-export interface UserSession {
+export interface AttendanceRecord {
   id: string;
-  user_id: string;
-  token_hash: string;
-  device_info: string | null;
-  ip_address: string | null;
-  expires_at: Date;
-  created_at: Date;
-  last_activity: Date;
+  session_id: string;
+  student_id: string;
+  status: AttendanceStatus;
+  late_minutes?: number | null;
+  justification?: string | null;
+  justified: boolean;
+  justified_by?: string | null;
+  justified_at?: Date | null;
+  justification_document?: string | null;
+  recorded_at: Date;
+  recorded_by: string | null;
+  last_modified_at?: Date;
+  last_modified_by?: string | null;
 }
 
-export interface StudentProfile {
-  user_id: string;
-  student_no: string | null;
-  birthdate: Date | null;
-  address: string | null;
-  phone: string | null;
-  emergency_contact: string | null;
-  medical_notes: string | null;
-  photo_url: string | null;
+export interface AttendanceSessionWithDetails extends AttendanceSession {
+  course_title: string;
+  subject_name: string;
+  subject_code: string;
+  class_label: string;
+  class_id: string;
+  teacher_name: string;
+  teacher_id: string;
 }
 
-export interface TeacherProfile {
-  user_id: string;
-  employee_no: string | null;
-  hire_date: Date | null;
-  specialization: string | null;
-  phone: string | null;
-  office_room: string | null;
+export interface AttendanceRecordWithDetails extends AttendanceRecord {
+  student_name: string;
+  student_no: string;
+  session_date: Date;
+  subject_name: string;
+  class_label: string;
+  scheduled_start: string;
+  scheduled_end: string;
 }
 
-// ✅ NOUVEAU: profil du personnel (administration, vie scolaire, CPE...)
-export interface StaffProfile {
-  user_id: string;
-  phone?: string;
-  address?: string;
-  office_room?: string;
-  relation_type?: string;
-  is_primary_contact?: boolean;
-  can_view_grades?: boolean;
-  can_view_attendance?: boolean;
-  emergency_contact?: string;
-  department?: string;
-  employee_no?: string;
-  hire_date?: string;   // ou Date selon ton choix
-  created_at?: string;  // idem
+export interface AttendanceStats {
+  total: number;
+  present: number;
+  absent: number;
+  late: number;
+  excused: number;
+  remote: number;
+  excluded: number;
+  attendance_rate: number;
 }
 
-/** ✅ Compat: tout ancien "ResponsableProfile" = StaffProfile */
-export type ResponsableProfile = StaffProfile;
-
-/** (facultatif mais pratique) */
-export type AnyProfile = StudentProfile | TeacherProfile | StaffProfile;
-
-export type UserWithProfile = {
-  id: string;
-  email: string;
-  role: UserRole;
-  full_name: string;
-  profile?: StudentProfile | TeacherProfile | StaffProfile; // ✅
-};
-
-
-// =========================
-// JWT Payload
-// =========================
-
-export interface JWTPayload {
-  userId: string;
-  email: string;
-  role: UserRole;
-  full_name: string;
+export interface StudentAttendanceData {
+  student_id: string;
+  student_name: string;
+  student_no: string;
+  record_id: string | null;
+  status: AttendanceStatus | null;
+  late_minutes: number | null;
+  justification: string | null;
 }
 
-export interface DecodedToken extends JWTPayload {
-  iat: number;
-  exp: number;
-}
-
-// =========================
-// Requêtes API
-// =========================
-
-export interface LoginRequest {
-  email: string;
-  password: string;
-}
-
-export interface LoginResponse {
+// API Responses
+export interface AttendanceSessionResponse {
   success: boolean;
-  token: string;
-  refreshToken?: string;
-  user: {
-    id: string;
-    email: string;
-    role: UserRole;
-    full_name: string;
-    profile?: StudentProfile | TeacherProfile | StaffProfile;
+  data?: {
+    session: AttendanceSession;
+    students: StudentAttendanceData[];
+    canModify: boolean;
   };
-}
-
-export interface RegisterRequest {
-  email: string;
-  password: string;
-  full_name: string;
-  role: UserRole;
-  profile_data?: any;
-}
-
-export interface RefreshTokenRequest {
-  refreshToken: string;
-}
-
-export interface ChangePasswordRequest {
-  oldPassword: string;
-  newPassword: string;
-}
-
-export interface ResetPasswordRequest {
-  email: string;
-}
-
-export interface ResetPasswordConfirmRequest {
-  token: string;
-  newPassword: string;
-}
-
-// =========================
-// Réponses API Standardisées
-// =========================
-
-export interface ApiResponse<T = any> {
-  success: boolean;
-  message?: string;
-  data?: T;
   error?: string;
-  errors?: ValidationError[];
 }
 
-export interface ValidationError {
-  field: string;
-  message: string;
-}
-
-// =========================
-// Middleware Request avec User
-// =========================
-
-export interface AuthenticatedRequest extends Request {
-  user?: JWTPayload;
+export interface AttendanceHistoryResponse {
+  success: boolean;
+  data?: {
+    records: AttendanceRecordWithDetails[];
+    stats: AttendanceStats;
+  };
+  error?: string;
 }

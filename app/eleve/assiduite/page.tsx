@@ -1,344 +1,356 @@
 "use client"
 
+import React, { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Calendar, AlertTriangle, CheckCircle, XCircle, Filter } from "lucide-react"
-import { useState } from "react"
+import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Progress } from "@/components/ui/progress"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { api } from "@/lib/api/client"
+import { getUserSession } from "@/lib/auth-new"
+import { AlertCircle, Check, X, Clock, Wifi, Home, UserX, Calendar, TrendingUp } from "lucide-react"
+import { format } from "date-fns"
+import { fr } from "date-fns/locale"
 
-// Types pour les absences
-interface Absence {
+type AttendanceStatus = "present" | "absent" | "late" | "excused" | "remote" | "excluded"
+
+interface AttendanceRecord {
   id: string
-  date: string
-  subject: string
-  reason?: string
-  isExcluded: boolean
-  isJustified: boolean
-  justificationNote?: string
-  duration: number // en heures
+  status: AttendanceStatus
+  late_minutes: number | null
+  justification: string | null
+  session_date: string
+  scheduled_start: string
+  scheduled_end: string
+  subject_name: string
+  class_label: string
 }
 
-// Données de démonstration
-const DEMO_ABSENCES: Absence[] = [
-  {
-    id: "1",
-    date: "2025-10-10",
-    subject: "Mathématiques",
-    reason: "Maladie",
-    isExcluded: false,
-    isJustified: true,
-    justificationNote: "Certificat médical fourni",
-    duration: 2,
-  },
-  {
-    id: "2",
-    date: "2025-10-12",
-    subject: "Français",
-    isExcluded: false,
-    isJustified: false,
-    duration: 2,
-  },
-  {
-    id: "3",
-    date: "2025-10-13",
-    subject: "Physique-Chimie",
-    reason: "Comportement inapproprié",
-    isExcluded: true,
-    isJustified: false,
-    duration: 2,
-  },
-  {
-    id: "4",
-    date: "2025-10-14",
-    subject: "Histoire-Géographie",
-    reason: "Retard",
-    isExcluded: false,
-    isJustified: false,
-    duration: 1,
-  },
-  {
-    id: "5",
-    date: "2025-10-15",
-    subject: "Anglais",
-    reason: "Rendez-vous médical",
-    isExcluded: false,
-    isJustified: true,
-    justificationNote: "Justificatif fourni après coup",
-    duration: 2,
-  },
-  {
-    id: "6",
-    date: "2025-10-16",
-    subject: "Mathématiques",
-    isExcluded: false,
-    isJustified: false,
-    duration: 2,
-  },
-]
-
-// Seuil pour conseil de discipline (en heures)
-const DISCIPLINE_THRESHOLD = 10
-
-// Fonction pour formater la date
-function formatDate(dateString: string): string {
-  const date = new Date(dateString)
-  return date.toLocaleDateString("fr-FR", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  })
+interface AttendanceStats {
+  total: number
+  present: number
+  absent: number
+  late: number
+  excused: number
+  remote: number
+  excluded: number
+  attendance_rate: number
 }
 
-// Fonction pour obtenir le type d'absence
-function getAbsenceType(absence: Absence): "justified" | "unjustified" | "excluded" {
-  if (absence.isExcluded) return "excluded"
-  if (absence.isJustified) return "justified"
-  return "unjustified"
-}
+export default function EleveAssiduiteP() {
+  const [records, setRecords] = useState<AttendanceRecord[]>([])
+  const [stats, setStats] = useState<AttendanceStats | null>(null)
+  const [startDate, setStartDate] = useState<string>("")
+  const [endDate, setEndDate] = useState<string>("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-// Fonction pour obtenir la couleur du badge
-function getAbsenceBadgeColor(type: "justified" | "unjustified" | "excluded"): string {
-  switch (type) {
-    case "justified":
-      return "bg-green-500/10 text-green-500 hover:bg-green-500/20"
-    case "unjustified":
-      return "bg-red-500/10 text-red-500 hover:bg-red-500/20"
-    case "excluded":
-      return "bg-orange-500/10 text-orange-500 hover:bg-orange-500/20"
+  const user = getUserSession()
+
+  useEffect(() => {
+    if (user) {
+      loadAttendanceHistory()
+    }
+  }, [user])
+
+  const loadAttendanceHistory = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      let url = `/attendance/students/${user?.id}/records`
+      const params: string[] = []
+
+      if (startDate) params.push(`startDate=${startDate}`)
+      if (endDate) params.push(`endDate=${endDate}`)
+
+      if (params.length > 0) {
+        url += `?${params.join("&")}`
+      }
+
+      const response = await api.get(url)
+
+      if (response.success) {
+        setRecords(response.data.records || [])
+        setStats(response.data.stats || null)
+      }
+    } catch (err: any) {
+      setError(err.message || "Erreur lors du chargement de l'historique")
+    } finally {
+      setLoading(false)
+    }
   }
-}
 
-// Fonction pour obtenir le label du badge
-function getAbsenceBadgeLabel(type: "justified" | "unjustified" | "excluded"): string {
-  switch (type) {
-    case "justified":
-      return "Justifiée"
-    case "unjustified":
-      return "Injustifiée"
-    case "excluded":
-      return "Exclusion"
+  const getStatusIcon = (status: AttendanceStatus) => {
+    switch (status) {
+      case "present":
+        return <Check className="h-4 w-4 text-green-600" />
+      case "absent":
+        return <X className="h-4 w-4 text-red-600" />
+      case "late":
+        return <Clock className="h-4 w-4 text-yellow-600" />
+      case "excused":
+        return <Home className="h-4 w-4 text-blue-600" />
+      case "remote":
+        return <Wifi className="h-4 w-4 text-purple-600" />
+      case "excluded":
+        return <UserX className="h-4 w-4 text-gray-600" />
+    }
   }
-}
 
-// Fonction pour obtenir l'icône
-function getAbsenceIcon(type: "justified" | "unjustified" | "excluded") {
-  switch (type) {
-    case "justified":
-      return <CheckCircle className="h-5 w-5 text-green-500" />
-    case "unjustified":
-      return <XCircle className="h-5 w-5 text-red-500" />
-    case "excluded":
-      return <AlertTriangle className="h-5 w-5 text-orange-500" />
+  const getStatusLabel = (status: AttendanceStatus) => {
+    switch (status) {
+      case "present":
+        return "Présent"
+      case "absent":
+        return "Absent"
+      case "late":
+        return "Retard"
+      case "excused":
+        return "Excusé"
+      case "remote":
+        return "À distance"
+      case "excluded":
+        return "Exclu"
+    }
   }
-}
 
-export default function AssiduitePage() {
-  const [filterType, setFilterType] = useState<"all" | "justified" | "unjustified" | "excluded">("all")
-  const [filterSubject, setFilterSubject] = useState<string>("all")
-
-  // Calculer les statistiques
-  const totalUnjustifiedHours = DEMO_ABSENCES.filter((a) => !a.isJustified && !a.isExcluded).reduce(
-    (sum, a) => sum + a.duration,
-    0,
-  )
-  const isDisciplineThresholdReached = totalUnjustifiedHours >= DISCIPLINE_THRESHOLD
-
-  // Obtenir la liste des matières uniques
-  const subjects = Array.from(new Set(DEMO_ABSENCES.map((a) => a.subject)))
-
-  // Filtrer les absences
-  const filteredAbsences = DEMO_ABSENCES.filter((absence) => {
-    const type = getAbsenceType(absence)
-    const typeMatch = filterType === "all" || type === filterType
-    const subjectMatch = filterSubject === "all" || absence.subject === filterSubject
-    return typeMatch && subjectMatch
-  }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  const getStatusColor = (status: AttendanceStatus) => {
+    switch (status) {
+      case "present":
+        return "bg-green-100 text-green-800 border-green-200"
+      case "absent":
+        return "bg-red-100 text-red-800 border-red-200"
+      case "late":
+        return "bg-yellow-100 text-yellow-800 border-yellow-200"
+      case "excused":
+        return "bg-blue-100 text-blue-800 border-blue-200"
+      case "remote":
+        return "bg-purple-100 text-purple-800 border-purple-200"
+      case "excluded":
+        return "bg-gray-100 text-gray-800 border-gray-200"
+    }
+  }
 
   return (
     <DashboardLayout requiredRole="student">
       <div className="space-y-6">
-        {/* En-tête de la page */}
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Assiduité</h2>
-          <p className="text-muted-foreground">Suivi de vos absences et retards</p>
+          <h1 className="text-3xl font-bold">Mon assiduité</h1>
+          <p className="text-muted-foreground">Consultez votre historique de présence</p>
         </div>
 
         {/* Statistiques */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Total absences</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{DEMO_ABSENCES.length}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Justifiées</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-500">
-                {DEMO_ABSENCES.filter((a) => a.isJustified).length}
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Injustifiées</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-500">
-                {DEMO_ABSENCES.filter((a) => !a.isJustified && !a.isExcluded).length}
-              </div>
-            </CardContent>
-          </Card>
-          <Card className={isDisciplineThresholdReached ? "border-red-500" : ""}>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Heures injustifiées</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className={`text-2xl font-bold ${isDisciplineThresholdReached ? "text-red-500" : ""}`}>
-                {totalUnjustifiedHours}h
-              </div>
-              {isDisciplineThresholdReached && (
-                <p className="text-xs text-red-500 mt-1">Seuil conseil de discipline atteint</p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        {stats && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Taux de présence</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5 text-green-600" />
+                  <span className="text-3xl font-bold">{stats.attendance_rate}%</span>
+                </div>
+                <Progress value={stats.attendance_rate} className="mt-2" />
+              </CardContent>
+            </Card>
 
-        {/* Alerte seuil */}
-        {isDisciplineThresholdReached && (
-          <Card className="border-red-500 bg-red-500/5">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-red-500" />
-                <CardTitle className="text-red-500">Attention</CardTitle>
-              </div>
-              <CardDescription>
-                Vous avez atteint le seuil de {DISCIPLINE_THRESHOLD} heures d'absences injustifiées. Un conseil de
-                discipline peut être convoqué.
-              </CardDescription>
-            </CardHeader>
-          </Card>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Présences</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2">
+                  <Check className="h-5 w-5 text-green-600" />
+                  <span className="text-3xl font-bold text-green-600">{stats.present}</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Sur {stats.total} cours</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Absences</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2">
+                  <X className="h-5 w-5 text-red-600" />
+                  <span className="text-3xl font-bold text-red-600">{stats.absent}</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Dont {stats.excused} excusées</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Retards</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-yellow-600" />
+                  <span className="text-3xl font-bold text-yellow-600">{stats.late}</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Sur {stats.total} cours</p>
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         {/* Filtres */}
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <Filter className="h-5 w-5" />
-              <CardTitle>Filtres</CardTitle>
-            </div>
+            <CardTitle>Filtrer par période</CardTitle>
+            <CardDescription>Sélectionnez une plage de dates pour filtrer l'historique</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-              <div className="flex-1">
-                <label className="text-sm font-medium mb-2 block">Type d'absence</label>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant={filterType === "all" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFilterType("all")}
-                  >
-                    Toutes
-                  </Button>
-                  <Button
-                    variant={filterType === "justified" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFilterType("justified")}
-                  >
-                    Justifiées
-                  </Button>
-                  <Button
-                    variant={filterType === "unjustified" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFilterType("unjustified")}
-                  >
-                    Injustifiées
-                  </Button>
-                  <Button
-                    variant={filterType === "excluded" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFilterType("excluded")}
-                  >
-                    Exclusions
-                  </Button>
-                </div>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <Label htmlFor="startDate">Date de début</Label>
+                <Input
+                  id="startDate"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="mt-1"
+                />
               </div>
-              <div className="flex-1">
-                <label className="text-sm font-medium mb-2 block">Matière</label>
-                <select
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={filterSubject}
-                  onChange={(e) => setFilterSubject(e.target.value)}
+
+              <div>
+                <Label htmlFor="endDate">Date de fin</Label>
+                <Input
+                  id="endDate"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+
+              <div className="flex items-end gap-2">
+                <Button onClick={loadAttendanceHistory} className="flex-1">
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Appliquer
+                </Button>
+                <Button
+                  onClick={() => {
+                    setStartDate("")
+                    setEndDate("")
+                    loadAttendanceHistory()
+                  }}
+                  variant="outline"
                 >
-                  <option value="all">Toutes les matières</option>
-                  {subjects.map((subject) => (
-                    <option key={subject} value={subject}>
-                      {subject}
-                    </option>
-                  ))}
-                </select>
+                  Réinitialiser
+                </Button>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Liste des absences */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Liste des absences ({filteredAbsences.length})</h3>
-          {filteredAbsences.length === 0 ? (
-            <Card>
-              <CardContent className="py-8 text-center text-muted-foreground">
-                Aucune absence trouvée avec ces filtres
-              </CardContent>
-            </Card>
-          ) : (
-            filteredAbsences.map((absence) => {
-              const type = getAbsenceType(absence)
-              return (
-                <Card key={absence.id} className={type === "unjustified" ? "border-red-200" : ""}>
-                  <CardHeader>
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-start gap-3 flex-1">
-                        <div className="mt-1">{getAbsenceIcon(type)}</div>
+        {/* Historique */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Historique des présences</CardTitle>
+            <CardDescription>{records.length} enregistrement(s)</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {loading && (
+              <p className="text-sm text-muted-foreground text-center py-8">Chargement...</p>
+            )}
+
+            {error && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            {!loading && records.length === 0 && (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>Aucun enregistrement trouvé pour cette période</AlertDescription>
+              </Alert>
+            )}
+
+            {!loading && records.length > 0 && (
+              <div className="space-y-3">
+                {records.map((record) => (
+                  <Card key={record.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <div className="flex flex-wrap items-center gap-2 mb-2">
-                            <Badge variant="secondary" className="font-normal">
-                              {absence.subject}
+                          <div className="flex items-center gap-2 mb-2">
+                            {getStatusIcon(record.status)}
+                            <Badge className={getStatusColor(record.status)}>
+                              {getStatusLabel(record.status)}
                             </Badge>
-                            <Badge className={getAbsenceBadgeColor(type)}>{getAbsenceBadgeLabel(type)}</Badge>
-                            <Badge variant="outline">{absence.duration}h</Badge>
+                            {record.status === "late" && record.late_minutes && (
+                              <Badge variant="outline" className="text-yellow-600">
+                                {record.late_minutes} min
+                              </Badge>
+                            )}
                           </div>
-                          <CardTitle className="text-lg">{formatDate(absence.date)}</CardTitle>
-                          {absence.reason && (
-                            <CardDescription className="mt-2">
-                              <span className="font-medium">Motif :</span> {absence.reason}
-                            </CardDescription>
-                          )}
-                          {absence.isJustified && absence.justificationNote && (
-                            <div className="mt-3 rounded-lg bg-green-500/10 p-3 border border-green-500/20">
-                              <p className="text-sm text-green-700 dark:text-green-400">
-                                <span className="font-medium">Justifié :</span> {absence.justificationNote}
+
+                          <h4 className="font-medium">{record.subject_name}</h4>
+                          <p className="text-sm text-muted-foreground">
+                            {format(new Date(record.session_date), "EEEE d MMMM yyyy", { locale: fr })} •{" "}
+                            {record.scheduled_start} - {record.scheduled_end}
+                          </p>
+
+                          {record.justification && (
+                            <div className="mt-2 p-2 bg-muted rounded-md">
+                              <p className="text-sm text-muted-foreground">
+                                <strong>Justification :</strong> {record.justification}
                               </p>
                             </div>
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Calendar className="h-4 w-4" />
-                      </div>
-                    </div>
-                  </CardHeader>
-                </Card>
-              )
-            })
-          )}
-        </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Légende */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Légende</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="flex items-center gap-2">
+                <Check className="h-4 w-4 text-green-600" />
+                <span className="text-sm">Présent : comptabilisé comme présence</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <X className="h-4 w-4 text-red-600" />
+                <span className="text-sm">Absent : absence non justifiée</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-yellow-600" />
+                <span className="text-sm">Retard : arrivée tardive</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Home className="h-4 w-4 text-blue-600" />
+                <span className="text-sm">Excusé : absence justifiée</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Wifi className="h-4 w-4 text-purple-600" />
+                <span className="text-sm">À distance : cours en ligne</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <UserX className="h-4 w-4 text-gray-600" />
+                <span className="text-sm">Exclu : exclusion temporaire</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </DashboardLayout>
   )

@@ -1,515 +1,459 @@
 "use client"
 
+import React, { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Calendar,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Download,
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  AlertTriangle,
-  Users,
-} from "lucide-react"
-import { useState, useEffect } from "react"
+import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { api } from "@/lib/api/client"
+import { getUserSession } from "@/lib/auth-new"
+import { AlertCircle, Check, X, Clock, Wifi, Home, UserX, Save, RefreshCw } from "lucide-react"
+import { format } from "date-fns"
+import { fr } from "date-fns/locale"
 
-// Types
+type AttendanceStatus = "present" | "absent" | "late" | "excused" | "remote" | "excluded"
+
+interface Session {
+  id: string
+  course_title: string
+  subject_name: string
+  class_label: string
+  session_date: string
+  scheduled_start: string
+  scheduled_end: string
+  canModify: boolean
+}
+
 interface Student {
-  id: string
-  name: string
-  status: "present" | "absent" | "late"
-  justification?: string
-  isJustified?: boolean
+  student_id: string
+  student_name: string
+  student_no: string
+  record_id: string | null
+  status: AttendanceStatus | null
+  late_minutes: number | null
+  justification: string | null
 }
 
-interface Course {
-  id: string
-  name: string
-  class: string
-  time: string
-}
-
-interface AttendanceRecord {
-  date: string
-  courseId: string
+interface SessionWithStudents {
+  session: Session
   students: Student[]
+  canModify: boolean
 }
 
-// Données de démonstration
-const DEMO_COURSES: Course[] = [
-  { id: "1", name: "Mathématiques", class: "Terminale A", time: "08:00 - 10:00" },
-  { id: "2", name: "Mathématiques", class: "Première B", time: "10:15 - 12:15" },
-  { id: "3", name: "Mathématiques", class: "Seconde C", time: "14:00 - 16:00" },
-]
+export default function ProfesseurPresencePage() {
+  const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), "yyyy-MM-dd"))
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [selectedSession, setSelectedSession] = useState<string | null>(null)
+  const [sessionData, setSessionData] = useState<SessionWithStudents | null>(null)
+  const [attendance, setAttendance] = useState<Map<string, { status: AttendanceStatus; late_minutes?: number; justification?: string }>>(new Map())
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
 
-const DEMO_STUDENTS: Record<string, Student[]> = {
-  "1": [
-    { id: "1", name: "Alice Dupont", status: "present" },
-    { id: "2", name: "Bob Martin", status: "present" },
-    { id: "3", name: "Claire Bernard", status: "absent", isJustified: true, justification: "Maladie" },
-    { id: "4", name: "David Petit", status: "present" },
-    { id: "5", name: "Emma Dubois", status: "late" },
-    { id: "6", name: "François Moreau", status: "present" },
-    { id: "7", name: "Gabrielle Simon", status: "present" },
-    { id: "8", name: "Hugo Laurent", status: "absent" },
-  ],
-  "2": [
-    { id: "9", name: "Isabelle Lefebvre", status: "present" },
-    { id: "10", name: "Jules Roux", status: "present" },
-    { id: "11", name: "Léa Fournier", status: "present" },
-    { id: "12", name: "Marc Girard", status: "late" },
-    { id: "13", name: "Nina Bonnet", status: "present" },
-  ],
-  "3": [
-    { id: "14", name: "Oscar Lambert", status: "present" },
-    { id: "15", name: "Pauline Fontaine", status: "absent" },
-    { id: "16", name: "Quentin Rousseau", status: "present" },
-    { id: "17", name: "Rose Vincent", status: "present" },
-    { id: "18", name: "Simon Gauthier", status: "late" },
-  ],
-}
+  const user = getUserSession()
 
-// Fonction pour formater la date
-function formatDate(date: Date): string {
-  return date.toLocaleDateString("fr-FR", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  })
-}
-
-// Fonction pour obtenir la couleur du statut
-function getStatusColor(status: "present" | "absent" | "late"): string {
-  switch (status) {
-    case "present":
-      return "bg-green-500/10 text-green-500 hover:bg-green-500/20"
-    case "absent":
-      return "bg-red-500/10 text-red-500 hover:bg-red-500/20"
-    case "late":
-      return "bg-orange-500/10 text-orange-500 hover:bg-orange-500/20"
-  }
-}
-
-// Fonction pour obtenir le label du statut
-function getStatusLabel(status: "present" | "absent" | "late"): string {
-  switch (status) {
-    case "present":
-      return "Présent"
-    case "absent":
-      return "Absent"
-    case "late":
-      return "Retard"
-  }
-}
-
-// Fonction pour obtenir l'icône du statut
-function getStatusIcon(status: "present" | "absent" | "late") {
-  switch (status) {
-    case "present":
-      return <CheckCircle className="h-4 w-4" />
-    case "absent":
-      return <XCircle className="h-4 w-4" />
-    case "late":
-      return <Clock className="h-4 w-4" />
-  }
-}
-
-export default function PresencePage() {
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date())
-  const [selectedCourse, setSelectedCourse] = useState<string>(DEMO_COURSES[0].id)
-  const [students, setStudents] = useState<Student[]>([])
-  const [searchQuery, setSearchQuery] = useState("")
-  const [filterStatus, setFilterStatus] = useState<"all" | "present" | "absent" | "late">("all")
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
-
-  // Charger les étudiants du cours sélectionné
+  // Charger les sessions du jour
   useEffect(() => {
-    const courseStudents = DEMO_STUDENTS[selectedCourse] || []
-    setStudents([...courseStudents])
-    setHasUnsavedChanges(false)
-  }, [selectedCourse, selectedDate])
+    loadSessions()
+  }, [selectedDate])
 
-  // Changer le statut d'un étudiant
-  const updateStudentStatus = (studentId: string, newStatus: "present" | "absent" | "late") => {
-    setStudents((prev) =>
-      prev.map((student) => (student.id === studentId ? { ...student, status: newStatus } : student)),
+  // SSE pour le temps réel
+  useEffect(() => {
+    if (!selectedSession) return
+
+    const eventSource = new EventSource(
+      `/api/attendance/sessions/${selectedSession}/stream`,
+      { withCredentials: true }
     )
-    setHasUnsavedChanges(true)
-    // Simulation de sauvegarde automatique
-    setTimeout(() => {
-      console.log("[v0] Auto-saved attendance for student:", studentId)
-    }, 500)
+
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data)
+      if (data.type === "bulk_update" || data.type === "record_update") {
+        // Recharger les données
+        loadSessionStudents(selectedSession)
+      }
+    }
+
+    eventSource.onerror = () => {
+      console.error("Erreur SSE")
+      eventSource.close()
+    }
+
+    return () => {
+      eventSource.close()
+    }
+  }, [selectedSession])
+
+  const loadSessions = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const response = await api.get(`/attendance/sessions?date=${selectedDate}`)
+      if (response.success) {
+        setSessions(response.data || [])
+      }
+    } catch (err: any) {
+      setError(err.message || "Erreur lors du chargement des sessions")
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // Sauvegarder les présences
-  const saveAttendance = () => {
-    console.log("[v0] Saving attendance:", { date: selectedDate, courseId: selectedCourse, students })
-    setHasUnsavedChanges(false)
-    // Ici, vous ajouteriez l'appel API pour sauvegarder
+  const loadSessionStudents = async (sessionId: string) => {
+    try {
+      setLoading(true)
+      setError(null)
+      const response = await api.get(`/attendance/sessions/${sessionId}`)
+      if (response.success) {
+        setSessionData(response.data)
+        
+        // Initialiser les statuts d'attendance
+        const attendanceMap = new Map()
+        response.data.students.forEach((student: Student) => {
+          if (student.status) {
+            attendanceMap.set(student.student_id, {
+              status: student.status,
+              late_minutes: student.late_minutes,
+              justification: student.justification,
+            })
+          }
+        })
+        setAttendance(attendanceMap)
+      }
+    } catch (err: any) {
+      setError(err.message || "Erreur lors du chargement des élèves")
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // Exporter en PDF/Excel
-  const exportAttendance = (format: "pdf" | "excel") => {
-    console.log("[v0] Exporting attendance as:", format)
-    // Ici, vous ajouteriez la logique d'export
-    alert(`Export ${format.toUpperCase()} en cours de développement`)
+  const handleSessionSelect = (sessionId: string) => {
+    setSelectedSession(sessionId)
+    loadSessionStudents(sessionId)
   }
 
-  // Filtrer les étudiants
-  const filteredStudents = students.filter((student) => {
-    const matchesSearch = student.name.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesStatus = filterStatus === "all" || student.status === filterStatus
-    return matchesSearch && matchesStatus
-  })
-
-  // Calculer les statistiques
-  const stats = {
-    present: students.filter((s) => s.status === "present").length,
-    absent: students.filter((s) => s.status === "absent").length,
-    late: students.filter((s) => s.status === "late").length,
-    total: students.length,
+  const handleStatusChange = (studentId: string, status: AttendanceStatus) => {
+    const current = attendance.get(studentId) || {}
+    setAttendance(new Map(attendance.set(studentId, { ...current, status })))
   }
 
-  const selectedCourseData = DEMO_COURSES.find((c) => c.id === selectedCourse)
-
-  // Navigation de date
-  const goToPreviousDay = () => {
-    const newDate = new Date(selectedDate)
-    newDate.setDate(newDate.getDate() - 1)
-    setSelectedDate(newDate)
+  const handleLateMinutesChange = (studentId: string, minutes: string) => {
+    const current = attendance.get(studentId) || { status: "late" as AttendanceStatus }
+    const late_minutes = parseInt(minutes) || 0
+    setAttendance(new Map(attendance.set(studentId, { ...current, late_minutes })))
   }
 
-  const goToNextDay = () => {
-    const newDate = new Date(selectedDate)
-    newDate.setDate(newDate.getDate() + 1)
-    setSelectedDate(newDate)
+  const handleJustificationChange = (studentId: string, justification: string) => {
+    const current = attendance.get(studentId) || { status: "absent" as AttendanceStatus }
+    setAttendance(new Map(attendance.set(studentId, { ...current, justification })))
   }
 
-  const goToToday = () => {
-    setSelectedDate(new Date())
+  const handleSaveAll = async () => {
+    if (!selectedSession || !sessionData) return
+
+    // Vérifier si on peut modifier
+    if (!sessionData.canModify) {
+      setError("Délai de modification dépassé (48h)")
+      return
+    }
+
+    try {
+      setSaving(true)
+      setError(null)
+
+      const records = sessionData.students.map((student) => {
+        const record = attendance.get(student.student_id)
+        return {
+          student_id: student.student_id,
+          status: record?.status || "present",
+          late_minutes: record?.late_minutes,
+          justification: record?.justification,
+        }
+      })
+
+      const response = await api.post(`/attendance/sessions/${selectedSession}/records/bulk`, {
+        records,
+      })
+
+      if (response.success) {
+        setSuccess("Présences enregistrées avec succès")
+        setTimeout(() => setSuccess(null), 3000)
+      }
+    } catch (err: any) {
+      setError(err.message || "Erreur lors de l'enregistrement")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const getStatusColor = (status: AttendanceStatus | null) => {
+    switch (status) {
+      case "present":
+        return "bg-green-100 text-green-800 border-green-200"
+      case "absent":
+        return "bg-red-100 text-red-800 border-red-200"
+      case "late":
+        return "bg-yellow-100 text-yellow-800 border-yellow-200"
+      case "excused":
+        return "bg-blue-100 text-blue-800 border-blue-200"
+      case "remote":
+        return "bg-purple-100 text-purple-800 border-purple-200"
+      case "excluded":
+        return "bg-gray-100 text-gray-800 border-gray-200"
+      default:
+        return "bg-gray-50 text-gray-500 border-gray-200"
+    }
+  }
+
+  const getStatusLabel = (status: AttendanceStatus | null) => {
+    switch (status) {
+      case "present":
+        return "Présent"
+      case "absent":
+        return "Absent"
+      case "late":
+        return "Retard"
+      case "excused":
+        return "Excusé"
+      case "remote":
+        return "À distance"
+      case "excluded":
+        return "Exclu"
+      default:
+        return "Non saisi"
+    }
   }
 
   return (
     <DashboardLayout requiredRole="teacher">
       <div className="space-y-6">
-        {/* En-tête */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight">Présence</h2>
-            <p className="text-muted-foreground">Gérer les présences de vos élèves</p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => exportAttendance("pdf")}>
-              <Download className="mr-2 h-4 w-4" />
-              PDF
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => exportAttendance("excel")}>
-              <Download className="mr-2 h-4 w-4" />
-              Excel
-            </Button>
-          </div>
+        <div>
+          <h1 className="text-3xl font-bold">Gestion des présences</h1>
+          <p className="text-muted-foreground">Faire l'appel et consulter les sessions</p>
         </div>
 
-        {/* Sélection de date et cours */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Date du cours</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="icon" onClick={goToPreviousDay}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <div className="flex-1 text-center">
-                  <p className="font-medium">{formatDate(selectedDate)}</p>
-                </div>
-                <Button variant="outline" size="icon" onClick={goToNextDay}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-              <Button variant="outline" size="sm" className="w-full mt-3 bg-transparent" onClick={goToToday}>
-                <Calendar className="mr-2 h-4 w-4" />
-                Aujourd'hui
+        {/* Sélection de la date */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Sessions du jour</CardTitle>
+            <CardDescription>Sélectionnez une séance pour faire l'appel</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-4">
+              <Label htmlFor="date">Date</Label>
+              <Input
+                id="date"
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="w-48"
+              />
+              <Button onClick={loadSessions} variant="outline" size="sm">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Actualiser
               </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Cours</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <select
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                value={selectedCourse}
-                onChange={(e) => setSelectedCourse(e.target.value)}
-              >
-                {DEMO_COURSES.map((course) => (
-                  <option key={course.id} value={course.id}>
-                    {course.name} - {course.class} ({course.time})
-                  </option>
-                ))}
-              </select>
-              {selectedCourseData && (
-                <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-                  <Users className="h-4 w-4" />
-                  <span>
-                    {stats.total} élève{stats.total > 1 ? "s" : ""}
-                  </span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Statistiques */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Total</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.total}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Présents</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-500">{stats.present}</div>
-              <p className="text-xs text-muted-foreground">
-                {stats.total > 0 ? Math.round((stats.present / stats.total) * 100) : 0}%
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Absents</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-500">{stats.absent}</div>
-              <p className="text-xs text-muted-foreground">
-                {stats.total > 0 ? Math.round((stats.absent / stats.total) * 100) : 0}%
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Retards</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-orange-500">{stats.late}</div>
-              <p className="text-xs text-muted-foreground">
-                {stats.total > 0 ? Math.round((stats.late / stats.total) * 100) : 0}%
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Alerte modifications non sauvegardées */}
-        {hasUnsavedChanges && (
-          <Card className="border-orange-500 bg-orange-500/5">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-orange-500" />
-                  <CardTitle className="text-orange-500">Modifications non sauvegardées</CardTitle>
-                </div>
-                <Button size="sm" onClick={saveAttendance}>
-                  Sauvegarder maintenant
-                </Button>
-              </div>
-              <CardDescription>
-                Les modifications sont sauvegardées automatiquement, mais vous pouvez forcer la sauvegarde.
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        )}
-
-        {/* Filtres et recherche */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Filtres</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col gap-4 sm:flex-row">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    type="text"
-                    placeholder="Rechercher un élève..."
-                    className="w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant={filterStatus === "all" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setFilterStatus("all")}
-                >
-                  Tous
-                </Button>
-                <Button
-                  variant={filterStatus === "present" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setFilterStatus("present")}
-                >
-                  Présents
-                </Button>
-                <Button
-                  variant={filterStatus === "absent" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setFilterStatus("absent")}
-                >
-                  Absents
-                </Button>
-                <Button
-                  variant={filterStatus === "late" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setFilterStatus("late")}
-                >
-                  Retards
-                </Button>
-              </div>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Liste des étudiants */}
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              Liste des élèves ({filteredStudents.length}/{stats.total})
-            </CardTitle>
-            <CardDescription>Cliquez sur les boutons pour modifier le statut de présence</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {filteredStudents.length === 0 ? (
-              <div className="py-8 text-center text-muted-foreground">Aucun élève trouvé</div>
-            ) : (
-              <div className="space-y-3">
-                {filteredStudents.map((student) => (
-                  <div
-                    key={student.id}
-                    className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
+            {loading && !selectedSession && (
+              <p className="text-sm text-muted-foreground">Chargement des sessions...</p>
+            )}
+
+            {sessions.length === 0 && !loading && (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>Aucune session prévue pour cette date</AlertDescription>
+              </Alert>
+            )}
+
+            {sessions.length > 0 && (
+              <div className="grid gap-3">
+                {sessions.map((session) => (
+                  <Card
+                    key={session.id}
+                    className={`cursor-pointer transition-colors ${
+                      selectedSession === session.id ? "border-primary bg-primary/5" : "hover:border-primary/50"
+                    }`}
+                    onClick={() => handleSessionSelect(session.id)}
                   >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                          <span className="text-sm font-medium text-primary">
-                            {student.name
-                              .split(" ")
-                              .map((n) => n[0])
-                              .join("")}
-                          </span>
-                        </div>
-                        <div>
-                          <p className="font-medium">{student.name}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <Badge className={getStatusColor(student.status)}>
-                              <span className="flex items-center gap-1">
-                                {getStatusIcon(student.status)}
-                                {getStatusLabel(student.status)}
-                              </span>
-                            </Badge>
-                            {student.isJustified && (
-                              <Badge variant="outline" className="text-green-500 border-green-500">
-                                Justifiée
-                              </Badge>
-                            )}
-                          </div>
-                          {student.justification && (
-                            <p className="text-sm text-muted-foreground mt-1">{student.justification}</p>
-                          )}
-                        </div>
+                    <CardContent className="flex items-center justify-between p-4">
+                      <div>
+                        <h3 className="font-semibold">{session.subject_name}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {session.class_label} • {session.scheduled_start} - {session.scheduled_end}
+                        </p>
                       </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant={student.status === "present" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => updateStudentStatus(student.id, "present")}
-                        className={student.status === "present" ? "bg-green-500 hover:bg-green-600" : ""}
-                      >
-                        <CheckCircle className="mr-1 h-4 w-4" />
-                        Présent
-                      </Button>
-                      <Button
-                        variant={student.status === "absent" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => updateStudentStatus(student.id, "absent")}
-                        className={student.status === "absent" ? "bg-red-500 hover:bg-red-600" : ""}
-                      >
-                        <XCircle className="mr-1 h-4 w-4" />
-                        Absent
-                      </Button>
-                      <Button
-                        variant={student.status === "late" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => updateStudentStatus(student.id, "late")}
-                        className={student.status === "late" ? "bg-orange-500 hover:bg-orange-600" : ""}
-                      >
-                        <Clock className="mr-1 h-4 w-4" />
-                        Retard
-                      </Button>
-                    </div>
-                  </div>
+                      <Badge variant={session.canModify ? "default" : "secondary"}>
+                        {session.canModify ? "Modifiable" : "Verrouillé (>48h)"}
+                      </Badge>
+                    </CardContent>
+                  </Card>
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Historique récent */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Historique récent</CardTitle>
-            <CardDescription>Absences et retards des derniers cours</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {[
-                { date: "15/10/2025", student: "Hugo Laurent", status: "absent", course: "Terminale A" },
-                { date: "14/10/2025", student: "Emma Dubois", status: "late", course: "Terminale A" },
-                { date: "14/10/2025", student: "Marc Girard", status: "late", course: "Première B" },
-                { date: "13/10/2025", student: "Pauline Fontaine", status: "absent", course: "Seconde C" },
-              ].map((record, i) => (
-                <div key={i} className="flex items-center justify-between rounded-lg border p-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
-                      {record.status === "absent" ? (
-                        <XCircle className="h-4 w-4 text-red-500" />
-                      ) : (
-                        <Clock className="h-4 w-4 text-orange-500" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">{record.student}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {record.course} - {record.date}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge className={getStatusColor(record.status as "absent" | "late")}>
-                    {getStatusLabel(record.status as "absent" | "late")}
-                  </Badge>
+        {/* Appel */}
+        {sessionData && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Faire l'appel</CardTitle>
+                  <CardDescription>
+                    {sessionData.session.class_label} • {sessionData.students.length} élèves
+                  </CardDescription>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                <Button onClick={handleSaveAll} disabled={!sessionData.canModify || saving}>
+                  <Save className="h-4 w-4 mr-2" />
+                  {saving ? "Enregistrement..." : "Enregistrer tout"}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              {success && (
+                <Alert className="border-green-500 text-green-700">
+                  <Check className="h-4 w-4" />
+                  <AlertDescription>{success}</AlertDescription>
+                </Alert>
+              )}
+
+              {!sessionData.canModify && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    Le délai de modification est dépassé (48h). Contactez le personnel administratif pour modifier.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <div className="space-y-3">
+                {sessionData.students.map((student) => {
+                  const currentStatus = attendance.get(student.student_id)
+                  
+                  return (
+                    <Card key={student.student_id}>
+                      <CardContent className="p-4">
+                        <div className="flex items-start gap-4">
+                          <div className="flex-1">
+                            <h4 className="font-medium">{student.student_name}</h4>
+                            <p className="text-sm text-muted-foreground">N° {student.student_no}</p>
+                          </div>
+
+                          <div className="flex gap-2 flex-wrap">
+                            <Button
+                              size="sm"
+                              variant={currentStatus?.status === "present" ? "default" : "outline"}
+                              onClick={() => handleStatusChange(student.student_id, "present")}
+                              disabled={!sessionData.canModify}
+                            >
+                              <Check className="h-4 w-4 mr-1" />
+                              Présent
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={currentStatus?.status === "absent" ? "default" : "outline"}
+                              onClick={() => handleStatusChange(student.student_id, "absent")}
+                              disabled={!sessionData.canModify}
+                            >
+                              <X className="h-4 w-4 mr-1" />
+                              Absent
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={currentStatus?.status === "late" ? "default" : "outline"}
+                              onClick={() => handleStatusChange(student.student_id, "late")}
+                              disabled={!sessionData.canModify}
+                            >
+                              <Clock className="h-4 w-4 mr-1" />
+                              Retard
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={currentStatus?.status === "remote" ? "default" : "outline"}
+                              onClick={() => handleStatusChange(student.student_id, "remote")}
+                              disabled={!sessionData.canModify}
+                            >
+                              <Wifi className="h-4 w-4 mr-1" />
+                              Distanciel
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={currentStatus?.status === "excused" ? "default" : "outline"}
+                              onClick={() => handleStatusChange(student.student_id, "excused")}
+                              disabled={!sessionData.canModify}
+                            >
+                              <Home className="h-4 w-4 mr-1" />
+                              Excusé
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={currentStatus?.status === "excluded" ? "default" : "outline"}
+                              onClick={() => handleStatusChange(student.student_id, "excluded")}
+                              disabled={!sessionData.canModify}
+                            >
+                              <UserX className="h-4 w-4 mr-1" />
+                              Exclu
+                            </Button>
+                          </div>
+                        </div>
+
+                        {currentStatus?.status === "late" && (
+                          <div className="mt-3">
+                            <Label htmlFor={`late-${student.student_id}`} className="text-sm">
+                              Retard (minutes)
+                            </Label>
+                            <Input
+                              id={`late-${student.student_id}`}
+                              type="number"
+                              min="1"
+                              max="1440"
+                              value={currentStatus.late_minutes || ""}
+                              onChange={(e) => handleLateMinutesChange(student.student_id, e.target.value)}
+                              disabled={!sessionData.canModify}
+                              className="w-32 mt-1"
+                              placeholder="Ex: 10"
+                            />
+                          </div>
+                        )}
+
+                        {(currentStatus?.status === "absent" || currentStatus?.status === "excused") && (
+                          <div className="mt-3">
+                            <Label htmlFor={`just-${student.student_id}`} className="text-sm">
+                              Justification (optionnelle)
+                            </Label>
+                            <Textarea
+                              id={`just-${student.student_id}`}
+                              value={currentStatus.justification || ""}
+                              onChange={(e) => handleJustificationChange(student.student_id, e.target.value)}
+                              disabled={!sessionData.canModify}
+                              className="mt-1"
+                              rows={2}
+                              maxLength={500}
+                              placeholder="Motif de l'absence..."
+                            />
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </DashboardLayout>
   )
