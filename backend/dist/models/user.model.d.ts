@@ -1,4 +1,4 @@
-import { User, UserRole, StudentProfile, TeacherProfile, StaffProfile } from '../types';
+import { User, UserRole, StudentProfile, TeacherProfile, StaffProfile, ParentProfile } from '../types';
 export interface UserFilters {
     id?: string;
     email?: string;
@@ -18,7 +18,7 @@ export declare function createUser(userData: CreateUserData): Promise<User>;
 export declare function createStudentProfile(userId: string, profileData: Partial<StudentProfile>): Promise<StudentProfile>;
 export declare function createTeacherProfile(userId: string, profileData: Partial<TeacherProfile>): Promise<TeacherProfile>;
 export declare function createStaffProfile(userId: string, profileData: Partial<StaffProfile>): Promise<StaffProfile>;
-export declare function createParentProfile(userId: string, profileData: Partial<StaffProfile>): Promise<StaffProfile>;
+export declare function createParentProfile(userId: string, profileData: Partial<ParentProfile>): Promise<ParentProfile>;
 /**
  * Trouve des utilisateurs avec filtres extensibles
  * Future-proof pour multi-tenant

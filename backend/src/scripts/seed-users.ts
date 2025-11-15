@@ -46,8 +46,7 @@ const DEMO_USERS = [
       department: 'Vie scolaire',      
       office_room: 'B102',
       employee_no: 'STF-0001',
-      hire_date: '2024-09-01'
-  },
+      hire_date: new Date('2024-09-01')  },
   },
   {
     email: 'staff2@test.com',
@@ -59,7 +58,7 @@ const DEMO_USERS = [
       department: 'Vie scolaire',     
       office_room: 'B103',
       employee_no: 'STF-0002',
-      hire_date: '2024-09-01'
+                              
   },
   },
 ];
