@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
-import * as attendanceModel from '../models/attendance.model';
+import { AttendanceModel } from '../models/attendance.model';
 import { AttendanceStatus } from '../types';
 import { emitAttendanceUpdate } from '../services/attendance.sse';
+import pool from '../config/database';
 
 // =========================
 // SESSIONS
@@ -14,20 +15,9 @@ import { emitAttendanceUpdate } from '../services/attendance.sse';
 export async function getSessionsHandler(req: Request, res: Response) {
   try {
     const { userId, role } = req.user!;
-    const date = req.query.date ? new Date(req.query.date as string) : new Date();
+    const date = req.query.date as string | undefined;
 
-    let sessions;
-
-    if (role === 'teacher') {
-      sessions = await attendanceModel.getTeacherSessionsByDate(userId, date);
-    } else if (role === 'staff') {
-      sessions = await attendanceModel.getStaffSessionsByDate(userId, date);
-    } else {
-      return res.status(403).json({
-        success: false,
-        error: 'Accès refusé',
-      });
-    }
+    const sessions = await AttendanceModel.getSessions(userId, role, date);
 
     return res.json({
       success: true,
@@ -53,7 +43,7 @@ export async function getSessionStudentsHandler(req: Request, res: Response) {
 
     // Vérifier les permissions
     if (role === 'teacher') {
-      const isOwner = await attendanceModel.isTeacherOwnerOfSession(userId, sessionId);
+      const isOwner = await AttendanceModel.isTeacherOwnerOfSession(userId, sessionId);
       if (!isOwner) {
         return res.status(403).json({
           success: false,
@@ -61,48 +51,33 @@ export async function getSessionStudentsHandler(req: Request, res: Response) {
         });
       }
     } else if (role === 'staff') {
-      const isManager = await attendanceModel.isStaffManagerOfSession(userId, sessionId);
+      const isManager = await AttendanceModel.isStaffManagerOfSession(userId, sessionId);
       if (!isManager) {
         return res.status(403).json({
           success: false,
           error: 'Vous ne gérez pas cette classe',
         });
       }
-    } else {
+    } else if (role !== 'admin') {
       return res.status(403).json({
         success: false,
         error: 'Accès refusé',
       });
     }
 
-    // Récupérer la session
-    const session = await attendanceModel.getSessionById(sessionId);
-    if (!session) {
-      return res.status(404).json({
-        success: false,
-        error: 'Session non trouvée',
-      });
-    }
-
-    // Vérifier si on peut modifier
-    const canModify = await attendanceModel.canModifyAttendance(userId, role, sessionId);
-
-    // Récupérer les élèves
-    const students = await attendanceModel.getSessionStudentsWithAttendance(sessionId);
+    // Récupérer les détails de la session
+    const data = await AttendanceModel.getSessionDetails(sessionId, userId, role);
 
     return res.json({
       success: true,
-      data: {
-        session,
-        students,
-        canModify,
-      },
+      data,
     });
   } catch (error) {
     console.error('Erreur getSessionStudentsHandler:', error);
+    const message = error instanceof Error ? error.message : 'Erreur lors de la récupération des élèves';
     return res.status(500).json({
       success: false,
-      error: 'Erreur lors de la récupération des élèves',
+      error: message,
     });
   }
 }
@@ -123,7 +98,7 @@ export async function bulkCreateRecordsHandler(req: Request, res: Response) {
 
     // Vérifier les permissions
     if (role === 'teacher') {
-      const isOwner = await attendanceModel.isTeacherOwnerOfSession(userId, sessionId);
+      const isOwner = await AttendanceModel.isTeacherOwnerOfSession(userId, sessionId);
       if (!isOwner) {
         return res.status(403).json({
           success: false,
@@ -131,22 +106,37 @@ export async function bulkCreateRecordsHandler(req: Request, res: Response) {
         });
       }
     } else if (role === 'staff') {
-      const isManager = await attendanceModel.isStaffManagerOfSession(userId, sessionId);
+      const isManager = await AttendanceModel.isStaffManagerOfSession(userId, sessionId);
       if (!isManager) {
         return res.status(403).json({
           success: false,
           error: 'Vous ne gérez pas cette classe',
         });
       }
-    } else {
+    } else if (role !== 'admin') {
       return res.status(403).json({
         success: false,
         error: 'Accès refusé',
       });
     }
 
+    // Récupérer la session pour vérifier le délai
+    const session = await AttendanceModel.getSessionById(sessionId);
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        error: 'Session non trouvée',
+      });
+    }
+
     // Vérifier si on peut modifier
-    const canModify = await attendanceModel.canModifyAttendance(userId, role, sessionId);
+    const canModify = await AttendanceModel.canModifyAttendance(
+      userId,
+      role,
+      session.session_date,
+      session.scheduled_start
+    );
+
     if (!canModify) {
       return res.status(403).json({
         success: false,
@@ -163,7 +153,7 @@ export async function bulkCreateRecordsHandler(req: Request, res: Response) {
     }
 
     // Créer/mettre à jour les enregistrements
-    const results = await attendanceModel.upsertAttendanceRecords(
+    const results = await AttendanceModel.upsertAttendanceRecords(
       sessionId,
       records,
       userId
@@ -201,14 +191,14 @@ export async function updateRecordHandler(req: Request, res: Response) {
     const { id: recordId } = req.params;
     const { status, late_minutes, justification } = req.body;
 
-    // Récupérer l'enregistrement
+    // Récupérer l'enregistrement pour obtenir la session
     const recordQuery = `
-      SELECT ar.*, ats.id as session_id
+      SELECT ar.*, s.id as session_id, s.session_date, s.scheduled_start
       FROM attendance_records ar
-      JOIN attendance_sessions ats ON ar.session_id = ats.id
+      JOIN attendance_sessions s ON ar.session_id = s.id
       WHERE ar.id = $1
     `;
-    const recordResult = await require('../config/database').pool.query(recordQuery, [recordId]);
+    const recordResult = await pool.query(recordQuery, [recordId]);
     
     if (recordResult.rows.length === 0) {
       return res.status(404).json({
@@ -222,7 +212,7 @@ export async function updateRecordHandler(req: Request, res: Response) {
 
     // Vérifier les permissions
     if (role === 'teacher') {
-      const isOwner = await attendanceModel.isTeacherOwnerOfSession(userId, sessionId);
+      const isOwner = await AttendanceModel.isTeacherOwnerOfSession(userId, sessionId);
       if (!isOwner) {
         return res.status(403).json({
           success: false,
@@ -230,14 +220,14 @@ export async function updateRecordHandler(req: Request, res: Response) {
         });
       }
     } else if (role === 'staff') {
-      const isManager = await attendanceModel.isStaffManagerOfSession(userId, sessionId);
+      const isManager = await AttendanceModel.isStaffManagerOfSession(userId, sessionId);
       if (!isManager) {
         return res.status(403).json({
           success: false,
           error: 'Vous ne gérez pas cette classe',
         });
       }
-    } else {
+    } else if (role !== 'admin') {
       return res.status(403).json({
         success: false,
         error: 'Accès refusé',
@@ -245,7 +235,13 @@ export async function updateRecordHandler(req: Request, res: Response) {
     }
 
     // Vérifier si on peut modifier
-    const canModify = await attendanceModel.canModifyAttendance(userId, role, sessionId);
+    const canModify = await AttendanceModel.canModifyAttendance(
+      userId,
+      role,
+      record.session_date,
+      record.scheduled_start
+    );
+
     if (!canModify) {
       return res.status(403).json({
         success: false,
@@ -254,7 +250,7 @@ export async function updateRecordHandler(req: Request, res: Response) {
     }
 
     // Mettre à jour
-    const updated = await attendanceModel.updateAttendanceRecord(recordId, {
+    const updated = await AttendanceModel.updateAttendanceRecord(recordId, {
       status,
       late_minutes,
       justification,
@@ -314,10 +310,7 @@ export async function getStudentRecordsHandler(req: Request, res: Response) {
         FROM student_parents
         WHERE student_id = $1 AND parent_id = $2
       `;
-      const linkResult = await require('../config/database').pool.query(linkQuery, [
-        studentId,
-        userId,
-      ]);
+      const linkResult = await pool.query(linkQuery, [studentId, userId]);
 
       if (parseInt(linkResult.rows[0].count) === 0) {
         return res.status(403).json({
@@ -333,14 +326,14 @@ export async function getStudentRecordsHandler(req: Request, res: Response) {
     }
 
     // Récupérer l'historique
-    const records = await attendanceModel.getStudentAttendanceHistory(studentId, {
+    const records = await AttendanceModel.getStudentAttendanceHistory(studentId, {
       startDate: startDate ? new Date(startDate as string) : undefined,
       endDate: endDate ? new Date(endDate as string) : undefined,
       limit: limit ? parseInt(limit as string) : undefined,
     });
 
     // Récupérer les statistiques
-    const stats = await attendanceModel.getStudentAttendanceStats(
+    const stats = await AttendanceModel.getStudentAttendanceStats(
       studentId,
       startDate ? new Date(startDate as string) : undefined,
       endDate ? new Date(endDate as string) : undefined
@@ -380,7 +373,23 @@ export async function getStudentStatsHandler(req: Request, res: Response) {
       });
     }
 
-    const stats = await attendanceModel.getStudentAttendanceStats(
+    if (role === 'parent') {
+      const linkQuery = `
+        SELECT COUNT(*) as count
+        FROM student_parents
+        WHERE student_id = $1 AND parent_id = $2
+      `;
+      const linkResult = await pool.query(linkQuery, [studentId, userId]);
+
+      if (parseInt(linkResult.rows[0].count) === 0) {
+        return res.status(403).json({
+          success: false,
+          error: 'Accès refusé',
+        });
+      }
+    }
+
+    const stats = await AttendanceModel.getStudentAttendanceStats(
       studentId,
       startDate ? new Date(startDate as string) : undefined,
       endDate ? new Date(endDate as string) : undefined
@@ -411,33 +420,18 @@ export async function getStaffClassesHandler(req: Request, res: Response) {
   try {
     const { userId, role } = req.user!;
 
-    if (role !== 'staff') {
+    if (role !== 'staff' && role !== 'admin') {
       return res.status(403).json({
         success: false,
         error: 'Accès réservé au personnel',
       });
     }
 
-    const query = `
-      SELECT DISTINCT
-        cl.id,
-        cl.code,
-        cl.label,
-        cl.level,
-        cl.current_size,
-        cs.is_main
-      FROM class_staff cs
-      JOIN classes cl ON cs.class_id = cl.id
-      WHERE cs.user_id = $1
-        AND cl.archived = FALSE
-      ORDER BY cl.label
-    `;
-
-    const result = await require('../config/database').pool.query(query, [userId]);
+    const classes = await AttendanceModel.getStaffClasses(userId);
 
     return res.json({
       success: true,
-      data: result.rows,
+      data: classes,
     });
   } catch (error) {
     console.error('Erreur getStaffClassesHandler:', error);

@@ -5,6 +5,7 @@ const express_validator_1 = require("express-validator");
 const auth_middleware_1 = require("../middleware/auth.middleware");
 const validation_middleware_1 = require("../middleware/validation.middleware");
 const attendance_controller_1 = require("../controllers/attendance.controller");
+const attendance_sse_1 = require("../services/attendance.sse");
 const router = (0, express_1.Router)();
 // =========================
 // VALIDATIONS
@@ -59,6 +60,11 @@ router.get('/sessions', auth_middleware_1.authenticate, (0, auth_middleware_1.au
  * Détails d'une session avec les élèves
  */
 router.get('/sessions/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'staff', 'admin'), (0, express_validator_1.param)('id').isUUID().withMessage('ID invalide'), validation_middleware_1.validateRequest, attendance_controller_1.getSessionStudentsHandler);
+/**
+ * GET /api/attendance/sessions/:id/stream
+ * Stream SSE pour les mises à jour en temps réel
+ */
+router.get('/sessions/:id/stream', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'staff', 'admin'), (0, express_validator_1.param)('id').isUUID().withMessage('ID invalide'), validation_middleware_1.validateRequest, attendance_sse_1.sseStreamHandler);
 // =========================
 // ROUTES RECORDS
 // =========================

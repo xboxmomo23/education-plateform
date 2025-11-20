@@ -3,79 +3,46 @@
 import React, { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { api } from "@/lib/api/client"
+import { attendanceApi, type AttendanceRecord, type AttendanceStats, type AttendanceStatus } from "@/lib/api/attendance"
 import { getUserSession } from "@/lib/auth-new"
-import { AlertCircle, Check, X, Clock, Wifi, Home, UserX, Calendar, TrendingUp } from "lucide-react"
+import { AlertCircle, Check, X, Clock, Wifi, Home, UserX, TrendingUp } from "lucide-react"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
 
-type AttendanceStatus = "present" | "absent" | "late" | "excused" | "remote" | "excluded"
-
-interface AttendanceRecord {
-  id: string
-  status: AttendanceStatus
-  late_minutes: number | null
-  justification: string | null
-  session_date: string
-  scheduled_start: string
-  scheduled_end: string
-  subject_name: string
-  class_label: string
-}
-
-interface AttendanceStats {
-  total: number
-  present: number
-  absent: number
-  late: number
-  excused: number
-  remote: number
-  excluded: number
-  attendance_rate: number
-}
-
-export default function EleveAssiduiteP() {
+export default function EleveAssiduitePage() {
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [stats, setStats] = useState<AttendanceStats | null>(null)
-  const [startDate, setStartDate] = useState<string>("")
-  const [endDate, setEndDate] = useState<string>("")
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const user = getUserSession()
 
   useEffect(() => {
-    if (user) {
+    if (user?.id) {
       loadAttendanceHistory()
     }
   }, [user])
 
   const loadAttendanceHistory = async () => {
+    if (!user?.id) return
+
     try {
       setLoading(true)
       setError(null)
 
-      let url = `/attendance/students/${user?.id}/records`
-      const params: string[] = []
+      // Utiliser l'API avec les bons types
+      const response = await attendanceApi.getStudentHistory(user.id, {
+        limit: 50 // Limiter à 50 derniers enregistrements
+      })
 
-      if (startDate) params.push(`startDate=${startDate}`)
-      if (endDate) params.push(`endDate=${endDate}`)
-
-      if (params.length > 0) {
-        url += `?${params.join("&")}`
-      }
-
-      const response = await api.get(url)
-
-      if (response.success) {
+      if (response.success && response.data) {
         setRecords(response.data.records || [])
         setStats(response.data.stats || null)
+      } else {
+        setError(response.error || "Erreur lors du chargement")
       }
     } catch (err: any) {
       setError(err.message || "Erreur lors du chargement de l'historique")
@@ -138,6 +105,7 @@ export default function EleveAssiduiteP() {
   return (
     <DashboardLayout requiredRole="student">
       <div className="space-y-6">
+        {/* En-tête */}
         <div>
           <h1 className="text-3xl font-bold">Mon assiduité</h1>
           <p className="text-muted-foreground">Consultez votre historique de présence</p>
@@ -148,14 +116,16 @@ export default function EleveAssiduiteP() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Taux de présence</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  Taux de présence
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 mb-2">
                   <TrendingUp className="h-5 w-5 text-green-600" />
-                  <span className="text-3xl font-bold">{stats.attendance_rate}%</span>
+                  <span className="text-3xl font-bold">{stats.attendance_rate.toFixed(1)}%</span>
                 </div>
-                <Progress value={stats.attendance_rate} className="mt-2" />
+                <Progress value={stats.attendance_rate} className="h-2" />
               </CardContent>
             </Card>
 
@@ -181,7 +151,9 @@ export default function EleveAssiduiteP() {
                   <X className="h-5 w-5 text-red-600" />
                   <span className="text-3xl font-bold text-red-600">{stats.absent}</span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Dont {stats.excused} excusées</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Dont {stats.excused} excusée{stats.excused > 1 ? "s" : ""}
+                </p>
               </CardContent>
             </Card>
 
@@ -200,65 +172,19 @@ export default function EleveAssiduiteP() {
           </div>
         )}
 
-        {/* Filtres */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Filtrer par période</CardTitle>
-            <CardDescription>Sélectionnez une plage de dates pour filtrer l'historique</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <Label htmlFor="startDate">Date de début</Label>
-                <Input
-                  id="startDate"
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="endDate">Date de fin</Label>
-                <Input
-                  id="endDate"
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-
-              <div className="flex items-end gap-2">
-                <Button onClick={loadAttendanceHistory} className="flex-1">
-                  <Calendar className="h-4 w-4 mr-2" />
-                  Appliquer
-                </Button>
-                <Button
-                  onClick={() => {
-                    setStartDate("")
-                    setEndDate("")
-                    loadAttendanceHistory()
-                  }}
-                  variant="outline"
-                >
-                  Réinitialiser
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Historique */}
         <Card>
           <CardHeader>
             <CardTitle>Historique des présences</CardTitle>
-            <CardDescription>{records.length} enregistrement(s)</CardDescription>
+            <CardDescription>
+              {loading ? "Chargement..." : `${records.length} enregistrement(s) - 50 derniers cours`}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {loading && (
-              <p className="text-sm text-muted-foreground text-center py-8">Chargement...</p>
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">Chargement de votre historique...</p>
+              </div>
             )}
 
             {error && (
@@ -271,38 +197,51 @@ export default function EleveAssiduiteP() {
             {!loading && records.length === 0 && (
               <Alert>
                 <AlertCircle className="h-4 w-4" />
-                <AlertDescription>Aucun enregistrement trouvé pour cette période</AlertDescription>
+                <AlertDescription>Aucun enregistrement de présence trouvé</AlertDescription>
               </Alert>
             )}
 
             {!loading && records.length > 0 && (
               <div className="space-y-3">
                 {records.map((record) => (
-                  <Card key={record.id}>
+                  <Card key={record.id} className="hover:shadow-md transition-shadow">
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
+                          {/* Statut */}
                           <div className="flex items-center gap-2 mb-2">
                             {getStatusIcon(record.status)}
                             <Badge className={getStatusColor(record.status)}>
                               {getStatusLabel(record.status)}
                             </Badge>
                             {record.status === "late" && record.late_minutes && (
-                              <Badge variant="outline" className="text-yellow-600">
-                                {record.late_minutes} min
+                              <Badge variant="outline" className="text-yellow-600 border-yellow-300">
+                                {record.late_minutes} min de retard
                               </Badge>
                             )}
                           </div>
 
-                          <h4 className="font-medium">{record.subject_name}</h4>
+                          {/* Informations du cours */}
+                          <h4 className="font-medium text-base">{record.subject_name}</h4>
                           <p className="text-sm text-muted-foreground">
-                            {format(new Date(record.session_date), "EEEE d MMMM yyyy", { locale: fr })} •{" "}
-                            {record.scheduled_start} - {record.scheduled_end}
+                            {record.session_date &&
+                              format(new Date(record.session_date), "EEEE d MMMM yyyy", {
+                                locale: fr,
+                              })}{" "}
+                            • {record.scheduled_start} - {record.scheduled_end}
                           </p>
 
+                          {/* Classe */}
+                          {record.class_label && (
+                            <Badge variant="secondary" className="mt-2 text-xs">
+                              {record.class_label}
+                            </Badge>
+                          )}
+
+                          {/* Justification */}
                           {record.justification && (
-                            <div className="mt-2 p-2 bg-muted rounded-md">
-                              <p className="text-sm text-muted-foreground">
+                            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                              <p className="text-sm text-blue-900">
                                 <strong>Justification :</strong> {record.justification}
                               </p>
                             </div>
@@ -320,33 +259,45 @@ export default function EleveAssiduiteP() {
         {/* Légende */}
         <Card>
           <CardHeader>
-            <CardTitle>Légende</CardTitle>
+            <CardTitle className="text-base">Légende des statuts</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               <div className="flex items-center gap-2">
                 <Check className="h-4 w-4 text-green-600" />
-                <span className="text-sm">Présent : comptabilisé comme présence</span>
+                <span className="text-sm">
+                  <strong>Présent</strong> : Comptabilisé comme présence
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <X className="h-4 w-4 text-red-600" />
-                <span className="text-sm">Absent : absence non justifiée</span>
+                <span className="text-sm">
+                  <strong>Absent</strong> : Absence non justifiée
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-yellow-600" />
-                <span className="text-sm">Retard : arrivée tardive</span>
+                <span className="text-sm">
+                  <strong>Retard</strong> : Arrivée tardive
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <Home className="h-4 w-4 text-blue-600" />
-                <span className="text-sm">Excusé : absence justifiée</span>
+                <span className="text-sm">
+                  <strong>Excusé</strong> : Absence justifiée
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <Wifi className="h-4 w-4 text-purple-600" />
-                <span className="text-sm">À distance : cours en ligne</span>
+                <span className="text-sm">
+                  <strong>À distance</strong> : Cours en ligne
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <UserX className="h-4 w-4 text-gray-600" />
-                <span className="text-sm">Exclu : exclusion temporaire</span>
+                <span className="text-sm">
+                  <strong>Exclu</strong> : Exclusion temporaire
+                </span>
               </div>
             </div>
           </CardContent>

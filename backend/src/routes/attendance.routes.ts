@@ -11,6 +11,7 @@ import {
   getStudentStatsHandler,
   getStaffClassesHandler,
 } from '../controllers/attendance.controller';
+import { sseStreamHandler } from '../services/attendance.sse';
 
 const router = Router();
 
@@ -85,6 +86,19 @@ router.get(
   param('id').isUUID().withMessage('ID invalide'),
   validateRequest,
   getSessionStudentsHandler
+);
+
+/**
+ * GET /api/attendance/sessions/:id/stream
+ * Stream SSE pour les mises à jour en temps réel
+ */
+router.get(
+  '/sessions/:id/stream',
+  authenticate,
+  authorize('teacher', 'staff', 'admin'),
+  param('id').isUUID().withMessage('ID invalide'),
+  validateRequest,
+  sseStreamHandler
 );
 
 // =========================
