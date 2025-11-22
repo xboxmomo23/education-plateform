@@ -78,26 +78,5 @@ router.post('/sessions/:id/records/bulk', auth_middleware_1.authenticate, (0, au
  * Modifier une présence individuelle
  */
 router.put('/records/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'staff', 'admin'), updateRecordValidation, validation_middleware_1.validateRequest, attendance_controller_1.updateRecordHandler);
-// =========================
-// ROUTES STUDENT
-// =========================
-/**
- * GET /api/attendance/students/:id/records
- * Historique des présences d'un élève
- */
-router.get('/students/:id/records', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('student', 'parent', 'teacher', 'staff', 'admin'), (0, express_validator_1.param)('id').isUUID().withMessage('ID invalide'), (0, express_validator_1.query)('startDate').optional().isISO8601().withMessage('Date de début invalide'), (0, express_validator_1.query)('endDate').optional().isISO8601().withMessage('Date de fin invalide'), (0, express_validator_1.query)('limit').optional().isInt({ min: 1, max: 1000 }).withMessage('Limite invalide'), validation_middleware_1.validateRequest, attendance_controller_1.getStudentRecordsHandler);
-/**
- * GET /api/attendance/students/:id/stats
- * Statistiques de présence d'un élève
- */
-router.get('/students/:id/stats', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('student', 'parent', 'teacher', 'staff', 'admin'), (0, express_validator_1.param)('id').isUUID().withMessage('ID invalide'), (0, express_validator_1.query)('startDate').optional().isISO8601().withMessage('Date de début invalide'), (0, express_validator_1.query)('endDate').optional().isISO8601().withMessage('Date de fin invalide'), validation_middleware_1.validateRequest, attendance_controller_1.getStudentStatsHandler);
-// =========================
-// ROUTES STAFF
-// =========================
-/**
- * GET /api/attendance/staff/classes
- * Classes gérées par le staff
- */
-router.get('/staff/classes', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), attendance_controller_1.getStaffClassesHandler);
 exports.default = router;
 //# sourceMappingURL=attendance.routes.js.map

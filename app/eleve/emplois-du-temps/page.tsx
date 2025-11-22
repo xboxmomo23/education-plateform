@@ -27,22 +27,19 @@ export default function EleveEmploiDuTempsPage() {
     }
   }, [classId])
 
-  const loadStudentClass = async () => {
-    try {
-      // Récupérer la classe de l'élève
-      const response = await fetch('/api/students/me/class', {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-      })
-      const data = await response.json()
-      if (data.success) {
-        setClassId(data.data.class_id)
-      }
-    } catch (error) {
-      console.error('Erreur:', error)
+ const loadStudentClass = async () => {
+  try {
+    const response = await timetableApi.getStudentClass()  // ✅ Utilise le client API
+    if (response.success) {
+      setClassId(response.data.class_id)
+    } else {
+      setLoading(false)
     }
+  } catch (error) {
+    console.error('Erreur:', error)
+    setLoading(false)
   }
+}
 
   const loadTimetable = async () => {
     try {

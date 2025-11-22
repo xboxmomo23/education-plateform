@@ -127,3 +127,9 @@ export const timetableApi = {
     });
   },
 };
+
+// Récupérer la classe de l'élève connecté
+  async getStudentClass() {
+    return apiCall('/timetable/student/class');
+  },
+};

@@ -131,54 +131,6 @@ router.put(
   updateRecordHandler
 );
 
-// =========================
-// ROUTES STUDENT
-// =========================
 
-/**
- * GET /api/attendance/students/:id/records
- * Historique des présences d'un élève
- */
-router.get(
-  '/students/:id/records',
-  authenticate,
-  authorize('student', 'parent', 'teacher', 'staff', 'admin'),
-  param('id').isUUID().withMessage('ID invalide'),
-  query('startDate').optional().isISO8601().withMessage('Date de début invalide'),
-  query('endDate').optional().isISO8601().withMessage('Date de fin invalide'),
-  query('limit').optional().isInt({ min: 1, max: 1000 }).withMessage('Limite invalide'),
-  validateRequest,
-  getStudentRecordsHandler
-);
-
-/**
- * GET /api/attendance/students/:id/stats
- * Statistiques de présence d'un élève
- */
-router.get(
-  '/students/:id/stats',
-  authenticate,
-  authorize('student', 'parent', 'teacher', 'staff', 'admin'),
-  param('id').isUUID().withMessage('ID invalide'),
-  query('startDate').optional().isISO8601().withMessage('Date de début invalide'),
-  query('endDate').optional().isISO8601().withMessage('Date de fin invalide'),
-  validateRequest,
-  getStudentStatsHandler
-);
-
-// =========================
-// ROUTES STAFF
-// =========================
-
-/**
- * GET /api/attendance/staff/classes
- * Classes gérées par le staff
- */
-router.get(
-  '/staff/classes',
-  authenticate,
-  authorize('staff', 'admin'),
-  getStaffClassesHandler
-);
 
 export default router;

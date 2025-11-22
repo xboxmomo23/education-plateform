@@ -220,4 +220,52 @@ router.post(
   checkConflictsHandler
 );
 
+
+// =========================
+// ROUTES STUDENT
+// =========================
+
+/**
+ * GET /api/timetable/student/class
+ * Récupérer la classe de l'élève connecté
+ */
+router.get(
+  '/student/class',
+  authenticate,
+  authorize('student'),
+  async (req: any, res) => {
+    try {
+      const userId = req.user.userId;
+      
+      const pool = (await import('../config/database')).default;
+      const result = await pool.query(
+        `SELECT s.class_id, c.label, c.level
+         FROM students s
+         JOIN classes c ON s.class_id = c.id
+         WHERE s.user_id = $1`,
+        [userId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Élève non trouvé ou non assigné à une classe',
+        });
+      }
+
+      return res.json({
+        success: true,
+        data: result.rows[0],
+      });
+    } catch (error) {
+      console.error('Erreur récupération classe élève:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Erreur serveur',
+      });
+    }
+  }
+);
+
+
 export default router;
