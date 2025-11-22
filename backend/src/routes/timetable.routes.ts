@@ -268,4 +268,38 @@ router.get(
 );
 
 
+/**
+ * GET /api/timetable/staff/classes
+ * Classes gérées par le staff (temporaire)
+ */
+router.get(
+  '/staff/classes',
+  authenticate,
+  authorize('staff', 'admin'),
+  async (req: any, res) => {
+    try {
+      const pool = (await import('../config/database')).default;
+      const result = await pool.query(
+        `SELECT DISTINCT c.*
+         FROM classes c
+         JOIN class_staff cs ON c.id = cs.class_id
+         WHERE cs.user_id = $1
+         ORDER BY c.label`,
+        [req.user.userId]
+      );
+
+      return res.json({
+        success: true,
+        data: result.rows,
+      });
+    } catch (error) {
+      console.error('Erreur:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Erreur serveur',
+      });
+    }
+  }
+);
+
 export default router;

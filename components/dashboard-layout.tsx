@@ -86,7 +86,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
           { icon: BookOpen, label: "Tableau de bord", href: "/dashboard-eleve" },
           { icon: BookOpen, label: "Mes cours", href: "/eleve/cours" },
           { icon: FileText, label: "Devoirs", href: "/eleve/devoirs" },
-          { icon: Calendar, label: "Emploi du temps", href: "/eleve/timetable" },
+          { icon: Calendar, label: "Emploi du temps", href: "/eleve/emplois-du-temps" },
           { icon: ClipboardCheck, label: "Assiduité", href: "/eleve/assiduite" },
           { icon: BarChart, label: "Notes", href: "/eleve/notes" },
         ]
@@ -96,7 +96,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
           { icon: ClipboardCheck, label: "Présence", href: "/professeur/presence" },
           { icon: BarChart, label: "Notes", href: "/professeur/notes" },
           { icon: FileText, label: "Devoirs", href: "/professeur/devoirs" },
-          { icon: Calendar, label: "Emploi du temps", href: "/professeur/timetable" },
+          { icon: Calendar, label: "Emploi du temps", href: "/professeur/emplois-du-temps" },
           { icon: BookOpen, label: "Mes classes", href: "#" },
           { icon: Users, label: "Élèves", href: "#" },
         ]

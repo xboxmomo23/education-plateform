@@ -1,12 +1,11 @@
 // Client API pour l'emploi du temps
 // Utilise fetch directement
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 // Helper pour les appels API
 async function apiCall(endpoint: string, options: RequestInit = {}) {
-  const token = localStorage.getItem('token');
-  
+  const token = localStorage.getItem('auth_token');  // ✅ Correction  
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers: {
@@ -126,10 +125,9 @@ export const timetableApi = {
       body: JSON.stringify(data),
     });
   },
-};
 
-// Récupérer la classe de l'élève connecté
-  async getStudentClass() {
-    return apiCall('/timetable/student/class');
-  },
-};
+  // Récupérer la classe de l'élève connecté
+    async getStudentClass() {
+      return apiCall('/timetable/student/class');
+    },
+  };

@@ -5,7 +5,9 @@ import dotenv from 'dotenv';
 import { generalLimiter, helmetConfig } from './middleware/security.middleware';
 import authRoutes from './routes/auth.routes';
 import gradeRoutes from './routes/grade.routes';
-import courseRoutes from './routes/course.routes'; // ✅ AJOUTÉ
+import courseRoutes from './routes/course.routes';
+import timetableRoutes from './routes/timetable.routes';
+//import attendanceRoutes from './routes/attendance.routes';
 
 // Charger les variables d'environnement
 dotenv.config();
@@ -55,10 +57,12 @@ app.get('/health', (req: Request, res: Response) => {
   });
 });
 
-// Routes d'authentification
+// Routes d'API
 app.use('/api/auth', authRoutes);
 app.use('/api/grades', gradeRoutes);
-app.use('/api/courses', courseRoutes);  // ✅ AJOUTER CETTE LIGNE
+app.use('/api/courses', courseRoutes);
+app.use('/api/timetable', timetableRoutes);
+//app.use('/api/attendance', attendanceRoutes);
 
 // Route 404
 app.use('*', (req: Request, res: Response) => {

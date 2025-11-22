@@ -46,7 +46,7 @@ export default function StaffEmploiDuTempsPage() {
 
   const loadStaffClasses = async () => {
     try {
-      const response = await fetch('/api/attendance/staff/classes', {
+      const response = await fetch('/api/timetable/staff/classes', {        
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
