@@ -18,6 +18,9 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { CreateTemplateModal } from "@/components/timetable/CreateTemplateModal"
 import { CreateFromTemplateModal } from "@/components/timetable/CreateFromTemplateModal"
+import { EditTemplateModal } from "@/components/timetable/EditTemplateModal"
+import { EditEntryModal } from "@/components/timetable/EditEntryModal"
+import { Pencil } from "lucide-react" // Ajouter à la ligne des imports lucide-react
 
 // ✅ SYSTÈME 100% ALGÉRIEN
 const DAYS_CONFIG = {
@@ -43,7 +46,11 @@ export default function StaffEmploiDuTempsPage() {
   const [templates, setTemplates] = useState<CourseTemplate[]>([])
   const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  
+  const [showEditTemplateModal, setShowEditTemplateModal] = useState(false)
+  const [showEditEntryModal, setShowEditEntryModal] = useState(false)
+  const [editingTemplate, setEditingTemplate] = useState<CourseTemplate | null>(null)
+  const [editingEntry, setEditingEntry] = useState<TimetableEntry | null>(null)
+    
   // Modals
   const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false)
   const [showCreateFromTemplateModal, setShowCreateFromTemplateModal] = useState(false)
@@ -297,6 +304,16 @@ export default function StaffEmploiDuTempsPage() {
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation()
+                                setEditingTemplate(template)
+                                setShowEditTemplateModal(true)
+                              }}
+                            >
+                              <Pencil className="h-4 w-4 mr-2" />
+                              Modifier
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation()
                                 handleDeleteTemplate(template.id)
                               }}
                               className="text-red-600"
@@ -471,6 +488,15 @@ export default function StaffEmploiDuTempsPage() {
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
                                           <DropdownMenuItem
+                                            onClick={() => {
+                                              setEditingEntry(entry)
+                                              setShowEditEntryModal(true)
+                                            }}
+                                          >
+                                            <Pencil className="h-4 w-4 mr-2" />
+                                            Modifier
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
                                             onClick={() => handleDeleteEntry(entry.id)}
                                             className="text-red-600"
                                           >
@@ -553,6 +579,38 @@ export default function StaffEmploiDuTempsPage() {
             setSelectedTimeSlot(null)
           }}
           onSuccess={handleEntryCreated}
+        />
+      )}
+
+      {/* Modal modification template */}
+      {showEditTemplateModal && editingTemplate && (
+        <EditTemplateModal
+          template={editingTemplate}
+          onClose={() => {
+            setShowEditTemplateModal(false)
+            setEditingTemplate(null)
+          }}
+          onSuccess={() => {
+            loadTemplates()
+            setShowEditTemplateModal(false)
+            setEditingTemplate(null)
+          }}
+        />
+      )}
+
+      {/* Modal modification cours */}
+      {showEditEntryModal && editingEntry && (
+        <EditEntryModal
+          entry={editingEntry}
+          onClose={() => {
+            setShowEditEntryModal(false)
+            setEditingEntry(null)
+          }}
+          onSuccess={() => {
+            loadTimetable()
+            setShowEditEntryModal(false)
+            setEditingEntry(null)
+          }}
         />
       )}
     </DashboardLayout>
