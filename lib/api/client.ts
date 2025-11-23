@@ -122,3 +122,57 @@ export const api = {
   delete: <T = any>(endpoint: string, options?: ApiRequestOptions) =>
     apiRequest<T>(endpoint, { ...options, method: 'DELETE' }),
 };
+
+// ====================================
+// 🆕 NOUVELLE FONCTION: apiCallWithAbort
+// ====================================
+
+/**
+ * Wrapper API amélioré avec support d'AbortController
+ * 
+ * ✅ Gère automatiquement le token
+ * ✅ Support d'AbortController pour annuler les requêtes
+ * ✅ Gestion d'erreurs améliorée
+ * 
+ * @example
+ * const controller = new AbortController()
+ * 
+ * useEffect(() => {
+ *   apiCallWithAbort('/timetable/teacher/123', {}, controller.signal)
+ *     .then(data => setEntries(data))
+ *   
+ *   return () => controller.abort() // Annule au démontage
+ * }, [])
+ */
+export async function apiCallWithAbort<T = any>(
+  endpoint: string,
+  options: RequestInit = {},
+  signal?: AbortSignal
+): Promise<T> {
+  const token = getToken();
+  
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((options.headers as Record<string, string>) || {}),
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`;
+
+  const response = await fetch(url, {
+    ...options,
+    headers,
+    signal, // ✅ Support d'AbortController
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || `Erreur HTTP ${response.status}`);
+  }
+
+  return data;
+}

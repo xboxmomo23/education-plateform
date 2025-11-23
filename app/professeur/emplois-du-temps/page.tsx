@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { timetableApi, type TimetableEntry } from "@/lib/api/timetable"
-import { getUserSession } from "@/lib/auth-new"
+import { useAuth } from "@/hooks/useAuth" // ✅ NOUVEAU HOOK
 import { Calendar } from "lucide-react"
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi']
@@ -13,27 +13,54 @@ const HOURS = Array.from({ length: 11 }, (_, i) => 8 + i) // 8h à 18h
 export default function ProfesseurEmploiDuTempsPage() {
   const [entries, setEntries] = useState<TimetableEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const user = getUserSession()
+  
+  // ✅ CORRECTION: Utiliser le hook useAuth mémoïsé
+  const { user, userId } = useAuth()
 
+  // ✅ CORRECTION: Dépendre uniquement de userId (primitive), pas de l'objet user
   useEffect(() => {
-    if (user?.id) {
-      loadTimetable()
-    }
-  }, [user])
-
-  const loadTimetable = async () => {
-    try {
-      setLoading(true)
-      const response = await timetableApi.getTeacherTimetable(user!.id)
-      if (response.success) {
-        setEntries(response.data)
-      }
-    } catch (error) {
-      console.error('Erreur:', error)
-    } finally {
+    if (!userId) {
       setLoading(false)
+      return
     }
-  }
+
+    // ✅ CORRECTION: Utiliser AbortController pour annuler la requête au démontage
+    const controller = new AbortController()
+    let isMounted = true // Flag pour éviter setState après unmount
+
+    const loadTimetable = async () => {
+      try {
+        setLoading(true)
+        
+        // ✅ CORRECTION: Passer signal pour permettre l'annulation
+        const response = await timetableApi.getTeacherTimetable(userId, undefined, controller.signal)
+        
+        // ✅ CORRECTION: Vérifier que le composant est toujours monté
+        if (isMounted && response.success) {
+          setEntries(response.data)
+        }
+      } catch (error: any) {
+        // ✅ CORRECTION: Ignorer les erreurs d'annulation
+        if (error.name === 'AbortError') {
+          console.log('Requête annulée (composant démonté)')
+          return
+        }
+        console.error('Erreur chargement emploi du temps:', error)
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadTimetable()
+
+    // ✅ CORRECTION: Cleanup - annuler la requête et marquer comme non monté
+    return () => {
+      isMounted = false
+      controller.abort()
+    }
+  }, [userId]) // ✅ CORRECTION: Dépendance sur primitive, pas sur objet
 
   const getEntriesForDay = (dayOfWeek: number) => {
     return entries.filter(e => e.day_of_week === dayOfWeek)

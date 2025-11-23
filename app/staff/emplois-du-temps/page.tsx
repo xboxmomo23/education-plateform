@@ -8,12 +8,47 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Badge } from "@/components/ui/badge"
 import { timetableApi, type TimetableEntry, type CreateEntryData } from "@/lib/api/timetable"
-import { getUserSession } from "@/lib/auth-new"
-import { Plus, Copy, Trash2 } from "lucide-react"
+import { useAuth } from "@/hooks/useAuth"
+import { Plus, Copy, Trash2, ChevronLeft, ChevronRight, Calendar, Edit, MoreVertical } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
-const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi']
-const DAYS_MAP = { 1: 'Lundi', 2: 'Mardi', 3: 'Mercredi', 4: 'Jeudi', 5: 'Vendredi' }
+// 🌍 CONFIGURATION PAYS - Algérie ou France
+const COUNTRY_CONFIG = {
+  ALGERIA: {
+    days: ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'],
+    daysMap: { 0: 'Dimanche', 1: 'Lundi', 2: 'Mardi', 3: 'Mercredi', 4: 'Jeudi' },
+    daysNumbers: [0, 1, 2, 3, 4], // Dimanche = 0
+  },
+  FRANCE: {
+    days: ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'],
+    daysMap: { 1: 'Lundi', 2: 'Mardi', 3: 'Mercredi', 4: 'Jeudi', 5: 'Vendredi' },
+    daysNumbers: [1, 2, 3, 4, 5],
+  }
+}
+
+// ✅ CHOISIR LE PAYS ICI
+const CURRENT_COUNTRY = 'ALGERIA' // Changer en 'FRANCE' si besoin
+const DAYS = COUNTRY_CONFIG[CURRENT_COUNTRY].days
+const DAYS_MAP = COUNTRY_CONFIG[CURRENT_COUNTRY].daysMap
+const DAYS_NUMBERS = COUNTRY_CONFIG[CURRENT_COUNTRY].daysNumbers
+
+interface MultiDayFormData {
+  course_id: string
+  selectedDays: number[]
+  start_time: string
+  end_time: string
+  commonRoom: string
+  customRooms: { [day: number]: string }
+  useCustomRooms: boolean
+}
 
 export default function StaffEmploiDuTempsPage() {
   const [classes, setClasses] = useState<any[]>([])
@@ -23,19 +58,28 @@ export default function StaffEmploiDuTempsPage() {
   const [showModal, setShowModal] = useState(false)
   const [loading, setLoading] = useState(false)
   
-  const [formData, setFormData] = useState<CreateEntryData>({
+  // 📅 Navigation par semaine
+  const [currentWeekOffset, setCurrentWeekOffset] = useState(0)
+  const [weekLabel, setWeekLabel] = useState('')
+  
+  // 📝 Formulaire multi-jours
+  const [multiDayForm, setMultiDayForm] = useState<MultiDayFormData>({
     course_id: '',
-    day_of_week: 1,
+    selectedDays: [],
     start_time: '08:00',
-    end_time: '09:30',
-    room: '',
+    end_time: '09:00',
+    commonRoom: '',
+    customRooms: {},
+    useCustomRooms: false,
   })
 
-  const user = getUserSession()
+  const { userId } = useAuth()
 
   useEffect(() => {
-    loadStaffClasses()
-  }, [])
+    if (userId) {
+      loadStaffClasses()
+    }
+  }, [userId])
 
   useEffect(() => {
     if (selectedClassId) {
@@ -44,14 +88,42 @@ export default function StaffEmploiDuTempsPage() {
     }
   }, [selectedClassId])
 
+  // 📅 Calculer le label de la semaine
+  useEffect(() => {
+    const today = new Date()
+    const startOfWeek = new Date(today)
+    
+    // Aller au dimanche de la semaine
+    const dayOfWeek = today.getDay()
+    const diff = dayOfWeek === 0 ? 0 : -dayOfWeek // Dimanche = 0
+    startOfWeek.setDate(today.getDate() + diff + (currentWeekOffset * 7))
+    
+    const endOfWeek = new Date(startOfWeek)
+    endOfWeek.setDate(startOfWeek.getDate() + 4) // Dimanche + 4 jours = Jeudi
+    
+    const formatDate = (date: Date) => {
+      return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long' })
+    }
+    
+    setWeekLabel(`Semaine du ${formatDate(startOfWeek)} au ${formatDate(endOfWeek)}`)
+  }, [currentWeekOffset])
+
   const loadStaffClasses = async () => {
     try {
-      const response = await fetch('/api/timetable/staff/classes', {        
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('http://localhost:5000/api/timetable/staff/classes', {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
       })
+      
+      if (!response.ok) {
+        throw new Error(`Erreur HTTP ${response.status}`)
+      }
+      
       const data = await response.json()
+      
       if (data.success) {
         setClasses(data.data)
         if (data.data.length > 0) {
@@ -59,7 +131,7 @@ export default function StaffEmploiDuTempsPage() {
         }
       }
     } catch (error) {
-      console.error('Erreur:', error)
+      console.error('Erreur chargement classes:', error)
     }
   }
 
@@ -71,7 +143,7 @@ export default function StaffEmploiDuTempsPage() {
         setEntries(response.data)
       }
     } catch (error) {
-      console.error('Erreur:', error)
+      console.error('Erreur chargement emploi du temps:', error)
     } finally {
       setLoading(false)
     }
@@ -84,28 +156,53 @@ export default function StaffEmploiDuTempsPage() {
         setCourses(response.data)
       }
     } catch (error) {
-      console.error('Erreur:', error)
+      console.error('Erreur chargement cours:', error)
     }
   }
 
-  const handleCreateEntry = async () => {
+  // 🆕 CRÉATION MULTIPLE DE CRÉNEAUX
+  const handleCreateMultipleEntries = async () => {
+    if (multiDayForm.selectedDays.length === 0) {
+      alert('Veuillez sélectionner au moins un jour')
+      return
+    }
+
+    if (!multiDayForm.course_id) {
+      alert('Veuillez sélectionner une matière')
+      return
+    }
+
     try {
-      const response = await timetableApi.createEntry(formData)
+      const entriesToCreate: CreateEntryData[] = multiDayForm.selectedDays.map(day => ({
+        course_id: multiDayForm.course_id,
+        day_of_week: day,
+        start_time: multiDayForm.start_time,
+        end_time: multiDayForm.end_time,
+        room: multiDayForm.useCustomRooms 
+          ? (multiDayForm.customRooms[day] || multiDayForm.commonRoom)
+          : multiDayForm.commonRoom,
+      }))
+
+      const response = await timetableApi.bulkCreateEntries(entriesToCreate)
+      
       if (response.success) {
         setShowModal(false)
         loadTimetable()
+        
         // Reset form
-        setFormData({
+        setMultiDayForm({
           course_id: '',
-          day_of_week: 1,
+          selectedDays: [],
           start_time: '08:00',
-          end_time: '09:30',
-          room: '',
+          end_time: '09:00',
+          commonRoom: '',
+          customRooms: {},
+          useCustomRooms: false,
         })
       }
     } catch (error) {
-      console.error('Erreur:', error)
-      alert('Erreur lors de la création du créneau')
+      console.error('Erreur création créneaux:', error)
+      alert('Erreur lors de la création des créneaux')
     }
   }
 
@@ -118,8 +215,47 @@ export default function StaffEmploiDuTempsPage() {
       await timetableApi.deleteEntry(entryId)
       loadTimetable()
     } catch (error) {
-      console.error('Erreur:', error)
+      console.error('Erreur suppression:', error)
       alert('Erreur lors de la suppression')
+    }
+  }
+
+  // 🆕 DUPLIQUER UN CRÉNEAU SUR TOUTE LA SEMAINE
+  const handleDuplicateToWeek = async (entry: TimetableEntry) => {
+    const daysToCreate = DAYS_NUMBERS.filter(day => {
+      // Ne pas créer sur le jour actuel
+      return day !== entry.day_of_week &&
+        // Ne pas créer si un créneau existe déjà à la même heure
+        !entries.some(e => 
+          e.day_of_week === day && 
+          e.start_time === entry.start_time &&
+          e.course_id === entry.course_id
+        )
+    })
+
+    if (daysToCreate.length === 0) {
+      alert('Tous les jours ont déjà ce créneau')
+      return
+    }
+
+    if (!confirm(`Dupliquer ce cours sur ${daysToCreate.length} jour(s) ?`)) {
+      return
+    }
+
+    try {
+      const entriesToCreate: CreateEntryData[] = daysToCreate.map(day => ({
+        course_id: entry.course_id,
+        day_of_week: day,
+        start_time: entry.start_time,
+        end_time: entry.end_time,
+        room: entry.room || '',
+      }))
+
+      await timetableApi.bulkCreateEntries(entriesToCreate)
+      loadTimetable()
+    } catch (error) {
+      console.error('Erreur duplication:', error)
+      alert('Erreur lors de la duplication')
     }
   }
 
@@ -127,6 +263,23 @@ export default function StaffEmploiDuTempsPage() {
     return entries.filter(e => e.day_of_week === dayOfWeek).sort((a, b) => 
       a.start_time.localeCompare(b.start_time)
     )
+  }
+
+  const toggleDay = (day: number) => {
+    setMultiDayForm(prev => {
+      const newSelectedDays = prev.selectedDays.includes(day)
+        ? prev.selectedDays.filter(d => d !== day)
+        : [...prev.selectedDays, day]
+      return { ...prev, selectedDays: newSelectedDays }
+    })
+  }
+
+  const toggleCustomRooms = () => {
+    setMultiDayForm(prev => ({
+      ...prev,
+      useCustomRooms: !prev.useCustomRooms,
+      customRooms: !prev.useCustomRooms ? {} : prev.customRooms,
+    }))
   }
 
   return (
@@ -138,16 +291,52 @@ export default function StaffEmploiDuTempsPage() {
             <p className="text-muted-foreground">Configurez les cours de vos classes</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline">
-              <Copy className="h-4 w-4 mr-2" />
-              Copier
-            </Button>
             <Button onClick={() => setShowModal(true)}>
               <Plus className="h-4 w-4 mr-2" />
-              Ajouter un cours
+              Ajouter des cours
             </Button>
           </div>
         </div>
+
+        {/* 🆕 NAVIGATION PAR SEMAINE */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <Button
+                variant="outline"
+                onClick={() => setCurrentWeekOffset(prev => prev - 1)}
+              >
+                <ChevronLeft className="h-4 w-4 mr-2" />
+                Semaine précédente
+              </Button>
+
+              <div className="flex items-center gap-3">
+                <Calendar className="h-5 w-5 text-muted-foreground" />
+                <div className="text-center">
+                  <div className="font-semibold">{weekLabel}</div>
+                  {currentWeekOffset !== 0 && (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="text-xs"
+                      onClick={() => setCurrentWeekOffset(0)}
+                    >
+                      Retour à cette semaine
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <Button
+                variant="outline"
+                onClick={() => setCurrentWeekOffset(prev => prev + 1)}
+              >
+                Semaine suivante
+                <ChevronRight className="h-4 w-4 ml-2" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Sélection classe */}
         <Card>
@@ -180,14 +369,16 @@ export default function StaffEmploiDuTempsPage() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-5 gap-4">
-                {[1, 2, 3, 4, 5].map(day => (
-                  <div key={day}>
-                    <h3 className="font-medium text-center mb-3">{DAYS_MAP[day as keyof typeof DAYS_MAP]}</h3>
+                {DAYS_NUMBERS.map((dayNum, idx) => (
+                  <div key={dayNum}>
+                    <h3 className="font-medium text-center mb-3">
+                      {DAYS[idx]}
+                    </h3>
                     <div className="space-y-2">
-                      {getEntriesForDay(day).map(entry => (
+                      {getEntriesForDay(dayNum).map(entry => (
                         <div
                           key={entry.id}
-                          className="p-3 rounded border hover:shadow-md transition-shadow group"
+                          className="p-3 rounded border hover:shadow-md transition-shadow group relative"
                           style={{
                             backgroundColor: entry.subject_color ? `${entry.subject_color}20` : '#f0f0f0',
                             borderColor: entry.subject_color || '#ccc',
@@ -200,16 +391,34 @@ export default function StaffEmploiDuTempsPage() {
                                 {entry.start_time} - {entry.end_time}
                               </div>
                               <div className="text-xs mt-1">{entry.teacher_name}</div>
-                              <div className="text-xs">{entry.room}</div>
+                              {entry.room && <div className="text-xs">📍 {entry.room}</div>}
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => handleDeleteEntry(entry.id)}
-                            >
-                              <Trash2 className="h-3 w-3 text-red-500" />
-                            </Button>
+                            
+                            {/* 🆕 MENU D'ACTIONS */}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100"
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleDuplicateToWeek(entry)}>
+                                  <Copy className="h-4 w-4 mr-2" />
+                                  Dupliquer sur toute la semaine
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleDeleteEntry(entry.id)}
+                                  className="text-red-600"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Supprimer
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </div>
                       ))}
@@ -251,18 +460,19 @@ export default function StaffEmploiDuTempsPage() {
           </Card>
         )}
 
-        {/* Modal création */}
+        {/* 🆕 MODAL DE CRÉATION MULTIPLE AMÉLIORÉE */}
         <Dialog open={showModal} onOpenChange={setShowModal}>
-          <DialogContent>
+          <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Ajouter un cours</DialogTitle>
+              <DialogTitle>Ajouter des cours</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
+            <div className="space-y-6">
+              {/* Sélection matière */}
               <div>
                 <Label>Matière</Label>
                 <Select
-                  value={formData.course_id}
-                  onValueChange={(value) => setFormData({ ...formData, course_id: value })}
+                  value={multiDayForm.course_id}
+                  onValueChange={(value) => setMultiDayForm({ ...multiDayForm, course_id: value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Choisir une matière" />
@@ -277,56 +487,115 @@ export default function StaffEmploiDuTempsPage() {
                 </Select>
               </div>
 
-              <div>
-                <Label>Jour</Label>
-                <Select
-                  value={formData.day_of_week.toString()}
-                  onValueChange={(value) => setFormData({ ...formData, day_of_week: parseInt(value) })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DAYS.map((day, idx) => (
-                      <SelectItem key={idx} value={(idx + 1).toString()}>
-                        {day}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
+              {/* Horaire */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Heure début</Label>
                   <Input
                     type="time"
-                    value={formData.start_time}
-                    onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
+                    value={multiDayForm.start_time}
+                    onChange={(e) => setMultiDayForm({ ...multiDayForm, start_time: e.target.value })}
                   />
                 </div>
                 <div>
                   <Label>Heure fin</Label>
                   <Input
                     type="time"
-                    value={formData.end_time}
-                    onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
+                    value={multiDayForm.end_time}
+                    onChange={(e) => setMultiDayForm({ ...multiDayForm, end_time: e.target.value })}
                   />
                 </div>
               </div>
 
+              {/* 🆕 SÉLECTION MULTIPLE DE JOURS */}
               <div>
-                <Label>Salle</Label>
-                <Input
-                  value={formData.room || ''}
-                  onChange={(e) => setFormData({ ...formData, room: e.target.value })}
-                  placeholder="Ex: 101"
-                />
+                <Label className="mb-3 block">Jours de la semaine</Label>
+                <div className="grid grid-cols-5 gap-2">
+                  {DAYS_NUMBERS.map((dayNum, idx) => (
+                    <div
+                      key={dayNum}
+                      className={`flex items-center space-x-2 p-3 rounded border cursor-pointer transition-colors ${
+                        multiDayForm.selectedDays.includes(dayNum)
+                          ? 'bg-primary/10 border-primary'
+                          : 'hover:bg-gray-50'
+                      }`}
+                      onClick={() => toggleDay(dayNum)}
+                    >
+                      <Checkbox
+                        checked={multiDayForm.selectedDays.includes(dayNum)}
+                        onCheckedChange={() => toggleDay(dayNum)}
+                      />
+                      <label className="text-sm font-medium cursor-pointer">
+                        {DAYS[idx]}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+                {multiDayForm.selectedDays.length > 0 && (
+                  <div className="mt-2 text-sm text-muted-foreground">
+                    {multiDayForm.selectedDays.length} jour(s) sélectionné(s)
+                  </div>
+                )}
               </div>
 
-              <Button onClick={handleCreateEntry} className="w-full">
-                Créer le créneau
-              </Button>
+              {/* 🆕 SALLE COMMUNE OU PERSONNALISÉE */}
+              <div>
+                <Label>Salle de classe</Label>
+                <Input
+                  value={multiDayForm.commonRoom}
+                  onChange={(e) => setMultiDayForm({ ...multiDayForm, commonRoom: e.target.value })}
+                  placeholder="Ex: 201"
+                  disabled={multiDayForm.useCustomRooms}
+                />
+                
+                <div className="mt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={toggleCustomRooms}
+                  >
+                    <Edit className="h-4 w-4 mr-2" />
+                    {multiDayForm.useCustomRooms ? 'Utiliser la même salle' : 'Personnaliser par jour'}
+                  </Button>
+                </div>
+
+                {/* 🆕 PERSONNALISATION PAR JOUR */}
+                {multiDayForm.useCustomRooms && multiDayForm.selectedDays.length > 0 && (
+                  <div className="mt-4 space-y-2 p-4 bg-gray-50 rounded">
+                    <div className="text-sm font-medium mb-2">Salles par jour :</div>
+                    {multiDayForm.selectedDays.map(day => (
+                      <div key={day} className="flex items-center gap-2">
+                        <Label className="w-24 text-sm">
+                          {DAYS[DAYS_NUMBERS.indexOf(day)]} :
+                        </Label>
+                        <Input
+                          value={multiDayForm.customRooms[day] || multiDayForm.commonRoom}
+                          onChange={(e) => setMultiDayForm(prev => ({
+                            ...prev,
+                            customRooms: { ...prev.customRooms, [day]: e.target.value }
+                          }))}
+                          placeholder="Ex: 201"
+                          className="flex-1"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Bouton de création */}
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setShowModal(false)}>
+                  Annuler
+                </Button>
+                <Button
+                  onClick={handleCreateMultipleEntries}
+                  disabled={multiDayForm.selectedDays.length === 0 || !multiDayForm.course_id}
+                >
+                  Créer {multiDayForm.selectedDays.length > 0 ? `${multiDayForm.selectedDays.length} créneau(x)` : 'les créneaux'}
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>

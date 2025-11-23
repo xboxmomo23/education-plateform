@@ -1,11 +1,13 @@
 // Client API pour l'emploi du temps
-// Utilise fetch directement
+// Utilise le nouveau wrapper apiCallWithAbort
+
+import { apiCallWithAbort } from './client';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
-// Helper pour les appels API
+// Helper pour les appels API (ANCIENNE VERSION - maintenue pour compatibilité)
 async function apiCall(endpoint: string, options: RequestInit = {}) {
-  const token = localStorage.getItem('auth_token');  // ✅ Correction  
+  const token = localStorage.getItem('auth_token');
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers: {
@@ -52,16 +54,16 @@ export interface CreateEntryData {
 }
 
 export const timetableApi = {
-  // Récupérer emploi du temps classe
-  async getClassTimetable(classId: string, week?: 'A' | 'B') {
+  // ✅ NOUVEAU: Récupérer emploi du temps classe avec AbortController
+  async getClassTimetable(classId: string, week?: 'A' | 'B', signal?: AbortSignal) {
     const params = week ? `?week=${week}` : '';
-    return apiCall(`/timetable/class/${classId}${params}`);
+    return apiCallWithAbort(`/timetable/class/${classId}${params}`, {}, signal);
   },
 
-  // Récupérer emploi du temps professeur
-  async getTeacherTimetable(teacherId: string, week?: 'A' | 'B') {
+  // ✅ NOUVEAU: Récupérer emploi du temps professeur avec AbortController
+  async getTeacherTimetable(teacherId: string, week?: 'A' | 'B', signal?: AbortSignal) {
     const params = week ? `?week=${week}` : '';
-    return apiCall(`/timetable/teacher/${teacherId}${params}`);
+    return apiCallWithAbort(`/timetable/teacher/${teacherId}${params}`, {}, signal);
   },
 
   // Récupérer cours disponibles
@@ -127,7 +129,7 @@ export const timetableApi = {
   },
 
   // Récupérer la classe de l'élève connecté
-    async getStudentClass() {
-      return apiCall('/timetable/student/class');
-    },
-  };
+  async getStudentClass(signal?: AbortSignal) {
+    return apiCallWithAbort('/timetable/student/class', {}, signal);
+  },
+};
