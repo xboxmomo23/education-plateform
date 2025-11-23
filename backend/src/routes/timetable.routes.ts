@@ -12,6 +12,12 @@ import {
   deleteEntryHandler,
   duplicateTimetableHandler,
   checkConflictsHandler,
+  // NOUVEAUX HANDLERS
+  getTemplatesByClassHandler,
+  createTemplateHandler,
+  updateTemplateHandler,
+  deleteTemplateHandler,
+  createEntryFromTemplateHandler,
 } from '../controllers/timetable.controller';
 
 const router = Router();
@@ -39,39 +45,106 @@ const createEntryValidation = [
   body('notes').optional().isString().withMessage('Notes invalides'),
 ];
 
-const updateEntryValidation = [
-  param('id').isUUID().withMessage('ID invalide'),
-  body('day_of_week')
+const createTemplateValidation = [
+  body('course_id').isUUID().withMessage('ID de cours invalide'),
+  body('default_duration')
     .optional()
+    .isInt({ min: 15, max: 480 })
+    .withMessage('Durée invalide (15-480 minutes)'),
+  body('default_room').optional().isString().withMessage('Salle invalide'),
+  body('display_order')
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage('Ordre d\'affichage invalide'),
+];
+
+const createFromTemplateValidation = [
+  body('template_id').isUUID().withMessage('ID de template invalide'),
+  body('day_of_week')
     .isInt({ min: 1, max: 7 })
     .withMessage('Jour de la semaine invalide (1-7)'),
   body('start_time')
-    .optional()
     .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
     .withMessage('Heure de début invalide (format HH:MM)'),
-  body('end_time')
-    .optional()
-    .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
-    .withMessage('Heure de fin invalide (format HH:MM)'),
-  body('week')
-    .optional()
-    .isIn(['A', 'B', null])
-    .withMessage('Semaine invalide (A, B ou null)'),
   body('room').optional().isString().withMessage('Salle invalide'),
-  body('status')
-    .optional()
-    .isIn(['confirmed', 'cancelled', 'changed'])
-    .withMessage('Statut invalide'),
   body('notes').optional().isString().withMessage('Notes invalides'),
 ];
 
 // =========================
-// ROUTES DE RÉCUPÉRATION
+// ROUTES TEMPLATES (NOUVELLES)
+// =========================
+
+/**
+ * GET /api/timetable/templates/class/:classId
+ * Récupérer les templates d'une classe
+ */
+router.get(
+  '/templates/class/:classId',
+  authenticate,
+  authorize('staff', 'admin'),
+  param('classId').isUUID().withMessage('ID de classe invalide'),
+  validateRequest,
+  getTemplatesByClassHandler
+);
+
+/**
+ * POST /api/timetable/templates
+ * Créer un nouveau template
+ */
+router.post(
+  '/templates',
+  authenticate,
+  authorize('staff', 'admin'),
+  createTemplateValidation,
+  validateRequest,
+  createTemplateHandler
+);
+
+/**
+ * PUT /api/timetable/templates/:id
+ * Modifier un template
+ */
+router.put(
+  '/templates/:id',
+  authenticate,
+  authorize('staff', 'admin'),
+  param('id').isUUID().withMessage('ID de template invalide'),
+  validateRequest,
+  updateTemplateHandler
+);
+
+/**
+ * DELETE /api/timetable/templates/:id
+ * Supprimer un template
+ */
+router.delete(
+  '/templates/:id',
+  authenticate,
+  authorize('staff', 'admin'),
+  param('id').isUUID().withMessage('ID de template invalide'),
+  validateRequest,
+  deleteTemplateHandler
+);
+
+/**
+ * POST /api/timetable/entries/from-template
+ * Créer un créneau à partir d'un template
+ */
+router.post(
+  '/entries/from-template',
+  authenticate,
+  authorize('staff', 'admin'),
+  createFromTemplateValidation,
+  validateRequest,
+  createEntryFromTemplateHandler
+);
+
+// =========================
+// ROUTES EXISTANTES (GARDER)
 // =========================
 
 /**
  * GET /api/timetable/class/:classId
- * Récupérer l'emploi du temps d'une classe
  */
 router.get(
   '/class/:classId',
@@ -85,7 +158,6 @@ router.get(
 
 /**
  * GET /api/timetable/teacher/:teacherId
- * Récupérer l'emploi du temps d'un professeur
  */
 router.get(
   '/teacher/:teacherId',
@@ -99,7 +171,6 @@ router.get(
 
 /**
  * GET /api/timetable/courses/:classId
- * Récupérer les cours disponibles pour une classe
  */
 router.get(
   '/courses/:classId',
@@ -110,13 +181,8 @@ router.get(
   getAvailableCoursesHandler
 );
 
-// =========================
-// ROUTES DE CRÉATION
-// =========================
-
 /**
  * POST /api/timetable/entries
- * Créer un nouveau créneau
  */
 router.post(
   '/entries',
@@ -129,7 +195,6 @@ router.post(
 
 /**
  * POST /api/timetable/entries/bulk
- * Créer plusieurs créneaux en une fois
  */
 router.post(
   '/entries/bulk',
@@ -140,30 +205,20 @@ router.post(
   bulkCreateEntriesHandler
 );
 
-// =========================
-// ROUTES DE MODIFICATION
-// =========================
-
 /**
  * PUT /api/timetable/entries/:id
- * Modifier un créneau
  */
 router.put(
   '/entries/:id',
   authenticate,
   authorize('staff', 'admin'),
-  updateEntryValidation,
+  param('id').isUUID().withMessage('ID invalide'),
   validateRequest,
   updateEntryHandler
 );
 
-// =========================
-// ROUTES DE SUPPRESSION
-// =========================
-
 /**
  * DELETE /api/timetable/entries/:id
- * Supprimer un créneau
  */
 router.delete(
   '/entries/:id',
@@ -174,13 +229,8 @@ router.delete(
   deleteEntryHandler
 );
 
-// =========================
-// ROUTES DE DUPLICATION
-// =========================
-
 /**
  * POST /api/timetable/duplicate
- * Dupliquer l'emploi du temps d'une classe vers une autre
  */
 router.post(
   '/duplicate',
@@ -192,13 +242,8 @@ router.post(
   duplicateTimetableHandler
 );
 
-// =========================
-// ROUTES DE VÉRIFICATION
-// =========================
-
 /**
  * POST /api/timetable/check-conflicts
- * Vérifier les conflits pour un créneau
  */
 router.post(
   '/check-conflicts',
@@ -220,14 +265,8 @@ router.post(
   checkConflictsHandler
 );
 
-
-// =========================
-// ROUTES STUDENT
-// =========================
-
 /**
  * GET /api/timetable/student/class
- * Récupérer la classe de l'élève connecté
  */
 router.get(
   '/student/class',
@@ -267,10 +306,8 @@ router.get(
   }
 );
 
-
 /**
  * GET /api/timetable/staff/classes
- * Classes gérées par le staff (temporaire)
  */
 router.get(
   '/staff/classes',

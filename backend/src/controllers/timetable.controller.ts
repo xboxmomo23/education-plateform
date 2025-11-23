@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { TimetableModel } from '../models/timetable.model';
+import { CourseTemplateModel } from '../models/course-template.model';
 import pool from '../config/database';
 
 // =========================
@@ -13,7 +14,7 @@ import pool from '../config/database';
 export async function getClassTimetableHandler(req: Request, res: Response) {
   try {
     const { classId } = req.params;
-    const { week } = req.query;
+    const { week, startDate, endDate } = req.query;
 
     const entries = await TimetableModel.getEntriesByClass(
       classId,
@@ -84,19 +85,56 @@ export async function getAvailableCoursesHandler(req: Request, res: Response) {
 }
 
 // =========================
-// CRÉATION
+// TEMPLATES - NOUVEAUX HANDLERS
 // =========================
 
 /**
- * POST /api/timetable/entries
- * Créer un nouveau créneau
+ * GET /api/timetable/templates/class/:classId
+ * Récupérer les templates d'une classe
  */
-export async function createEntryHandler(req: Request, res: Response) {
+export async function getTemplatesByClassHandler(req: Request, res: Response) {
+  try {
+    const { classId } = req.params;
+    const { userId, role } = req.user!;
+
+    // Vérifier les permissions si staff
+    if (role === 'staff') {
+      const staffCheck = await pool.query(
+        'SELECT 1 FROM class_staff WHERE class_id = $1 AND user_id = $2',
+        [classId, userId]
+      );
+      if (staffCheck.rows.length === 0) {
+        return res.status(403).json({
+          success: false,
+          error: 'Vous ne gérez pas cette classe',
+        });
+      }
+    }
+
+    const templates = await CourseTemplateModel.getTemplatesByClass(classId);
+
+    return res.json({
+      success: true,
+      data: templates,
+    });
+  } catch (error) {
+    console.error('Erreur getTemplatesByClassHandler:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la récupération des templates',
+    });
+  }
+}
+
+/**
+ * POST /api/timetable/templates
+ * Créer un nouveau template
+ */
+export async function createTemplateHandler(req: Request, res: Response) {
   try {
     const { userId, role } = req.user!;
-    const { course_id, day_of_week, start_time, end_time, week, room, notes } = req.body;
+    const { course_id, default_duration, default_room, display_order } = req.body;
 
-    // Seuls staff et admin peuvent créer des créneaux
     if (role !== 'staff' && role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -104,7 +142,305 @@ export async function createEntryHandler(req: Request, res: Response) {
       });
     }
 
-    // Récupérer les infos du cours pour vérifier les permissions
+    // Vérifier que le cours existe
+    const courseQuery = 'SELECT c.*, cl.id as class_id FROM courses c JOIN classes cl ON c.class_id = cl.id WHERE c.id = $1';
+    const courseResult = await pool.query(courseQuery, [course_id]);
+
+    if (courseResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Cours non trouvé',
+      });
+    }
+
+    const course = courseResult.rows[0];
+
+    // Si staff, vérifier qu'il gère cette classe
+    if (role === 'staff') {
+      const staffCheck = await pool.query(
+        'SELECT 1 FROM class_staff WHERE class_id = $1 AND user_id = $2',
+        [course.class_id, userId]
+      );
+      if (staffCheck.rows.length === 0) {
+        return res.status(403).json({
+          success: false,
+          error: 'Vous ne gérez pas cette classe',
+        });
+      }
+    }
+
+    // Vérifier si un template existe déjà pour ce cours
+    const exists = await CourseTemplateModel.existsForCourse(course_id);
+    if (exists) {
+      return res.status(409).json({
+        success: false,
+        error: 'Un template existe déjà pour ce cours',
+      });
+    }
+
+    // Créer le template
+    const template = await CourseTemplateModel.create({
+      course_id,
+      default_duration,
+      default_room,
+      display_order,
+      created_by: userId,
+    });
+
+    // Récupérer avec les détails
+    const templateWithDetails = await CourseTemplateModel.getById(template.id);
+
+    return res.json({
+      success: true,
+      message: 'Template créé avec succès',
+      data: templateWithDetails,
+    });
+  } catch (error) {
+    console.error('Erreur createTemplateHandler:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la création du template',
+    });
+  }
+}
+
+/**
+ * PUT /api/timetable/templates/:id
+ * Modifier un template
+ */
+export async function updateTemplateHandler(req: Request, res: Response) {
+  try {
+    const { userId, role } = req.user!;
+    const { id: templateId } = req.params;
+    const updateData = req.body;
+
+    if (role !== 'staff' && role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès réservé au personnel',
+      });
+    }
+
+    // Vérifier que le template existe et permissions
+    const template = await CourseTemplateModel.getById(templateId);
+    if (!template) {
+      return res.status(404).json({
+        success: false,
+        error: 'Template non trouvé',
+      });
+    }
+
+    if (role === 'staff') {
+      const staffCheck = await pool.query(
+        'SELECT 1 FROM class_staff WHERE class_id = $1 AND user_id = $2',
+        [template.class_id, userId]
+      );
+      if (staffCheck.rows.length === 0) {
+        return res.status(403).json({
+          success: false,
+          error: 'Vous ne gérez pas cette classe',
+        });
+      }
+    }
+
+    const updated = await CourseTemplateModel.update(templateId, updateData);
+    const updatedWithDetails = await CourseTemplateModel.getById(updated.id);
+
+    return res.json({
+      success: true,
+      message: 'Template mis à jour',
+      data: updatedWithDetails,
+    });
+  } catch (error) {
+    console.error('Erreur updateTemplateHandler:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la mise à jour du template',
+    });
+  }
+}
+
+/**
+ * DELETE /api/timetable/templates/:id
+ * Supprimer un template
+ */
+export async function deleteTemplateHandler(req: Request, res: Response) {
+  try {
+    const { userId, role } = req.user!;
+    const { id: templateId } = req.params;
+
+    if (role !== 'staff' && role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès réservé au personnel',
+      });
+    }
+
+    const template = await CourseTemplateModel.getById(templateId);
+    if (!template) {
+      return res.status(404).json({
+        success: false,
+        error: 'Template non trouvé',
+      });
+    }
+
+    if (role === 'staff') {
+      const staffCheck = await pool.query(
+        'SELECT 1 FROM class_staff WHERE class_id = $1 AND user_id = $2',
+        [template.class_id, userId]
+      );
+      if (staffCheck.rows.length === 0) {
+        return res.status(403).json({
+          success: false,
+          error: 'Vous ne gérez pas cette classe',
+        });
+      }
+    }
+
+    await CourseTemplateModel.delete(templateId);
+
+    return res.json({
+      success: true,
+      message: 'Template supprimé',
+    });
+  } catch (error) {
+    console.error('Erreur deleteTemplateHandler:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la suppression du template',
+    });
+  }
+}
+
+// =========================
+// CRÉATION À PARTIR DE TEMPLATE
+// =========================
+
+/**
+ * POST /api/timetable/entries/from-template
+ * Créer un créneau à partir d'un template
+ */
+export async function createEntryFromTemplateHandler(req: Request, res: Response) {
+  try {
+    const { userId, role } = req.user!;
+    const { template_id, day_of_week, start_time, room, notes } = req.body;
+
+    if (role !== 'staff' && role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès réservé au personnel',
+      });
+    }
+
+    // Récupérer le template avec détails
+    const template = await CourseTemplateModel.getById(template_id);
+    if (!template) {
+      return res.status(404).json({
+        success: false,
+        error: 'Template non trouvé',
+      });
+    }
+
+    // Vérifier permissions
+    if (role === 'staff') {
+      const staffCheck = await pool.query(
+        'SELECT 1 FROM class_staff WHERE class_id = $1 AND user_id = $2',
+        [template.class_id, userId]
+      );
+      if (staffCheck.rows.length === 0) {
+        return res.status(403).json({
+          success: false,
+          error: 'Vous ne gérez pas cette classe',
+        });
+      }
+    }
+
+    // Calculer end_time basé sur la durée du template
+    const startParts = start_time.split(':');
+    const startDate = new Date();
+    startDate.setHours(parseInt(startParts[0]), parseInt(startParts[1]), 0);
+    startDate.setMinutes(startDate.getMinutes() + template.default_duration);
+    const end_time = `${startDate.getHours().toString().padStart(2, '0')}:${startDate.getMinutes().toString().padStart(2, '0')}`;
+
+    // Vérifier les conflits
+    const roomToCheck = room || template.default_room;
+    if (roomToCheck) {
+      const roomConflict = await TimetableModel.checkRoomConflict(
+        day_of_week,
+        start_time,
+        end_time,
+        roomToCheck
+      );
+      if (roomConflict.hasConflict) {
+        return res.status(409).json({
+          success: false,
+          error: 'Conflit de salle détecté',
+          conflict: roomConflict.conflictDetails,
+        });
+      }
+    }
+
+    // Récupérer teacher_id depuis le template
+    const teacherConflict = await TimetableModel.checkTeacherConflict(
+      (template as any).teacher_id,
+      day_of_week,
+      start_time,
+      end_time
+    );
+    if (teacherConflict.hasConflict) {
+      return res.status(409).json({
+        success: false,
+        error: 'Conflit de professeur détecté',
+        conflict: teacherConflict.conflictDetails,
+      });
+    }
+
+    // Créer le créneau
+    const entry = await TimetableModel.createEntry({
+      course_id: template.course_id,
+      day_of_week,
+      start_time,
+      end_time,
+      room: roomToCheck,
+      notes,
+    });
+
+    // Lier au template
+    await pool.query(
+      'UPDATE timetable_entries SET template_id = $1 WHERE id = $2',
+      [template_id, entry.id]
+    );
+
+    return res.json({
+      success: true,
+      message: 'Créneau créé depuis le template',
+      data: entry,
+    });
+  } catch (error) {
+    console.error('Erreur createEntryFromTemplateHandler:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la création du créneau',
+    });
+  }
+}
+
+// =========================
+// CRÉATION (ORIGINAL - GARDER)
+// =========================
+
+export async function createEntryHandler(req: Request, res: Response) {
+  try {
+    const { userId, role } = req.user!;
+    const { course_id, day_of_week, start_time, end_time, week, room, notes } = req.body;
+
+    if (role !== 'staff' && role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès réservé au personnel',
+      });
+    }
+
     const courseQuery = `
       SELECT c.*, cl.id as class_id, c.teacher_id
       FROM courses c
@@ -122,7 +458,6 @@ export async function createEntryHandler(req: Request, res: Response) {
 
     const course = courseResult.rows[0];
 
-    // Si staff, vérifier qu'il gère bien cette classe
     if (role === 'staff') {
       const staffCheck = await pool.query(
         'SELECT 1 FROM class_staff WHERE class_id = $1 AND user_id = $2',
@@ -136,7 +471,6 @@ export async function createEntryHandler(req: Request, res: Response) {
       }
     }
 
-    // Vérifier les conflits
     const roomConflict = room 
       ? await TimetableModel.checkRoomConflict(day_of_week, start_time, end_time, room)
       : { hasConflict: false };
@@ -159,7 +493,6 @@ export async function createEntryHandler(req: Request, res: Response) {
       });
     }
 
-    // Créer le créneau
     const entry = await TimetableModel.createEntry({
       course_id,
       day_of_week,
@@ -184,10 +517,6 @@ export async function createEntryHandler(req: Request, res: Response) {
   }
 }
 
-/**
- * POST /api/timetable/entries/bulk
- * Créer plusieurs créneaux en une fois
- */
 export async function bulkCreateEntriesHandler(req: Request, res: Response) {
   try {
     const { userId, role } = req.user!;
@@ -212,7 +541,6 @@ export async function bulkCreateEntriesHandler(req: Request, res: Response) {
 
     for (const entryData of entries) {
       try {
-        // Vérifier les conflits
         const roomConflict = entryData.room
           ? await TimetableModel.checkRoomConflict(
               entryData.day_of_week,
@@ -222,7 +550,6 @@ export async function bulkCreateEntriesHandler(req: Request, res: Response) {
             )
           : { hasConflict: false };
 
-        // Récupérer le teacher_id depuis le cours
         const courseQuery = 'SELECT teacher_id FROM courses WHERE id = $1';
         const courseResult = await pool.query(courseQuery, [entryData.course_id]);
         
@@ -280,13 +607,9 @@ export async function bulkCreateEntriesHandler(req: Request, res: Response) {
 }
 
 // =========================
-// MODIFICATION
+// MODIFICATION (GARDER)
 // =========================
 
-/**
- * PUT /api/timetable/entries/:id
- * Modifier un créneau
- */
 export async function updateEntryHandler(req: Request, res: Response) {
   try {
     const { userId, role } = req.user!;
@@ -300,7 +623,6 @@ export async function updateEntryHandler(req: Request, res: Response) {
       });
     }
 
-    // Récupérer le créneau existant
     const entryQuery = `
       SELECT t.*, c.class_id, c.teacher_id
       FROM timetable_entries t
@@ -318,7 +640,6 @@ export async function updateEntryHandler(req: Request, res: Response) {
 
     const existingEntry = entryResult.rows[0];
 
-    // Si staff, vérifier qu'il gère la classe
     if (role === 'staff') {
       const staffCheck = await pool.query(
         'SELECT 1 FROM class_staff WHERE class_id = $1 AND user_id = $2',
@@ -332,7 +653,6 @@ export async function updateEntryHandler(req: Request, res: Response) {
       }
     }
 
-    // Vérifier les conflits si les horaires changent
     if (updateData.start_time || updateData.end_time || updateData.day_of_week) {
       const dayOfWeek = updateData.day_of_week || existingEntry.day_of_week;
       const startTime = updateData.start_time || existingEntry.start_time;
@@ -374,7 +694,6 @@ export async function updateEntryHandler(req: Request, res: Response) {
       }
     }
 
-    // Mettre à jour
     const updated = await TimetableModel.updateEntry(entryId, updateData);
 
     return res.json({
@@ -392,13 +711,9 @@ export async function updateEntryHandler(req: Request, res: Response) {
 }
 
 // =========================
-// SUPPRESSION
+// SUPPRESSION (GARDER)
 // =========================
 
-/**
- * DELETE /api/timetable/entries/:id
- * Supprimer un créneau
- */
 export async function deleteEntryHandler(req: Request, res: Response) {
   try {
     const { userId, role } = req.user!;
@@ -411,7 +726,6 @@ export async function deleteEntryHandler(req: Request, res: Response) {
       });
     }
 
-    // Vérifier les permissions si staff
     if (role === 'staff') {
       const entryQuery = `
         SELECT c.class_id
@@ -457,13 +771,9 @@ export async function deleteEntryHandler(req: Request, res: Response) {
 }
 
 // =========================
-// DUPLICATION
+// DUPLICATION (GARDER ET AMÉLIORER)
 // =========================
 
-/**
- * POST /api/timetable/duplicate
- * Dupliquer l'emploi du temps d'une classe vers une autre
- */
 export async function duplicateTimetableHandler(req: Request, res: Response) {
   try {
     const { userId, role } = req.user!;
@@ -476,7 +786,6 @@ export async function duplicateTimetableHandler(req: Request, res: Response) {
       });
     }
 
-    // Vérifier que le staff gère les deux classes
     if (role === 'staff') {
       const staffCheck = await pool.query(
         `SELECT class_id FROM class_staff 
@@ -509,18 +818,13 @@ export async function duplicateTimetableHandler(req: Request, res: Response) {
 }
 
 // =========================
-// VÉRIFICATIONS
+// VÉRIFICATIONS (GARDER)
 // =========================
 
-/**
- * POST /api/timetable/check-conflicts
- * Vérifier les conflits pour un créneau
- */
 export async function checkConflictsHandler(req: Request, res: Response) {
   try {
     const { course_id, day_of_week, start_time, end_time, room, exclude_entry_id } = req.body;
 
-    // Récupérer le teacher_id
     const courseQuery = 'SELECT teacher_id FROM courses WHERE id = $1';
     const courseResult = await pool.query(courseQuery, [course_id]);
 

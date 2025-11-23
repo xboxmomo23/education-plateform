@@ -1,11 +1,8 @@
-// Client API pour l'emploi du temps
-// Utilise le nouveau wrapper apiCallWithAbort
-
 import { apiCallWithAbort } from './client';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
-// Helper pour les appels API (ANCIENNE VERSION - maintenue pour compatibilité)
+// Helper pour les appels API
 async function apiCall(endpoint: string, options: RequestInit = {}) {
   const token = localStorage.getItem('auth_token');
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -26,6 +23,10 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
   return data;
 }
 
+// =========================
+// TYPES
+// =========================
+
 export interface TimetableEntry {
   id: string;
   course_id: string;
@@ -41,6 +42,7 @@ export interface TimetableEntry {
   subject_color?: string;
   class_label?: string;
   teacher_name?: string;
+  template_id?: string;
 }
 
 export interface CreateEntryData {
@@ -53,25 +55,58 @@ export interface CreateEntryData {
   notes?: string;
 }
 
+export interface CourseTemplate {
+  id: string;
+  course_id: string;
+  default_duration: number;
+  default_room: string | null;
+  display_order: number;
+  subject_name: string;
+  subject_code: string;
+  subject_color: string;
+  teacher_name: string;
+  class_label: string;
+  class_id: string;
+}
+
+export interface CreateTemplateData {
+  course_id: string;
+  default_duration?: number;
+  default_room?: string;
+  display_order?: number;
+}
+
+export interface CreateFromTemplateData {
+  template_id: string;
+  day_of_week: number;
+  start_time: string;
+  room?: string;
+  notes?: string;
+}
+
+// =========================
+// API CLIENT
+// =========================
+
 export const timetableApi = {
-  // ✅ NOUVEAU: Récupérer emploi du temps classe avec AbortController
+  // ==================
+  // TIMETABLE ENTRIES
+  // ==================
+
   async getClassTimetable(classId: string, week?: 'A' | 'B', signal?: AbortSignal) {
     const params = week ? `?week=${week}` : '';
     return apiCallWithAbort(`/timetable/class/${classId}${params}`, {}, signal);
   },
 
-  // ✅ NOUVEAU: Récupérer emploi du temps professeur avec AbortController
   async getTeacherTimetable(teacherId: string, week?: 'A' | 'B', signal?: AbortSignal) {
     const params = week ? `?week=${week}` : '';
     return apiCallWithAbort(`/timetable/teacher/${teacherId}${params}`, {}, signal);
   },
 
-  // Récupérer cours disponibles
   async getAvailableCourses(classId: string) {
     return apiCall(`/timetable/courses/${classId}`);
   },
 
-  // Créer un créneau
   async createEntry(data: CreateEntryData) {
     return apiCall('/timetable/entries', {
       method: 'POST',
@@ -79,7 +114,6 @@ export const timetableApi = {
     });
   },
 
-  // Créer plusieurs créneaux
   async bulkCreateEntries(entries: CreateEntryData[]) {
     return apiCall('/timetable/entries/bulk', {
       method: 'POST',
@@ -87,7 +121,6 @@ export const timetableApi = {
     });
   },
 
-  // Modifier un créneau
   async updateEntry(entryId: string, data: Partial<CreateEntryData>) {
     return apiCall(`/timetable/entries/${entryId}`, {
       method: 'PUT',
@@ -95,14 +128,12 @@ export const timetableApi = {
     });
   },
 
-  // Supprimer un créneau
   async deleteEntry(entryId: string) {
     return apiCall(`/timetable/entries/${entryId}`, {
       method: 'DELETE',
     });
   },
 
-  // Dupliquer emploi du temps
   async duplicate(sourceClassId: string, targetClassId: string) {
     return apiCall('/timetable/duplicate', {
       method: 'POST',
@@ -113,7 +144,6 @@ export const timetableApi = {
     });
   },
 
-  // Vérifier conflits
   async checkConflicts(data: {
     course_id: string;
     day_of_week: number;
@@ -128,8 +158,42 @@ export const timetableApi = {
     });
   },
 
-  // Récupérer la classe de l'élève connecté
   async getStudentClass(signal?: AbortSignal) {
     return apiCallWithAbort('/timetable/student/class', {}, signal);
+  },
+
+  // ==================
+  // TEMPLATES (NOUVEAU)
+  // ==================
+
+  async getTemplates(classId: string): Promise<{ success: boolean; data: CourseTemplate[] }> {
+    return apiCall(`/timetable/templates/class/${classId}`);
+  },
+
+  async createTemplate(data: CreateTemplateData): Promise<{ success: boolean; data: CourseTemplate }> {
+    return apiCall('/timetable/templates', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateTemplate(templateId: string, data: Partial<CreateTemplateData>): Promise<{ success: boolean; data: CourseTemplate }> {
+    return apiCall(`/timetable/templates/${templateId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteTemplate(templateId: string): Promise<{ success: boolean }> {
+    return apiCall(`/timetable/templates/${templateId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async createFromTemplate(data: CreateFromTemplateData): Promise<{ success: boolean; data: TimetableEntry }> {
+    return apiCall('/timetable/entries/from-template', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   },
 };
