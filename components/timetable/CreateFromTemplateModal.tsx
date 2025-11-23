@@ -57,68 +57,68 @@ export function CreateFromTemplateModal({
   }
 
   const handleSubmit = async () => {
-    const duration = calculateDuration()
-    
-    if (duration <= 0) {
-      alert('L\'heure de fin doit être après l\'heure de début')
+  const duration = calculateDuration()
+  
+  if (duration <= 0) {
+    alert('L\'heure de fin doit être après l\'heure de début')
+    return
+  }
+
+  if (duration > 360) {
+    if (!confirm('Ce cours dure plus de 6 heures. Êtes-vous sûr ?')) {
       return
     }
-
-    if (duration > 360) {
-      if (!confirm('Ce cours dure plus de 6 heures. Êtes-vous sûr ?')) {
-        return
-      }
-    }
-
-    try {
-      setLoading(true)
-      
-      // Utiliser l'API existante mais avec les données personnalisées
-      const response = await fetch('http://localhost:5000/api/timetable/entries', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-        },
-        body: JSON.stringify({
-          course_id: template.course_id,
-          day_of_week: dayOfWeek,
-          start_time: startTime,
-          end_time: endTime,
-          room: room || null,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        // Lier au template
-        await fetch(`http://localhost:5000/api/timetable/entries/${data.data.id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-          },
-          body: JSON.stringify({
-            template_id: template.id,
-          }),
-        })
-        
-        onSuccess()
-      } else {
-        if (response.status === 409) {
-          alert('Conflit détecté : ' + data.error)
-        } else {
-          alert('Erreur : ' + data.error)
-        }
-      }
-    } catch (error: any) {
-      console.error('Erreur création cours:', error)
-      alert('Erreur lors de la création du cours')
-    } finally {
-      setLoading(false)
-    }
   }
+
+  try {
+    setLoading(true)
+    
+    console.log('📝 Création cours depuis template:', {
+      template_id: template.id,
+      course_id: template.course_id,
+      day_of_week: dayOfWeek,
+      start_time: startTime,
+      end_time: endTime,
+      room: room || null,
+    })
+    
+    // Créer le cours directement avec toutes les infos
+    const response = await fetch('http://localhost:5000/api/timetable/entries', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+      },
+      body: JSON.stringify({
+        course_id: template.course_id,
+        day_of_week: dayOfWeek,
+        start_time: startTime,
+        end_time: endTime,
+        room: room || null,
+      }),
+    })
+
+    const data = await response.json()
+    console.log('📦 Réponse création cours:', data)
+
+    if (response.ok) {
+      console.log('✅ Cours créé avec succès')
+      onSuccess()
+    } else {
+      console.error('❌ Erreur serveur:', data)
+      if (response.status === 409) {
+        alert('Conflit détecté : ' + data.error)
+      } else {
+        alert('Erreur : ' + data.error)
+      }
+    }
+  } catch (error: any) {
+    console.error('❌ Erreur création cours:', error)
+    alert('Erreur lors de la création du cours')
+  } finally {
+    setLoading(false)
+  }
+}
 
   return (
     <Dialog open onOpenChange={onClose}>
