@@ -18,6 +18,7 @@ import {
   updateTemplateHandler,
   deleteTemplateHandler,
   createEntryFromTemplateHandler,
+  getStaffClassesHandler,  // ← AJOUTER ICI
 } from '../controllers/timetable.controller';
 
 const router = Router();
@@ -69,6 +70,11 @@ const createFromTemplateValidation = [
   body('room').optional().isString().withMessage('Salle invalide'),
   body('notes').optional().isString().withMessage('Notes invalides'),
 ];
+
+
+
+
+
 
 // =========================
 // ROUTES TEMPLATES (NOUVELLES)
@@ -138,6 +144,10 @@ router.post(
   validateRequest,
   createEntryFromTemplateHandler
 );
+
+
+
+
 
 // =========================
 // ROUTES EXISTANTES (GARDER)

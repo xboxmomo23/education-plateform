@@ -72,8 +72,13 @@ export default function StaffEmploisDuTempsPage() {
   // Navigation semaine
   const [currentWeekOffset, setCurrentWeekOffset] = useState(0)
   const [weekLabel, setWeekLabel] = useState('')
-  const [currentWeekStart, setCurrentWeekStart] = useState('')
-  
+  const [currentWeekStart, setCurrentWeekStart] = useState(() => {
+    const today = new Date()
+    const dayOfWeek = today.getDay()
+    const startOfWeek = new Date(today)
+    startOfWeek.setDate(today.getDate() - dayOfWeek)
+    return startOfWeek.toISOString().split('T')[0]
+  })  // ✅  
   // Templates
   const [selectedTemplate, setSelectedTemplate] = useState<CourseTemplate | null>(null)
   
@@ -281,17 +286,20 @@ export default function StaffEmploisDuTempsPage() {
   }
 
   const getDateForDayOfWeek = (dayOfWeek: number): string => {
-    const weekStart = new Date(currentWeekStart)
-    const targetDate = new Date(weekStart)
-    targetDate.setDate(weekStart.getDate() + (dayOfWeek - 1))
-    return targetDate.toISOString().split('T')[0]
-  }
+  if (!currentWeekStart) return ''  // ✅ Sécurité
+  
+  const weekStart = new Date(currentWeekStart)
+  const targetDate = new Date(weekStart)
+  targetDate.setDate(weekStart.getDate() + (dayOfWeek - 1))
+  return targetDate.toISOString().split('T')[0]
+}
 
   const getEntriesForDay = (dayOfWeek: number) => {
     if (timetableMode === 'classic') {
-      // Mode Classic : Appliquer les overrides sur les entries
       const dayEntries = entries.filter(e => e.day_of_week === dayOfWeek)
       const date = getDateForDayOfWeek(dayOfWeek)
+      
+      if (!date) return dayEntries  // ✅ Si pas de date, retourner sans overrides
       
       return dayEntries.map(entry => {
         const override = overrides.find(
@@ -347,7 +355,7 @@ export default function StaffEmploisDuTempsPage() {
   const uniqueTeachers = new Set(dataSource.map(e => e.teacher_name)).size
 
   return (
-    <DashboardLayout role="staff">
+    <DashboardLayout requiredRole="staff">
       <div className="flex h-screen overflow-hidden">
         {/* Bibliothèque de templates (gauche) */}
         <div className="w-80 border-r bg-gray-50 overflow-y-auto flex-shrink-0">
@@ -479,8 +487,8 @@ export default function StaffEmploisDuTempsPage() {
                     <SelectValue placeholder="Sélectionner une classe" />
                   </SelectTrigger>
                   <SelectContent>
-                    {classes.map(c => (
-                      <SelectItem key={c.class_id} value={c.class_id}>
+                    {classes.map((c, index) => (
+                      <SelectItem key={c.class_id || `class-${index}`} value={c.class_id}>
                         {c.class_label}
                       </SelectItem>
                     ))}

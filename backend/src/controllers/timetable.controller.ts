@@ -871,3 +871,41 @@ export async function checkConflictsHandler(req: Request, res: Response) {
     });
   }
 }
+
+
+
+
+/**
+ * GET /api/timetable/staff/classes
+ * Récupérer les classes gérées par le staff
+ */
+export async function getStaffClassesHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+
+    const query = `
+      SELECT DISTINCT
+        c.id as class_id,
+        c.label as class_label,
+        c.code as class_code,
+        c.level
+      FROM classes c
+      JOIN class_staff cs ON c.id = cs.class_id
+      WHERE cs.user_id = $1
+      ORDER BY c.level, c.label
+    `;
+
+    const result = await pool.query(query, [userId]);
+
+    return res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error('Erreur getStaffClasses:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la récupération des classes',
+    });
+  }
+}

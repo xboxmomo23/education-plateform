@@ -93,6 +93,8 @@ export const timetableApi = {
   // TIMETABLE ENTRIES
   // ==================
 
+  
+
   async getClassTimetable(classId: string, week?: 'A' | 'B', signal?: AbortSignal) {
     const params = week ? `?week=${week}` : '';
     return apiCallWithAbort(`/timetable/class/${classId}${params}`, {}, signal);
@@ -160,6 +162,17 @@ export const timetableApi = {
 
   async getStudentClass(signal?: AbortSignal) {
     return apiCallWithAbort('/timetable/student/class', {}, signal);
+  },
+
+  // ==================
+  // STAFF MANAGEMENT
+  // ==================
+  
+  /**
+   * Récupérer les classes gérées par le staff
+   */
+  async getStaffClasses() {
+    return apiCall('/timetable/staff/classes');
   },
 
   // ==================
