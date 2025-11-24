@@ -425,102 +425,145 @@ export default function StaffEmploiDuTempsPage() {
               ) : (
                 <>
                   {/* Grille des jours */}
-                  <div className="grid grid-cols-5 gap-4 mb-6">
-                    {DAYS_NUMBERS.map((dayNum, idx) => (
-                      <div key={dayNum}>
-                        <h3 className="font-medium text-center mb-3 sticky top-0 bg-white py-2">
-                          {DAYS[idx]}
-                        </h3>
-                        <div className="space-y-2">
-                          {/* Créneaux horaires cliquables */}
-                          {[8, 9, 10, 11, 13, 14, 15, 16].map(hour => {
-                            const hourEntries = getEntriesForDay(dayNum).filter(e => {
-                              const [h] = e.start_time.split(':').map(Number)
-                              return h === hour
-                            })
-
-                            return (
-                              <div
-                                key={`${dayNum}-${hour}`}
-                                className={`min-h-[80px] p-2 rounded border-2 border-dashed transition-all ${
-                                  selectedTemplate
-                                    ? 'border-primary bg-primary/5 cursor-pointer hover:bg-primary/10'
-                                    : 'border-gray-200'
-                                }`}
-                                onClick={() => selectedTemplate && handleTimeSlotClick(dayNum, hour)}
-                              >
-                                <div className="text-xs text-muted-foreground mb-1">
-                                  {hour}:00
-                                </div>
-
-                                {/* Cours existants */}
-                                {hourEntries.map(entry => (
-                                  <div
-                                    key={entry.id}
-                                    className="p-2 rounded border mb-1 group relative"
-                                    style={{
-                                      backgroundColor: entry.subject_color ? `${entry.subject_color}20` : '#f0f0f0',
-                                      borderColor: entry.subject_color || '#ccc',
-                                    }}
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <div className="flex items-start justify-between">
-                                      <div className="flex-1 min-w-0">
-                                        <div className="font-semibold text-xs truncate">
-                                          {entry.subject_name}
-                                        </div>
-                                        <div className="text-xs text-muted-foreground mt-0.5">
-                                          {entry.start_time} - {entry.end_time}
-                                        </div>
-                                        <div className="text-xs mt-0.5">{entry.teacher_name}</div>
-                                        {entry.room && <div className="text-xs">📍 {entry.room}</div>}
-                                      </div>
-                                      
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100"
-                                          >
-                                            <MoreVertical className="h-3 w-3" />
-                                          </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end">
-                                          <DropdownMenuItem
-                                            onClick={() => {
-                                              setEditingEntry(entry)
-                                              setShowEditEntryModal(true)
-                                            }}
-                                          >
-                                            <Pencil className="h-4 w-4 mr-2" />
-                                            Modifier
-                                          </DropdownMenuItem>
-                                          <DropdownMenuItem
-                                            onClick={() => handleDeleteEntry(entry.id)}
-                                            className="text-red-600"
-                                          >
-                                            <Trash2 className="h-4 w-4 mr-2" />
-                                            Supprimer
-                                          </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
-                                    </div>
-                                  </div>
-                                ))}
-
-                                {/* Indicateur si template sélectionné */}
-                                {selectedTemplate && hourEntries.length === 0 && (
-                                  <div className="text-center text-xs text-muted-foreground">
-                                    Cliquer pour créer
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })}
+                  {/* Grille emploi du temps avec heures à gauche */}
+                  <div className="flex gap-2">
+                    {/* Colonne des heures */}
+                    <div className="w-16 flex-shrink-0">
+                      <div className="h-12 mb-3"></div> {/* Espace pour l'en-tête */}
+                      {[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(hour => (
+                        <div
+                          key={hour}
+                          className="h-20 flex items-center justify-end pr-2 text-sm text-muted-foreground font-medium"
+                          style={{ minHeight: '80px' }}
+                        >
+                          {hour}:00
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+
+                    {/* Grille des jours */}
+                    <div className="flex-1 grid grid-cols-5 gap-4">
+                      {DAYS_NUMBERS.map((dayNum, idx) => (
+                        <div key={dayNum}>
+                          {/* En-tête du jour */}
+                          <h3 className="font-medium text-center mb-3 sticky top-0 bg-white py-2 h-12">
+                            {DAYS[idx]}
+                          </h3>
+                          
+                          {/* Créneaux horaires */}
+                          <div className="space-y-2 relative">
+                            {[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(hour => {
+                              const hourEntries = getEntriesForDay(dayNum).filter(e => {
+                                const [h] = e.start_time.split(':').map(Number)
+                                return h === hour
+                              })
+
+                              return (
+                                <div
+                                  key={`${dayNum}-${hour}`}
+                                  className={`min-h-[80px] p-2 rounded border-2 border-dashed transition-all relative ${
+                                    selectedTemplate
+                                      ? 'border-primary bg-primary/5 cursor-pointer hover:bg-primary/10'
+                                      : 'border-gray-200'
+                                  }`}
+                                  onClick={() => selectedTemplate && handleTimeSlotClick(dayNum, hour)}
+                                >
+                                  
+
+
+
+                                  {/* Cours existants */}
+                                  {hourEntries.map(entry => {
+                                    // Calculer la durée en heures
+                                    const [startH, startM] = entry.start_time.split(':').map(Number)
+                                    const [endH, endM] = entry.end_time.split(':').map(Number)
+                                    const durationMinutes = (endH * 60 + endM) - (startH * 60 + startM)
+                                    const durationHours = durationMinutes / 60
+                                    
+                                    // Calculer le nombre de cases à occuper
+                                    const numberOfSlots = Math.ceil(durationHours)
+                                    
+                                    // Calculer la hauteur : (cases × 80px) + (espacements × 8px)
+                                    const height = (numberOfSlots * 80) + ((numberOfSlots - 1) * 8)  // ✅ NOUVELLE LIGNE
+                                    
+                                    return (
+                                      <div
+                                        key={entry.id}
+                                        className="p-2 rounded border mb-1 group relative"
+                                        style={{
+                                          backgroundColor: entry.subject_color ? `${entry.subject_color}20` : '#f0f0f0',
+                                          borderColor: entry.subject_color || '#ccc',
+                                          minHeight: `${height}px`,
+                                          height: `${height}px`,
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <div className="flex items-start justify-between h-full">
+                                          <div className="flex-1 min-w-0">
+                                            <div className="font-semibold text-xs truncate">
+                                              {entry.subject_name}
+                                            </div>
+                                            <div className="text-xs text-muted-foreground mt-0.5">
+                                              {entry.start_time} - {entry.end_time}
+                                            </div>
+                                            <div className="text-xs mt-0.5">{entry.teacher_name}</div>
+                                            {entry.room && <div className="text-xs">📍 {entry.room}</div>}
+                                            
+                                            {/* Afficher la durée si > 1h30 */}
+                                            {durationMinutes > 90 && (
+                                              <div className="text-xs font-medium text-blue-600 mt-1">
+                                                ⏱️ {Math.floor(durationHours)}h{durationMinutes % 60 > 0 ? (durationMinutes % 60) + 'min' : ''}
+                                              </div>
+                                            )}
+                                          </div>
+                                          
+                                          <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100"
+                                              >
+                                                <MoreVertical className="h-3 w-3" />
+                                              </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                              <DropdownMenuItem
+                                                onClick={() => {
+                                                  setEditingEntry(entry)
+                                                  setShowEditEntryModal(true)
+                                                }}
+                                              >
+                                                <Pencil className="h-4 w-4 mr-2" />
+                                                Modifier
+                                              </DropdownMenuItem>
+                                              <DropdownMenuItem
+                                                onClick={() => handleDeleteEntry(entry.id)}
+                                                className="text-red-600"
+                                              >
+                                                <Trash2 className="h-4 w-4 mr-2" />
+                                                Supprimer
+                                              </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                          </DropdownMenu>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+
+                                  {/* Indicateur si template sélectionné */}
+                                  {selectedTemplate && hourEntries.length === 0 && (
+                                    <div className="text-center text-xs text-muted-foreground mt-6">
+                                      Cliquer pour créer
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Statistiques */}
