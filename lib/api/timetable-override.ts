@@ -40,7 +40,7 @@ export const timetableOverrideApi = {
    * Créer une exception
    */
   async create(data: CreateOverrideData) {
-    return apiCall<TimetableOverride>('/api/timetable/overrides', {
+    return apiCall<TimetableOverride>('/timetable/overrides', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -51,7 +51,7 @@ export const timetableOverrideApi = {
    */
   async getForWeek(classId: string, weekStartDate: string) {
     return apiCall<TimetableOverride[]>(
-      `/api/timetable/overrides/class/${classId}/week/${weekStartDate}`
+      `/timetable/overrides/class/${classId}/week/${weekStartDate}`
     );
   },
 
@@ -59,7 +59,7 @@ export const timetableOverrideApi = {
    * Modifier un override
    */
   async update(overrideId: string, data: Partial<CreateOverrideData>) {
-    return apiCall<TimetableOverride>(`/api/timetable/overrides/${overrideId}`, {
+    return apiCall<TimetableOverride>(`/timetable/overrides/${overrideId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -69,7 +69,7 @@ export const timetableOverrideApi = {
    * Supprimer un override
    */
   async delete(overrideId: string) {
-    return apiCall(`/api/timetable/overrides/${overrideId}`, {
+    return apiCall(`/timetable/overrides/${overrideId}`, {
       method: 'DELETE',
     });
   },

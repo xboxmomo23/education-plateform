@@ -12,14 +12,14 @@ export const establishmentApi = {
    * Récupérer la configuration de l'établissement
    */
   async getTimetableConfig() {
-    return apiCall<EstablishmentTimetableConfig>('/api/establishment/timetable-config');
+    return apiCall<EstablishmentTimetableConfig>('/establishment/timetable-config');
   },
 
   /**
    * Mettre à jour la configuration
    */
   async updateTimetableConfig(config: Partial<EstablishmentTimetableConfig>) {
-    return apiCall<EstablishmentTimetableConfig>('/api/establishment/timetable-config', {
+    return apiCall<EstablishmentTimetableConfig>('/establishment/timetable-config', {
       method: 'PUT',
       body: JSON.stringify(config),
     });

@@ -44,6 +44,40 @@ import { GenerateFromTemplateModal } from "@/components/timetable/GenerateFromTe
 import { ModeIndicator } from "@/components/timetable/ModeIndicator"
 import type { CourseTemplate } from "@/lib/api/timetable"
 
+
+// ============================================
+// FONCTION UTILITAIRE : Calculer le dimanche
+// ============================================
+
+/**
+ * Retourne le dimanche (jour 0) d'une semaine donnée
+ * @param referenceDate Date de référence
+ * @param weekOffset Offset en semaines (0 = semaine actuelle, 1 = semaine suivante, -1 = semaine précédente)
+ * @returns Date du dimanche au format YYYY-MM-DD
+ */
+function getSundayOfWeek(referenceDate: Date, weekOffset: number = 0): string {
+  // Créer une copie pour ne pas modifier la date originale
+  const date = new Date(referenceDate)
+  date.setHours(0, 0, 0, 0) // Reset l'heure
+  
+  // Obtenir le jour de la semaine (0 = Dimanche, 1 = Lundi, ..., 6 = Samedi)
+  const dayOfWeek = date.getDay()
+  
+  // Calculer le dimanche de la semaine actuelle
+  const sunday = new Date(date)
+  sunday.setDate(date.getDate() - dayOfWeek) // Revenir au dimanche
+  
+  // Ajouter l'offset de semaines
+  sunday.setDate(sunday.getDate() + (weekOffset * 7))
+  
+  // Retourner au format YYYY-MM-DD
+  const year = sunday.getFullYear()
+  const month = String(sunday.getMonth() + 1).padStart(2, '0')
+  const day = String(sunday.getDate()).padStart(2, '0')
+  
+  return `${year}-${month}-${day}`
+}
+
 // Configuration Algérienne
 const DAYS_CONFIG = {
   days: ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'],
@@ -112,18 +146,26 @@ export default function StaffEmploisDuTempsPage() {
   }, [selectedClassId, currentWeekOffset, timetableMode])
 
   // Calculer le label de la semaine
+  // Calculer le label de la semaine
+  // Calculer le label de la semaine
   useEffect(() => {
-    const today = new Date()
-    const dayOfWeek = today.getDay() // 0 = Dimanche
-    const startOfWeek = new Date(today)
-    startOfWeek.setDate(today.getDate() - dayOfWeek + (currentWeekOffset * 7))
+    const sundayDate = getSundayOfWeek(new Date(), currentWeekOffset)
     
-    const endOfWeek = new Date(startOfWeek)
-    endOfWeek.setDate(startOfWeek.getDate() + 4) // Dimanche + 4 = Jeudi
+    // Créer des objets Date pour l'affichage
+    const startDate = new Date(sundayDate + 'T00:00:00')
+    const endDate = new Date(startDate)
+    endDate.setDate(startDate.getDate() + 4) // Dimanche + 4 = Jeudi
     
-    setCurrentWeekStart(startOfWeek.toISOString().split('T')[0])
+    console.log('📅 Calcul semaine:', {
+      offset: currentWeekOffset,
+      sunday: sundayDate,
+      startDateReadable: startDate.toLocaleDateString('fr-FR'),
+      endDateReadable: endDate.toLocaleDateString('fr-FR')
+    })
+    
+    setCurrentWeekStart(sundayDate)
     setWeekLabel(
-      `Semaine du ${startOfWeek.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} au ${endOfWeek.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`
+      `Semaine du ${startDate.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} au ${endDate.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`
     )
   }, [currentWeekOffset])
 
@@ -208,33 +250,50 @@ export default function StaffEmploisDuTempsPage() {
   }
 
   const createInstanceFromTemplate = async (day: number, hour: number) => {
-    if (!selectedTemplate) return
+  if (!selectedTemplate) return
 
-    try {
-      const startTime = `${hour.toString().padStart(2, '0')}:00`
-      const [startH, startM] = startTime.split(':').map(Number)
-      const totalMinutes = startH * 60 + startM + selectedTemplate.default_duration
-      const endH = Math.floor(totalMinutes / 60)
-      const endM = totalMinutes % 60
-      const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`
+  try {
+    const startTime = `${hour.toString().padStart(2, '0')}:00`
+    const [startH, startM] = startTime.split(':').map(Number)
+    const totalMinutes = startH * 60 + startM + selectedTemplate.default_duration
+    const endH = Math.floor(totalMinutes / 60)
+    const endM = totalMinutes % 60
+    const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`
 
-      await timetableInstanceApi.create({
-        class_id: selectedClassId,
-        course_id: selectedTemplate.course_id,
-        week_start_date: currentWeekStart,
-        day_of_week: day,
-        start_time: startTime,
-        end_time: endTime,
-        room: selectedTemplate.default_room || undefined,
-      })
+    console.log('🎯 Création instance:', {
+      template: selectedTemplate.subject_name,
+      classId: selectedClassId,
+      weekStart: currentWeekStart,
+      dayOfWeek: day,
+      startTime,
+      endTime,
+      room: selectedTemplate.default_room
+    })
 
-      loadTimetableData()
-      setSelectedTemplate(null)
-    } catch (error) {
-      console.error('Erreur création instance:', error)
-      alert('Erreur lors de la création du cours')
+    if (!currentWeekStart) {
+      alert('Erreur: week_start_date manquant')
+      return
     }
+
+    const response = await timetableInstanceApi.create({
+      class_id: selectedClassId,
+      course_id: selectedTemplate.course_id,
+      week_start_date: currentWeekStart,
+      day_of_week: day,
+      start_time: startTime,
+      end_time: endTime,
+      room: selectedTemplate.default_room || undefined,
+    })
+
+    console.log('✅ Instance créée:', response)
+
+    await loadTimetableData()
+    setSelectedTemplate(null)
+  } catch (error: any) {
+    console.error('❌ Erreur création instance:', error)
+    alert(`Erreur: ${error.message || 'Impossible de créer le cours'}`)
   }
+}
 
   const handleDeleteEntry = async (entryId: string) => {
     if (!confirm('Supprimer ce cours ?')) return
@@ -286,12 +345,25 @@ export default function StaffEmploisDuTempsPage() {
   }
 
   const getDateForDayOfWeek = (dayOfWeek: number): string => {
-  if (!currentWeekStart) return ''  // ✅ Sécurité
+  if (!currentWeekStart) {
+    console.warn('⚠️ currentWeekStart est vide!')
+    return ''
+  }
   
-  const weekStart = new Date(currentWeekStart)
+  const weekStart = new Date(currentWeekStart + 'T00:00:00') // Force UTC
   const targetDate = new Date(weekStart)
-  targetDate.setDate(weekStart.getDate() + (dayOfWeek - 1))
-  return targetDate.toISOString().split('T')[0]
+  targetDate.setDate(weekStart.getDate() + (dayOfWeek - 1)) // 1=Dimanche, 2=Lundi, etc.
+  
+  const dateString = targetDate.toISOString().split('T')[0]
+  
+  console.log('📆 Date calculée:', {
+    dayOfWeek,
+    weekStart: currentWeekStart,
+    targetDate: dateString,
+    readable: targetDate.toLocaleDateString('fr-FR')
+  })
+  
+  return dateString
 }
 
   const getEntriesForDay = (dayOfWeek: number) => {

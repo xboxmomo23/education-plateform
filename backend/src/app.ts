@@ -64,9 +64,12 @@ app.get('/health', (req: Request, res: Response) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/grades', gradeRoutes);
 app.use('/api/courses', courseRoutes);
-app.use('/api/timetable', timetableRoutes);
-app.use('/api/timetable/overrides', timetableOverrideRoutes);
-app.use('/api/timetable/instances', timetableInstanceRoutes);
+
+// Routes spécifiques AVANT les générales
+app.use('/api/timetable/overrides', timetableOverrideRoutes);  // ← Spécifique en premier
+app.use('/api/timetable/instances', timetableInstanceRoutes);  // ← Spécifique en premier
+app.use('/api/timetable', timetableRoutes);  // ← Général à la fin
+
 app.use('/api/establishment', establishmentRoutes);
 
 //app.use('/api/attendance', attendanceRoutes);

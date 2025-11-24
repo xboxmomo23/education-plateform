@@ -38,7 +38,7 @@ export const timetableInstanceApi = {
    */
   async getForWeek(classId: string, weekStartDate: string) {
     return apiCall<TimetableInstance[]>(
-      `/api/timetable/instances/class/${classId}/week/${weekStartDate}`
+      `/timetable/instances/class/${classId}/week/${weekStartDate}`
     );
   },
 
@@ -46,7 +46,7 @@ export const timetableInstanceApi = {
    * Créer une instance
    */
   async create(data: CreateInstanceData) {
-    return apiCall<TimetableInstance>('/api/timetable/instances', {
+    return apiCall<TimetableInstance>('/timetable/instances', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -56,7 +56,7 @@ export const timetableInstanceApi = {
    * Générer les instances depuis le template
    */
   async generateFromTemplate(classId: string, weekStartDate: string) {
-    return apiCall<{ count: number }>('/api/timetable/instances/generate-from-template', {
+    return apiCall<{ count: number }>('/timetable/instances/generate-from-template', {
       method: 'POST',
       body: JSON.stringify({
         class_id: classId,
@@ -69,7 +69,7 @@ export const timetableInstanceApi = {
    * Copier une semaine vers une autre
    */
   async copyWeek(classId: string, sourceWeek: string, targetWeek: string) {
-    return apiCall<{ count: number }>('/api/timetable/instances/copy-week', {
+    return apiCall<{ count: number }>('/timetable/instances/copy-week', {
       method: 'POST',
       body: JSON.stringify({
         class_id: classId,
@@ -83,7 +83,7 @@ export const timetableInstanceApi = {
    * Modifier une instance
    */
   async update(instanceId: string, data: Partial<CreateInstanceData>) {
-    return apiCall<TimetableInstance>(`/api/timetable/instances/${instanceId}`, {
+    return apiCall<TimetableInstance>(`/timetable/instances/${instanceId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -93,7 +93,7 @@ export const timetableInstanceApi = {
    * Supprimer une instance
    */
   async delete(instanceId: string) {
-    return apiCall(`/api/timetable/instances/${instanceId}`, {
+    return apiCall(`/timetable/instances/${instanceId}`, {
       method: 'DELETE',
     });
   },

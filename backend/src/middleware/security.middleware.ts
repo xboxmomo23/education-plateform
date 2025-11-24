@@ -7,7 +7,7 @@ import helmet from 'helmet';
 
 export const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limite à 100 requêtes par IP
+  max: 1000, // Limite à 100 requêtes par IP
   message: {
     success: false,
     error: 'Trop de requêtes, veuillez réessayer plus tard',
