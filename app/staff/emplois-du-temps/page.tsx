@@ -2,132 +2,168 @@
 
 import React, { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { timetableApi, type TimetableEntry, type CourseTemplate } from "@/lib/api/timetable"
-import { useAuth } from "@/hooks/useAuth"
-import { Plus, ChevronLeft, ChevronRight, Calendar, Trash2, MoreVertical, Search } from "lucide-react"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
   DropdownMenuTrigger,
+  DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu"
+import { 
+  Search, 
+  ChevronLeft, 
+  ChevronRight, 
+  MoreVertical, 
+  Trash2, 
+  Pencil,
+  Calendar,
+  XCircle,
+  Home,
+  Clock,
+  UserX,
+  Copy,
+  Download
+} from "lucide-react"
+import { timetableApi, type TimetableEntry } from "@/lib/api/timetable"
+import { timetableOverrideApi } from "@/lib/api/timetable-override"
+import { timetableInstanceApi, type TimetableInstance } from "@/lib/api/timetable-instance"
+import { establishmentApi } from "@/lib/api/establishment"
 import { CreateTemplateModal } from "@/components/timetable/CreateTemplateModal"
 import { CreateFromTemplateModal } from "@/components/timetable/CreateFromTemplateModal"
 import { EditTemplateModal } from "@/components/timetable/EditTemplateModal"
 import { EditEntryModal } from "@/components/timetable/EditEntryModal"
-import { Pencil } from "lucide-react" // Ajouter à la ligne des imports lucide-react
+import { CancelCourseModal } from "@/components/timetable/CancelCourseModal"
+import { ChangeRoomModal } from "@/components/timetable/ChangeRoomModal"
+import { ModifyTimeModal } from "@/components/timetable/ModifyTimeModal"
+import { CopyWeekModal } from "@/components/timetable/CopyWeekModal"
+import { GenerateFromTemplateModal } from "@/components/timetable/GenerateFromTemplateModal"
+import { ModeIndicator } from "@/components/timetable/ModeIndicator"
+import type { CourseTemplate } from "@/lib/api/timetable"
 
-// ✅ SYSTÈME 100% ALGÉRIEN
+// Configuration Algérienne
 const DAYS_CONFIG = {
   days: ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'],
-  daysMap: { 
-    1: 'Dimanche',
-    2: 'Lundi', 
-    3: 'Mardi', 
-    4: 'Mercredi', 
-    5: 'Jeudi'
-  },
-  daysNumbers: [1, 2, 3, 4, 5],
+  daysMap: { 1: 'Dimanche', 2: 'Lundi', 3: 'Mardi', 4: 'Mercredi', 5: 'Jeudi' },
+  daysNumbers: [1, 2, 3, 4, 5] as const,
 }
 
-const DAYS = DAYS_CONFIG.days
-const DAYS_MAP = DAYS_CONFIG.daysMap
-const DAYS_NUMBERS = DAYS_CONFIG.daysNumbers
+const { days: DAYS, daysMap: DAYS_MAP, daysNumbers: DAYS_NUMBERS } = DAYS_CONFIG
 
-export default function StaffEmploiDuTempsPage() {
+export default function StaffEmploisDuTempsPage() {
+  // États généraux
   const [classes, setClasses] = useState<any[]>([])
   const [selectedClassId, setSelectedClassId] = useState<string>('')
-  const [entries, setEntries] = useState<TimetableEntry[]>([])
-  const [templates, setTemplates] = useState<CourseTemplate[]>([])
   const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [showEditTemplateModal, setShowEditTemplateModal] = useState(false)
-  const [showEditEntryModal, setShowEditEntryModal] = useState(false)
-  const [editingTemplate, setEditingTemplate] = useState<CourseTemplate | null>(null)
-  const [editingEntry, setEditingEntry] = useState<TimetableEntry | null>(null)
-    
+  
+  // Mode de l'établissement
+  const [timetableMode, setTimetableMode] = useState<'classic' | 'dynamic'>('classic')
+  
+  // Données emploi du temps
+  const [entries, setEntries] = useState<TimetableEntry[]>([])
+  const [instances, setInstances] = useState<TimetableInstance[]>([])
+  const [overrides, setOverrides] = useState<any[]>([])
+  const [templates, setTemplates] = useState<CourseTemplate[]>([])
+  
+  // Navigation semaine
+  const [currentWeekOffset, setCurrentWeekOffset] = useState(0)
+  const [weekLabel, setWeekLabel] = useState('')
+  const [currentWeekStart, setCurrentWeekStart] = useState('')
+  
+  // Templates
+  const [selectedTemplate, setSelectedTemplate] = useState<CourseTemplate | null>(null)
+  
   // Modals
   const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false)
   const [showCreateFromTemplateModal, setShowCreateFromTemplateModal] = useState(false)
-  const [selectedTemplate, setSelectedTemplate] = useState<CourseTemplate | null>(null)
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState<{ day: number; hour: number } | null>(null)
+  const [showEditTemplateModal, setShowEditTemplateModal] = useState(false)
+  const [showEditEntryModal, setShowEditEntryModal] = useState(false)
+  const [showCancelModal, setShowCancelModal] = useState(false)
+  const [showChangeRoomModal, setShowChangeRoomModal] = useState(false)
+  const [showModifyTimeModal, setShowModifyTimeModal] = useState(false)
+  const [showCopyWeekModal, setShowCopyWeekModal] = useState(false)
+  const [showGenerateModal, setShowGenerateModal] = useState(false)
   
-  // Navigation par semaine
-  const [currentWeekOffset, setCurrentWeekOffset] = useState(0)
-  const [weekLabel, setWeekLabel] = useState('')
+  const [editingTemplate, setEditingTemplate] = useState<CourseTemplate | null>(null)
+  const [editingEntry, setEditingEntry] = useState<any>(null)
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<{ day: number; hour: number } | null>(null)
 
-  const { userId } = useAuth()
-
+  // Charger la configuration de l'établissement
   useEffect(() => {
-    if (userId) {
-      loadStaffClasses()
-    }
-  }, [userId])
+    loadTimetableConfig()
+    loadStaffClasses()
+  }, [])
 
+  // Charger les données quand la classe change
   useEffect(() => {
     if (selectedClassId) {
-      loadTimetable()
       loadTemplates()
+      loadTimetableData()
     }
-  }, [selectedClassId])
+  }, [selectedClassId, currentWeekOffset, timetableMode])
 
   // Calculer le label de la semaine
   useEffect(() => {
     const today = new Date()
+    const dayOfWeek = today.getDay() // 0 = Dimanche
     const startOfWeek = new Date(today)
-    
-    // Aller au dimanche (jour 0)
-    const dayOfWeek = today.getDay()
     startOfWeek.setDate(today.getDate() - dayOfWeek + (currentWeekOffset * 7))
     
     const endOfWeek = new Date(startOfWeek)
     endOfWeek.setDate(startOfWeek.getDate() + 4) // Dimanche + 4 = Jeudi
     
-    const formatDate = (date: Date) => {
-      return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long' })
-    }
-    
-    setWeekLabel(`Semaine du ${formatDate(startOfWeek)} au ${formatDate(endOfWeek)}`)
+    setCurrentWeekStart(startOfWeek.toISOString().split('T')[0])
+    setWeekLabel(
+      `Semaine du ${startOfWeek.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} au ${endOfWeek.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`
+    )
   }, [currentWeekOffset])
+
+  const loadTimetableConfig = async () => {
+    try {
+      const response = await establishmentApi.getTimetableConfig()
+      if (response.success) {
+        setTimetableMode(response.data.timetable_mode)
+      }
+    } catch (error) {
+      console.error('Erreur chargement config:', error)
+    }
+  }
 
   const loadStaffClasses = async () => {
     try {
-      const token = localStorage.getItem('auth_token')
-      const response = await fetch('http://localhost:5000/api/timetable/staff/classes', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      })
-      
-      if (!response.ok) {
-        throw new Error(`Erreur HTTP ${response.status}`)
-      }
-      
-      const data = await response.json()
-      
-      if (data.success) {
-        setClasses(data.data)
-        if (data.data.length > 0) {
-          setSelectedClassId(data.data[0].id)
-        }
+      const response = await timetableApi.getStaffClasses()
+      if (response.success && response.data.length > 0) {
+        setClasses(response.data)
+        setSelectedClassId(response.data[0].class_id)
       }
     } catch (error) {
       console.error('Erreur chargement classes:', error)
     }
   }
 
-  const loadTimetable = async () => {
+  const loadTimetableData = async () => {
+    if (!selectedClassId) return
+
     try {
       setLoading(true)
-      const response = await timetableApi.getClassTimetable(selectedClassId)
-      if (response.success) {
-        setEntries(response.data)
+
+      if (timetableMode === 'classic') {
+        // Mode Classic : Template + Overrides
+        const [entriesRes, overridesRes] = await Promise.all([
+          timetableApi.getClassTimetable(selectedClassId),
+          timetableOverrideApi.getForWeek(selectedClassId, currentWeekStart),
+        ])
+
+        if (entriesRes.success) setEntries(entriesRes.data)
+        if (overridesRes.success) setOverrides(overridesRes.data)
+      } else {
+        // Mode Dynamic : Instances
+        const instancesRes = await timetableInstanceApi.getForWeek(selectedClassId, currentWeekStart)
+        if (instancesRes.success) setInstances(instancesRes.data)
       }
     } catch (error) {
       console.error('Erreur chargement emploi du temps:', error)
@@ -137,6 +173,8 @@ export default function StaffEmploiDuTempsPage() {
   }
 
   const loadTemplates = async () => {
+    if (!selectedClassId) return
+
     try {
       const response = await timetableApi.getTemplates(selectedClassId)
       if (response.success) {
@@ -147,14 +185,62 @@ export default function StaffEmploiDuTempsPage() {
     }
   }
 
-  const handleDeleteEntry = async (entryId: string) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer ce créneau ?')) {
-      return
+  const handleUseTemplate = (template: CourseTemplate) => {
+    setSelectedTemplate(template)
+  }
+
+  const handleTimeSlotClick = (day: number, hour: number) => {
+    if (!selectedTemplate) return
+
+    setSelectedTimeSlot({ day, hour })
+    
+    if (timetableMode === 'classic') {
+      setShowCreateFromTemplateModal(true)
+    } else {
+      // Mode Dynamic : Créer directement l'instance
+      createInstanceFromTemplate(day, hour)
     }
+  }
+
+  const createInstanceFromTemplate = async (day: number, hour: number) => {
+    if (!selectedTemplate) return
 
     try {
-      await timetableApi.deleteEntry(entryId)
-      loadTimetable()
+      const startTime = `${hour.toString().padStart(2, '0')}:00`
+      const [startH, startM] = startTime.split(':').map(Number)
+      const totalMinutes = startH * 60 + startM + selectedTemplate.default_duration
+      const endH = Math.floor(totalMinutes / 60)
+      const endM = totalMinutes % 60
+      const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`
+
+      await timetableInstanceApi.create({
+        class_id: selectedClassId,
+        course_id: selectedTemplate.course_id,
+        week_start_date: currentWeekStart,
+        day_of_week: day,
+        start_time: startTime,
+        end_time: endTime,
+        room: selectedTemplate.default_room || undefined,
+      })
+
+      loadTimetableData()
+      setSelectedTemplate(null)
+    } catch (error) {
+      console.error('Erreur création instance:', error)
+      alert('Erreur lors de la création du cours')
+    }
+  }
+
+  const handleDeleteEntry = async (entryId: string) => {
+    if (!confirm('Supprimer ce cours ?')) return
+
+    try {
+      if (timetableMode === 'classic') {
+        await timetableApi.deleteEntry(entryId)
+      } else {
+        await timetableInstanceApi.delete(entryId)
+      }
+      loadTimetableData()
     } catch (error) {
       console.error('Erreur suppression:', error)
       alert('Erreur lors de la suppression')
@@ -162,197 +248,240 @@ export default function StaffEmploiDuTempsPage() {
   }
 
   const handleDeleteTemplate = async (templateId: string) => {
-    if (!confirm('Supprimer ce template ? Les cours créés ne seront pas supprimés.')) {
-      return
-    }
+    if (!confirm('Supprimer ce template ?')) return
 
     try {
       await timetableApi.deleteTemplate(templateId)
       loadTemplates()
+      if (selectedTemplate?.id === templateId) {
+        setSelectedTemplate(null)
+      }
     } catch (error) {
       console.error('Erreur suppression template:', error)
-      alert('Erreur lors de la suppression du template')
+      alert('Erreur lors de la suppression')
     }
   }
 
-  const handleUseTemplate = (template: CourseTemplate) => {
-    setSelectedTemplate(template)
-    // L'utilisateur va maintenant cliquer sur une case horaire
+  const handleCancelCourseForDate = (entry: any) => {
+    const date = getDateForDayOfWeek(entry.day_of_week)
+    setEditingEntry({ ...entry, override_date: date })
+    setShowCancelModal(true)
   }
 
-  const handleTimeSlotClick = (day: number, hour: number) => {
-    if (!selectedTemplate) {
-      alert('Sélectionnez d\'abord un template dans la bibliothèque')
-      return
-    }
-
-    setSelectedTimeSlot({ day, hour })
-    setShowCreateFromTemplateModal(true)
+  const handleChangeRoomForDate = (entry: any) => {
+    const date = getDateForDayOfWeek(entry.day_of_week)
+    setEditingEntry({ ...entry, override_date: date })
+    setShowChangeRoomModal(true)
   }
 
-  const handleTemplateCreated = () => {
-    loadTemplates()
-    setShowCreateTemplateModal(false)
+  const handleModifyTimeForDate = (entry: any) => {
+    const date = getDateForDayOfWeek(entry.day_of_week)
+    setEditingEntry({ ...entry, override_date: date })
+    setShowModifyTimeModal(true)
   }
 
-  const handleEntryCreated = () => {
-    loadTimetable()
-    setShowCreateFromTemplateModal(false)
-    setSelectedTemplate(null)
-    setSelectedTimeSlot(null)
+  const getDateForDayOfWeek = (dayOfWeek: number): string => {
+    const weekStart = new Date(currentWeekStart)
+    const targetDate = new Date(weekStart)
+    targetDate.setDate(weekStart.getDate() + (dayOfWeek - 1))
+    return targetDate.toISOString().split('T')[0]
   }
 
   const getEntriesForDay = (dayOfWeek: number) => {
-    return entries.filter(e => e.day_of_week === dayOfWeek).sort((a, b) => 
-      a.start_time.localeCompare(b.start_time)
-    )
+    if (timetableMode === 'classic') {
+      // Mode Classic : Appliquer les overrides sur les entries
+      const dayEntries = entries.filter(e => e.day_of_week === dayOfWeek)
+      const date = getDateForDayOfWeek(dayOfWeek)
+      
+      return dayEntries.map(entry => {
+        const override = overrides.find(
+          o => o.template_entry_id === entry.id && o.override_date === date
+        )
+
+        if (override) {
+          if (override.override_type === 'cancel') {
+            return { ...entry, status: 'cancelled', reason: override.reason }
+          } else if (override.override_type === 'modify_room') {
+            return { ...entry, room: override.new_room, status: 'modified' }
+          } else if (override.override_type === 'modify_time') {
+            return { 
+              ...entry, 
+              start_time: override.new_start_time, 
+              end_time: override.new_end_time,
+              status: 'modified' 
+            }
+          }
+        }
+
+        return { ...entry, status: 'normal' }
+      }).sort((a, b) => a.start_time.localeCompare(b.start_time))
+    } else {
+      // Mode Dynamic : Instances
+      return instances
+        .filter(i => i.day_of_week === dayOfWeek)
+        .sort((a, b) => a.start_time.localeCompare(b.start_time))
+    }
   }
 
-  const filteredTemplates = templates.filter(t => 
+  const filteredTemplates = templates.filter(t =>
     t.subject_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     t.teacher_name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  // Statistiques
+  const totalCourses = timetableMode === 'classic' ? entries.length : instances.length
+  const totalHours = timetableMode === 'classic'
+    ? entries.reduce((sum, e) => {
+        const [sh, sm] = e.start_time.split(':').map(Number)
+        const [eh, em] = e.end_time.split(':').map(Number)
+        return sum + ((eh * 60 + em) - (sh * 60 + sm))
+      }, 0) / 60
+    : instances.reduce((sum, i) => {
+        const [sh, sm] = i.start_time.split(':').map(Number)
+        const [eh, em] = i.end_time.split(':').map(Number)
+        return sum + ((eh * 60 + em) - (sh * 60 + sm))
+      }, 0) / 60
+
+  const dataSource = timetableMode === 'classic' ? entries : instances
+  const uniqueSubjects = new Set(dataSource.map(e => e.subject_name)).size
+  const uniqueTeachers = new Set(dataSource.map(e => e.teacher_name)).size
+
   return (
-    <DashboardLayout requiredRole="staff">
-      <div className="flex h-[calc(100vh-80px)] gap-4">
-        {/* PARTIE 1/2 - Continuer dans le prochain message */}
-        {/* ========== BIBLIOTHÈQUE DE TEMPLATES (GAUCHE) ========== */}
-        <div className="w-80 flex-shrink-0">
-          <Card className="h-full flex flex-col">
-            <CardHeader>
-              <CardTitle className="text-lg">📖 Mes Templates</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                {selectedTemplate ? '✅ Template sélectionné' : 'Cliquez pour utiliser'}
-              </p>
-            </CardHeader>
-            
-            <CardContent className="flex-1 overflow-y-auto space-y-4">
-              {/* Recherche */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Rechercher..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
+    <DashboardLayout role="staff">
+      <div className="flex h-screen overflow-hidden">
+        {/* Bibliothèque de templates (gauche) */}
+        <div className="w-80 border-r bg-gray-50 overflow-y-auto flex-shrink-0">
+          <div className="p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">📖 Mes Templates</h2>
+              {selectedTemplate && (
+                <span className="text-xs bg-primary text-white px-2 py-1 rounded">
+                  Sélectionné
+                </span>
+              )}
+            </div>
+
+            {selectedTemplate && (
+              <div className="text-xs text-muted-foreground bg-blue-50 p-2 rounded">
+                → Cliquez sur une case horaire pour créer un cours
               </div>
+            )}
 
-              {/* Bouton créer template */}
-              <Button
-                onClick={() => setShowCreateTemplateModal(true)}
-                variant="outline"
-                className="w-full"
-                disabled={!selectedClassId}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Créer un template
-              </Button>
+            {/* Recherche */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Rechercher..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
 
-              {/* Liste des templates */}
-              <div className="space-y-2">
-                {filteredTemplates.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground text-sm">
-                    {templates.length === 0 
-                      ? 'Aucun template. Créez-en un !'
-                      : 'Aucun résultat'
-                    }
-                  </div>
-                ) : (
-                  filteredTemplates.map((template) => (
-                    <div
-                      key={template.id}
-                      className={`p-3 rounded-lg border-2 transition-all cursor-pointer hover:shadow-md ${
-                        selectedTemplate?.id === template.id
-                          ? 'border-primary bg-primary/5'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                      style={{
-                        borderLeftWidth: '4px',
-                        borderLeftColor: template.subject_color || '#3b82f6',
-                      }}
-                      onClick={() => handleUseTemplate(template)}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-sm truncate">
-                            {template.subject_name}
-                          </div>
-                          <div className="text-xs text-muted-foreground truncate mt-0.5">
-                            {template.teacher_name}
-                          </div>
-                          <div className="flex items-center gap-2 mt-2">
-                            <Badge variant="outline" className="text-xs">
-                              {template.default_duration}min
-                            </Badge>
-                            {template.default_room && (
-                              <Badge variant="outline" className="text-xs">
-                                📍 {template.default_room}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
+            {/* Bouton créer */}
+            <Button
+              onClick={() => setShowCreateTemplateModal(true)}
+              className="w-full"
+              variant="outline"
+            >
+              + Créer un template
+            </Button>
 
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setEditingTemplate(template)
-                                setShowEditTemplateModal(true)
-                              }}
-                            >
-                              <Pencil className="h-4 w-4 mr-2" />
-                              Modifier
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleDeleteTemplate(template.id)
-                              }}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Supprimer
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+            {/* Liste des templates */}
+            <div className="space-y-2">
+              {filteredTemplates.map(template => (
+                <div
+                  key={template.id}
+                  className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                    selectedTemplate?.id === template.id
+                      ? 'border-primary bg-primary/5'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  style={{ borderLeftWidth: '4px', borderLeftColor: template.subject_color }}
+                  onClick={() => handleUseTemplate(template)}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm truncate">
+                        {template.subject_name}
                       </div>
-
-                      {selectedTemplate?.id === template.id && (
-                        <div className="mt-2 text-xs text-primary font-medium">
-                          → Cliquez sur une case horaire
-                        </div>
-                      )}
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {template.teacher_name}
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
+                          {template.default_duration}min
+                        </span>
+                        {template.default_room && (
+                          <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
+                            📍 {template.default_room}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setEditingTemplate(template)
+                            setShowEditTemplateModal(true)
+                          }}
+                        >
+                          <Pencil className="h-4 w-4 mr-2" />
+                          Modifier
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteTemplate(template.id)
+                          }}
+                          className="text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Supprimer
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+              ))}
+
+              {filteredTemplates.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground text-sm">
+                  {searchQuery ? 'Aucun template trouvé' : 'Aucun template créé'}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* ========== CALENDRIER (DROITE) ========== */}
-        <div className="flex-1 flex flex-col gap-4 overflow-hidden">
-          {/* Navigation semaine + sélection classe */}
-          <div className="space-y-4">
+        {/* Calendrier (droite) */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="space-y-6 max-w-7xl mx-auto">
+            {/* Header avec mode */}
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold">📚 Emploi du temps</h1>
+              <ModeIndicator mode={timetableMode} />
+            </div>
+
             {/* Sélection classe */}
             <Card>
               <CardContent className="pt-6">
                 <Select value={selectedClassId} onValueChange={setSelectedClassId}>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full max-w-xs">
                     <SelectValue placeholder="Sélectionner une classe" />
                   </SelectTrigger>
                   <SelectContent>
-                    {classes.map(cls => (
-                      <SelectItem key={cls.id} value={cls.id}>
-                        {cls.label}
+                    {classes.map(c => (
+                      <SelectItem key={c.class_id} value={c.class_id}>
+                        {c.class_label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -360,7 +489,7 @@ export default function StaffEmploiDuTempsPage() {
               </CardContent>
             </Card>
 
-            {/* Navigation par semaine */}
+            {/* Navigation semaine */}
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
@@ -372,21 +501,18 @@ export default function StaffEmploiDuTempsPage() {
                     Semaine précédente
                   </Button>
 
-                  <div className="flex items-center gap-3">
-                    <Calendar className="h-5 w-5 text-muted-foreground" />
-                    <div className="text-center">
-                      <div className="font-semibold">{weekLabel}</div>
-                      {currentWeekOffset !== 0 && (
-                        <Button
-                          variant="link"
-                          size="sm"
-                          className="text-xs h-auto p-0"
-                          onClick={() => setCurrentWeekOffset(0)}
-                        >
-                          Retour à cette semaine
-                        </Button>
-                      )}
-                    </div>
+                  <div className="text-center">
+                    <div className="font-medium">{weekLabel}</div>
+                    {currentWeekOffset !== 0 && (
+                      <Button
+                        variant="link"
+                        size="sm"
+                        onClick={() => setCurrentWeekOffset(0)}
+                        className="text-xs"
+                      >
+                        Retour à cette semaine
+                      </Button>
+                    )}
                   </div>
 
                   <Button
@@ -397,40 +523,46 @@ export default function StaffEmploiDuTempsPage() {
                     <ChevronRight className="h-4 w-4 ml-2" />
                   </Button>
                 </div>
+
+                {/* Actions mode Dynamic */}
+                {timetableMode === 'dynamic' && (
+                  <div className="flex gap-2 mt-4 pt-4 border-t">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowGenerateModal(true)}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Copier depuis template
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowCopyWeekModal(true)}
+                    >
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copier une autre semaine
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
-          </div>
 
-          {/* Grille emploi du temps */}
-          <Card className="flex-1 overflow-hidden">
-            <CardHeader>
-              <CardTitle>Emploi du temps</CardTitle>
-              {selectedTemplate && (
-                <div className="text-sm text-primary">
-                  📌 Template sélectionné : <strong>{selectedTemplate.subject_name}</strong>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSelectedTemplate(null)}
-                    className="ml-2"
-                  >
-                    Annuler
-                  </Button>
-                </div>
-              )}
-            </CardHeader>
-            <CardContent className="flex-1 overflow-auto">
-              {loading ? (
-                <div className="text-center py-12">Chargement...</div>
-              ) : (
-                <>
-                  {/* Grille des jours */}
-                  {/* Grille emploi du temps avec heures à gauche */}
+            {/* Grille emploi du temps */}
+            <Card>
+              <CardContent className="pt-6">
+                <h3 className="font-medium mb-4">Emploi du temps</h3>
+
+                {loading ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    Chargement...
+                  </div>
+                ) : (
                   <div className="flex gap-2">
                     {/* Colonne des heures */}
                     <div className="w-16 flex-shrink-0">
-                      <div className="h-12 mb-3"></div> {/* Espace pour l'en-tête */}
-                      {[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(hour => (
+                      <div className="h-12 mb-3"></div>
+                      {[8, 9, 10, 11, 13, 14, 15, 16, 17, 18].map(hour => (
                         <div
                           key={hour}
                           className="h-20 flex items-center justify-end pr-2 text-sm text-muted-foreground font-medium"
@@ -445,14 +577,12 @@ export default function StaffEmploiDuTempsPage() {
                     <div className="flex-1 grid grid-cols-5 gap-4">
                       {DAYS_NUMBERS.map((dayNum, idx) => (
                         <div key={dayNum}>
-                          {/* En-tête du jour */}
                           <h3 className="font-medium text-center mb-3 sticky top-0 bg-white py-2 h-12">
                             {DAYS[idx]}
                           </h3>
-                          
-                          {/* Créneaux horaires */}
+
                           <div className="space-y-2 relative">
-                            {[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].map(hour => {
+                            {[8, 9, 10, 11, 13, 14, 15, 16, 17, 18].map(hour => {
                               const hourEntries = getEntriesForDay(dayNum).filter(e => {
                                 const [h] = e.start_time.split(':').map(Number)
                                 return h === hour
@@ -468,30 +598,26 @@ export default function StaffEmploiDuTempsPage() {
                                   }`}
                                   onClick={() => selectedTemplate && handleTimeSlotClick(dayNum, hour)}
                                 >
-                                  
-
-
-
                                   {/* Cours existants */}
                                   {hourEntries.map(entry => {
-                                    // Calculer la durée en heures
                                     const [startH, startM] = entry.start_time.split(':').map(Number)
                                     const [endH, endM] = entry.end_time.split(':').map(Number)
                                     const durationMinutes = (endH * 60 + endM) - (startH * 60 + startM)
                                     const durationHours = durationMinutes / 60
-                                    
-                                    // Calculer le nombre de cases à occuper
                                     const numberOfSlots = Math.ceil(durationHours)
-                                    
-                                    // Calculer la hauteur : (cases × 80px) + (espacements × 8px)
-                                    const height = (numberOfSlots * 80) + ((numberOfSlots - 1) * 8)  // ✅ NOUVELLE LIGNE
-                                    
+                                    const height = (numberOfSlots * 80) + ((numberOfSlots - 1) * 8)
+
+                                    const isCancelled = (entry as any).status === 'cancelled'
+                                    const isModified = (entry as any).status === 'modified'
+
                                     return (
                                       <div
                                         key={entry.id}
-                                        className="p-2 rounded border mb-1 group relative"
+                                        className={`p-2 rounded border mb-1 group relative ${
+                                          isCancelled ? 'opacity-50 bg-red-50' : ''
+                                        }`}
                                         style={{
-                                          backgroundColor: entry.subject_color ? `${entry.subject_color}20` : '#f0f0f0',
+                                          backgroundColor: !isCancelled ? `${entry.subject_color}20` : undefined,
                                           borderColor: entry.subject_color || '#ccc',
                                           minHeight: `${height}px`,
                                           height: `${height}px`,
@@ -500,23 +626,33 @@ export default function StaffEmploiDuTempsPage() {
                                       >
                                         <div className="flex items-start justify-between h-full">
                                           <div className="flex-1 min-w-0">
-                                            <div className="font-semibold text-xs truncate">
+                                            <div className={`font-semibold text-xs truncate ${isCancelled ? 'line-through' : ''}`}>
                                               {entry.subject_name}
                                             </div>
                                             <div className="text-xs text-muted-foreground mt-0.5">
                                               {entry.start_time} - {entry.end_time}
                                             </div>
                                             <div className="text-xs mt-0.5">{entry.teacher_name}</div>
-                                            {entry.room && <div className="text-xs">📍 {entry.room}</div>}
+                                            {entry.room && (
+                                              <div className="text-xs">
+                                                📍 {entry.room}
+                                                {isModified && <span className="ml-1 text-blue-600">(modifié)</span>}
+                                              </div>
+                                            )}
                                             
-                                            {/* Afficher la durée si > 1h30 */}
+                                            {isCancelled && (entry as any).reason && (
+                                              <div className="text-xs text-red-600 mt-1">
+                                                ⚠️ {(entry as any).reason}
+                                              </div>
+                                            )}
+
                                             {durationMinutes > 90 && (
                                               <div className="text-xs font-medium text-blue-600 mt-1">
                                                 ⏱️ {Math.floor(durationHours)}h{durationMinutes % 60 > 0 ? (durationMinutes % 60) + 'min' : ''}
                                               </div>
                                             )}
                                           </div>
-                                          
+
                                           <DropdownMenu>
                                             <DropdownMenuTrigger asChild>
                                               <Button
@@ -528,22 +664,59 @@ export default function StaffEmploiDuTempsPage() {
                                               </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
-                                              <DropdownMenuItem
-                                                onClick={() => {
-                                                  setEditingEntry(entry)
-                                                  setShowEditEntryModal(true)
-                                                }}
-                                              >
-                                                <Pencil className="h-4 w-4 mr-2" />
-                                                Modifier
-                                              </DropdownMenuItem>
-                                              <DropdownMenuItem
-                                                onClick={() => handleDeleteEntry(entry.id)}
-                                                className="text-red-600"
-                                              >
-                                                <Trash2 className="h-4 w-4 mr-2" />
-                                                Supprimer
-                                              </DropdownMenuItem>
+                                              {timetableMode === 'classic' ? (
+                                                <>
+                                                  <DropdownMenuItem
+                                                    onClick={() => {
+                                                      setEditingEntry(entry)
+                                                      setShowEditEntryModal(true)
+                                                    }}
+                                                  >
+                                                    <Pencil className="h-4 w-4 mr-2" />
+                                                    Modifier le template
+                                                  </DropdownMenuItem>
+                                                  <DropdownMenuSeparator />
+                                                  <DropdownMenuItem onClick={() => handleCancelCourseForDate(entry)}>
+                                                    <XCircle className="h-4 w-4 mr-2" />
+                                                    Annuler ce jour
+                                                  </DropdownMenuItem>
+                                                  <DropdownMenuItem onClick={() => handleChangeRoomForDate(entry)}>
+                                                    <Home className="h-4 w-4 mr-2" />
+                                                    Changer la salle
+                                                  </DropdownMenuItem>
+                                                  <DropdownMenuItem onClick={() => handleModifyTimeForDate(entry)}>
+                                                    <Clock className="h-4 w-4 mr-2" />
+                                                    Modifier l'horaire
+                                                  </DropdownMenuItem>
+                                                  <DropdownMenuSeparator />
+                                                  <DropdownMenuItem
+                                                    onClick={() => handleDeleteEntry(entry.id)}
+                                                    className="text-red-600"
+                                                  >
+                                                    <Trash2 className="h-4 w-4 mr-2" />
+                                                    Supprimer du template
+                                                  </DropdownMenuItem>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <DropdownMenuItem
+                                                    onClick={() => {
+                                                      setEditingEntry(entry)
+                                                      setShowEditEntryModal(true)
+                                                    }}
+                                                  >
+                                                    <Pencil className="h-4 w-4 mr-2" />
+                                                    Modifier
+                                                  </DropdownMenuItem>
+                                                  <DropdownMenuItem
+                                                    onClick={() => handleDeleteEntry(entry.id)}
+                                                    className="text-red-600"
+                                                  >
+                                                    <Trash2 className="h-4 w-4 mr-2" />
+                                                    Supprimer
+                                                  </DropdownMenuItem>
+                                                </>
+                                              )}
                                             </DropdownMenuContent>
                                           </DropdownMenu>
                                         </div>
@@ -551,7 +724,6 @@ export default function StaffEmploiDuTempsPage() {
                                     )
                                   })}
 
-                                  {/* Indicateur si template sélectionné */}
                                   {selectedTemplate && hourEntries.length === 0 && (
                                     <div className="text-center text-xs text-muted-foreground mt-6">
                                       Cliquer pour créer
@@ -565,40 +737,38 @@ export default function StaffEmploiDuTempsPage() {
                       ))}
                     </div>
                   </div>
+                )}
+              </CardContent>
+            </Card>
 
-                  {/* Statistiques */}
-                  <div className="grid grid-cols-4 gap-4 pt-4 border-t">
-                    <div className="text-center p-4 bg-blue-50 rounded">
-                      <div className="text-2xl font-bold text-blue-600">{entries.length}</div>
-                      <div className="text-sm text-muted-foreground">Cours total</div>
-                    </div>
-                    <div className="text-center p-4 bg-green-50 rounded">
-                      <div className="text-2xl font-bold text-green-600">
-                        {entries.reduce((sum, e) => {
-                          const [sh, sm] = e.start_time.split(':').map(Number)
-                          const [eh, em] = e.end_time.split(':').map(Number)
-                          return sum + ((eh * 60 + em) - (sh * 60 + sm)) / 60
-                        }, 0).toFixed(1)}h
-                      </div>
-                      <div className="text-sm text-muted-foreground">Heures/semaine</div>
-                    </div>
-                    <div className="text-center p-4 bg-purple-50 rounded">
-                      <div className="text-2xl font-bold text-purple-600">
-                        {new Set(entries.map(e => e.subject_name)).size}
-                      </div>
-                      <div className="text-sm text-muted-foreground">Matières</div>
-                    </div>
-                    <div className="text-center p-4 bg-orange-50 rounded">
-                      <div className="text-2xl font-bold text-orange-600">
-                        {new Set(entries.map(e => e.teacher_name)).size}
-                      </div>
-                      <div className="text-sm text-muted-foreground">Professeurs</div>
-                    </div>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
+            {/* Statistiques */}
+            <div className="grid grid-cols-4 gap-4">
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="text-3xl font-bold text-primary">{totalCourses}</div>
+                  <div className="text-sm text-muted-foreground">Cours total</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="text-3xl font-bold text-green-600">{totalHours.toFixed(1)}h</div>
+                  <div className="text-sm text-muted-foreground">Heures/semaine</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="text-3xl font-bold text-purple-600">{uniqueSubjects}</div>
+                  <div className="text-sm text-muted-foreground">Matières</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="text-3xl font-bold text-orange-600">{uniqueTeachers}</div>
+                  <div className="text-sm text-muted-foreground">Professeurs</div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -607,7 +777,10 @@ export default function StaffEmploiDuTempsPage() {
         <CreateTemplateModal
           classId={selectedClassId}
           onClose={() => setShowCreateTemplateModal(false)}
-          onSuccess={handleTemplateCreated}
+          onSuccess={() => {
+            loadTemplates()
+            setShowCreateTemplateModal(false)
+          }}
         />
       )}
 
@@ -618,14 +791,17 @@ export default function StaffEmploiDuTempsPage() {
           defaultHour={selectedTimeSlot.hour}
           onClose={() => {
             setShowCreateFromTemplateModal(false)
-            setSelectedTemplate(null)
             setSelectedTimeSlot(null)
           }}
-          onSuccess={handleEntryCreated}
+          onSuccess={() => {
+            loadTimetableData()
+            setShowCreateFromTemplateModal(false)
+            setSelectedTimeSlot(null)
+            setSelectedTemplate(null)
+          }}
         />
       )}
 
-      {/* Modal modification template */}
       {showEditTemplateModal && editingTemplate && (
         <EditTemplateModal
           template={editingTemplate}
@@ -641,7 +817,6 @@ export default function StaffEmploiDuTempsPage() {
         />
       )}
 
-      {/* Modal modification cours */}
       {showEditEntryModal && editingEntry && (
         <EditEntryModal
           entry={editingEntry}
@@ -650,9 +825,81 @@ export default function StaffEmploiDuTempsPage() {
             setEditingEntry(null)
           }}
           onSuccess={() => {
-            loadTimetable()
+            loadTimetableData()
             setShowEditEntryModal(false)
             setEditingEntry(null)
+          }}
+        />
+      )}
+
+      {showCancelModal && editingEntry && (
+        <CancelCourseModal
+          entry={editingEntry}
+          overrideDate={editingEntry.override_date}
+          onClose={() => {
+            setShowCancelModal(false)
+            setEditingEntry(null)
+          }}
+          onSuccess={() => {
+            loadTimetableData()
+            setShowCancelModal(false)
+            setEditingEntry(null)
+          }}
+        />
+      )}
+
+      {showChangeRoomModal && editingEntry && (
+        <ChangeRoomModal
+          entry={editingEntry}
+          overrideDate={editingEntry.override_date}
+          onClose={() => {
+            setShowChangeRoomModal(false)
+            setEditingEntry(null)
+          }}
+          onSuccess={() => {
+            loadTimetableData()
+            setShowChangeRoomModal(false)
+            setEditingEntry(null)
+          }}
+        />
+      )}
+
+      {showModifyTimeModal && editingEntry && (
+        <ModifyTimeModal
+          entry={editingEntry}
+          overrideDate={editingEntry.override_date}
+          onClose={() => {
+            setShowModifyTimeModal(false)
+            setEditingEntry(null)
+          }}
+          onSuccess={() => {
+            loadTimetableData()
+            setShowModifyTimeModal(false)
+            setEditingEntry(null)
+          }}
+        />
+      )}
+
+      {showCopyWeekModal && (
+        <CopyWeekModal
+          classId={selectedClassId}
+          sourceWeek={currentWeekStart}
+          onClose={() => setShowCopyWeekModal(false)}
+          onSuccess={() => {
+            loadTimetableData()
+            setShowCopyWeekModal(false)
+          }}
+        />
+      )}
+
+      {showGenerateModal && (
+        <GenerateFromTemplateModal
+          classId={selectedClassId}
+          weekStartDate={currentWeekStart}
+          onClose={() => setShowGenerateModal(false)}
+          onSuccess={() => {
+            loadTimetableData()
+            setShowGenerateModal(false)
           }}
         />
       )}
