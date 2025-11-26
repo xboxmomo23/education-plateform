@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -43,40 +43,7 @@ import { CopyWeekModal } from "@/components/timetable/CopyWeekModal"
 import { GenerateFromTemplateModal } from "@/components/timetable/GenerateFromTemplateModal"
 import { ModeIndicator } from "@/components/timetable/ModeIndicator"
 import type { CourseTemplate } from "@/lib/api/timetable"
-
-
-// ============================================
-// FONCTION UTILITAIRE : Calculer le dimanche
-// ============================================
-
-/**
- * Retourne le dimanche (jour 0) d'une semaine donnée
- * @param referenceDate Date de référence
- * @param weekOffset Offset en semaines (0 = semaine actuelle, 1 = semaine suivante, -1 = semaine précédente)
- * @returns Date du dimanche au format YYYY-MM-DD
- */
-function getSundayOfWeek(referenceDate: Date, weekOffset: number = 0): string {
-  // Créer une copie pour ne pas modifier la date originale
-  const date = new Date(referenceDate)
-  date.setHours(0, 0, 0, 0) // Reset l'heure
-  
-  // Obtenir le jour de la semaine (0 = Dimanche, 1 = Lundi, ..., 6 = Samedi)
-  const dayOfWeek = date.getDay()
-  
-  // Calculer le dimanche de la semaine actuelle
-  const sunday = new Date(date)
-  sunday.setDate(date.getDate() - dayOfWeek) // Revenir au dimanche
-  
-  // Ajouter l'offset de semaines
-  sunday.setDate(sunday.getDate() + (weekOffset * 7))
-  
-  // Retourner au format YYYY-MM-DD
-  const year = sunday.getFullYear()
-  const month = String(sunday.getMonth() + 1).padStart(2, '0')
-  const day = String(sunday.getDate()).padStart(2, '0')
-  
-  return `${year}-${month}-${day}`
-}
+import { getWeekStart, addWeeksToStart, getDateForDay, formatWeekLabel } from "@/lib/date"
 
 // Configuration Algérienne
 const DAYS_CONFIG = {
@@ -88,35 +55,54 @@ const DAYS_CONFIG = {
 const { days: DAYS, daysMap: DAYS_MAP, daysNumbers: DAYS_NUMBERS } = DAYS_CONFIG
 
 export default function StaffEmploisDuTempsPage() {
-  // États généraux
+  // ==================== ÉTATS GÉNÉRAUX ====================
+  
   const [classes, setClasses] = useState<any[]>([])
   const [selectedClassId, setSelectedClassId] = useState<string>('')
-  const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   
   // Mode de l'établissement
   const [timetableMode, setTimetableMode] = useState<'classic' | 'dynamic'>('classic')
   
-  // Données emploi du temps
+  // Templates
+  const [templates, setTemplates] = useState<CourseTemplate[]>([])
+  const [selectedTemplate, setSelectedTemplate] = useState<CourseTemplate | null>(null)
+  
+  // ==================== NAVIGATION (Architecture durable) ====================
+  
+  // 1. Référence stable : semaine initiale (ne change JAMAIS après le montage)
+  const initialWeekRef = useRef(getWeekStart())
+  
+  // 2. État simple : offset par rapport à la semaine initiale
+  const [weekOffset, setWeekOffset] = useState(0)
+  
+  // 3. Calcul dérivé : semaine courante (calculée automatiquement, pas de setState)
+  const currentWeekStart = useMemo(
+    () => addWeeksToStart(initialWeekRef.current, weekOffset),
+    [weekOffset]
+  )
+  
+  // 4. Label formaté (dérivé aussi)
+  const weekLabel = useMemo(
+    () => formatWeekLabel(currentWeekStart),
+    [currentWeekStart]
+  )
+  
+  // ==================== DONNÉES ====================
+  
   const [entries, setEntries] = useState<TimetableEntry[]>([])
   const [instances, setInstances] = useState<TimetableInstance[]>([])
   const [overrides, setOverrides] = useState<any[]>([])
-  const [templates, setTemplates] = useState<CourseTemplate[]>([])
   
-  // Navigation semaine
-  const [currentWeekOffset, setCurrentWeekOffset] = useState(0)
-  const [weekLabel, setWeekLabel] = useState('')
-  const [currentWeekStart, setCurrentWeekStart] = useState(() => {
-    const today = new Date()
-    const dayOfWeek = today.getDay()
-    const startOfWeek = new Date(today)
-    startOfWeek.setDate(today.getDate() - dayOfWeek)
-    return startOfWeek.toISOString().split('T')[0]
-  })  // ✅  
-  // Templates
-  const [selectedTemplate, setSelectedTemplate] = useState<CourseTemplate | null>(null)
+  // ==================== CHARGEMENT ====================
   
-  // Modals
+  const [loading, setLoading] = useState(false)
+  
+  // AbortController pour annuler les requêtes obsolètes
+  const abortControllerRef = useRef<AbortController | null>(null)
+  
+  // ==================== MODALS ====================
+  
   const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false)
   const [showCreateFromTemplateModal, setShowCreateFromTemplateModal] = useState(false)
   const [showEditTemplateModal, setShowEditTemplateModal] = useState(false)
@@ -131,43 +117,14 @@ export default function StaffEmploisDuTempsPage() {
   const [editingEntry, setEditingEntry] = useState<any>(null)
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<{ day: number; hour: number } | null>(null)
 
-  // Charger la configuration de l'établissement
+  // ==================== INITIALISATION ====================
+
   useEffect(() => {
     loadTimetableConfig()
     loadStaffClasses()
   }, [])
 
-  // Charger les données quand la classe change
-  useEffect(() => {
-    if (selectedClassId) {
-      loadTemplates()
-      loadTimetableData()
-    }
-  }, [selectedClassId, currentWeekOffset, timetableMode])
-
-  // Calculer le label de la semaine
-  // Calculer le label de la semaine
-  // Calculer le label de la semaine
-  useEffect(() => {
-    const sundayDate = getSundayOfWeek(new Date(), currentWeekOffset)
-    
-    // Créer des objets Date pour l'affichage
-    const startDate = new Date(sundayDate + 'T00:00:00')
-    const endDate = new Date(startDate)
-    endDate.setDate(startDate.getDate() + 4) // Dimanche + 4 = Jeudi
-    
-    console.log('📅 Calcul semaine:', {
-      offset: currentWeekOffset,
-      sunday: sundayDate,
-      startDateReadable: startDate.toLocaleDateString('fr-FR'),
-      endDateReadable: endDate.toLocaleDateString('fr-FR')
-    })
-    
-    setCurrentWeekStart(sundayDate)
-    setWeekLabel(
-      `Semaine du ${startDate.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} au ${endDate.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`
-    )
-  }, [currentWeekOffset])
+  // ==================== FONCTIONS DE CHARGEMENT ====================
 
   const loadTimetableConfig = async () => {
     try {
@@ -176,7 +133,7 @@ export default function StaffEmploisDuTempsPage() {
         setTimetableMode(response.data.timetable_mode)
       }
     } catch (error) {
-      console.error('Erreur chargement config:', error)
+      console.error('❌ Erreur chargement config:', error)
     }
   }
 
@@ -188,11 +145,26 @@ export default function StaffEmploisDuTempsPage() {
         setSelectedClassId(response.data[0].class_id)
       }
     } catch (error) {
-      console.error('Erreur chargement classes:', error)
+      console.error('❌ Erreur chargement classes:', error)
     }
   }
 
-  const loadTimetableData = async () => {
+  const loadTemplates = useCallback(async () => {
+    if (!selectedClassId) return
+
+    try {
+      const response = await timetableApi.getTemplates(selectedClassId)
+      if (response.success) {
+        setTemplates(response.data)
+      }
+    } catch (error) {
+      console.error('❌ Erreur chargement templates:', error)
+    }
+  }, [selectedClassId])
+
+  // ==================== CHARGEMENT DONNÉES AVEC ANNULATION ====================
+
+  const loadTimetableData = useCallback(async (weekStart: string, signal: AbortSignal) => {
     if (!selectedClassId) return
 
     try {
@@ -202,35 +174,126 @@ export default function StaffEmploisDuTempsPage() {
         // Mode Classic : Template + Overrides
         const [entriesRes, overridesRes] = await Promise.all([
           timetableApi.getClassTimetable(selectedClassId),
-          timetableOverrideApi.getForWeek(selectedClassId, currentWeekStart),
+          timetableOverrideApi.getForWeek(selectedClassId, weekStart),
         ])
+
+        // Vérifier si la requête n'a pas été annulée
+        if (signal.aborted) {
+          console.log('⏹️ Requête annulée (classic):', weekStart)
+          return
+        }
 
         if (entriesRes.success) setEntries(entriesRes.data)
         if (overridesRes.success) setOverrides(overridesRes.data)
+        setInstances([])
+
+        console.log('✅ Données chargées (classic):', { weekStart, entriesCount: entriesRes.data?.length || 0 })
+
       } else {
         // Mode Dynamic : Instances
-        const instancesRes = await timetableInstanceApi.getForWeek(selectedClassId, currentWeekStart)
+        const instancesRes = await timetableInstanceApi.getForWeek(selectedClassId, weekStart)
+
+        if (signal.aborted) {
+          console.log('⏹️ Requête annulée (dynamic):', weekStart)
+          return
+        }
+
         if (instancesRes.success) setInstances(instancesRes.data)
+        setEntries([])
+        setOverrides([])
+
+        console.log('✅ Données chargées (dynamic):', { weekStart, instancesCount: instancesRes.data?.length || 0 })
       }
-    } catch (error) {
-      console.error('Erreur chargement emploi du temps:', error)
+
+    } catch (error: any) {
+      // Ignorer les erreurs d'annulation
+      if (error.name === 'AbortError') {
+        console.log('⏹️ Requête annulée:', weekStart)
+        return
+      }
+      console.error('❌ Erreur chargement emploi du temps:', error)
     } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadTemplates = async () => {
-    if (!selectedClassId) return
-
-    try {
-      const response = await timetableApi.getTemplates(selectedClassId)
-      if (response.success) {
-        setTemplates(response.data)
+      if (!signal.aborted) {
+        setLoading(false)
       }
-    } catch (error) {
-      console.error('Erreur chargement templates:', error)
     }
+  }, [selectedClassId, timetableMode])
+
+
+  
+
+  // ==================== EFFET : Chargement automatique avec annulation ====================
+
+  useEffect(() => {
+    // Condition de garde
+    if (!selectedClassId) {
+      setEntries([])
+      setInstances([])
+      setOverrides([])
+      return
+    }
+
+    console.log('🔄 Déclenchement chargement:', { 
+      weekStart: currentWeekStart, 
+      offset: weekOffset,
+      mode: timetableMode 
+    })
+
+    // 1. Annuler la requête précédente si elle existe
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      console.log('⏹️ Annulation requête précédente')
+    }
+
+    // 2. Créer un nouveau contrôleur pour cette requête
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
+    // 3. Charger les templates (pas de signal ici, requête rapide)
+    loadTemplates()
+
+    // 4. Lancer le chargement des données avec signal d'annulation
+    loadTimetableData(currentWeekStart, controller.signal)
+
+    // 5. Cleanup : annuler si le composant unmount ou si les deps changent
+    return () => {
+      controller.abort()
+      abortControllerRef.current = null
+    }
+  }, [selectedClassId, currentWeekStart, timetableMode, loadTimetableData, loadTemplates, weekOffset])
+
+  // ==================== NAVIGATION ====================
+
+  const handlePreviousWeek = () => {
+    setWeekOffset(prev => prev - 1)
   }
+
+  const handleNextWeek = () => {
+    setWeekOffset(prev => prev + 1)
+  }
+
+  const handleReturnToCurrentWeek = () => {
+    setWeekOffset(0)
+  }
+
+  // ==================== CALLBACKS APRÈS ACTIONS ====================
+
+  const refreshCurrentWeek = useCallback(() => {
+    console.log('🔄 Rafraîchissement semaine courante')
+    
+    // Annuler requête en cours
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    
+    // Créer nouveau contrôleur et recharger
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+    
+    loadTimetableData(currentWeekStart, controller.signal)
+  }, [currentWeekStart, loadTimetableData])
+
+  // ==================== GESTION DES TEMPLATES ====================
 
   const handleUseTemplate = (template: CourseTemplate) => {
     setSelectedTemplate(template)
@@ -250,344 +313,321 @@ export default function StaffEmploisDuTempsPage() {
   }
 
   const createInstanceFromTemplate = async (day: number, hour: number) => {
-  if (!selectedTemplate) return
-
-  try {
-    const startTime = `${hour.toString().padStart(2, '0')}:00`
-    const [startH, startM] = startTime.split(':').map(Number)
-    const totalMinutes = startH * 60 + startM + selectedTemplate.default_duration
-    const endH = Math.floor(totalMinutes / 60)
-    const endM = totalMinutes % 60
-    const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`
-
-    console.log('🎯 Création instance:', {
-      template: selectedTemplate.subject_name,
-      classId: selectedClassId,
-      weekStart: currentWeekStart,
-      dayOfWeek: day,
-      startTime,
-      endTime,
-      room: selectedTemplate.default_room
-    })
-
-    if (!currentWeekStart) {
-      alert('Erreur: week_start_date manquant')
-      return
-    }
-
-    const response = await timetableInstanceApi.create({
-      class_id: selectedClassId,
-      course_id: selectedTemplate.course_id,
-      week_start_date: currentWeekStart,
-      day_of_week: day,
-      start_time: startTime,
-      end_time: endTime,
-      room: selectedTemplate.default_room || undefined,
-    })
-
-    console.log('✅ Instance créée:', response)
-
-    await loadTimetableData()
-    setSelectedTemplate(null)
-  } catch (error: any) {
-    console.error('❌ Erreur création instance:', error)
-    alert(`Erreur: ${error.message || 'Impossible de créer le cours'}`)
-  }
-}
-
-  const handleDeleteEntry = async (entryId: string) => {
-    if (!confirm('Supprimer ce cours ?')) return
+    if (!selectedTemplate) return
 
     try {
-      if (timetableMode === 'classic') {
-        await timetableApi.deleteEntry(entryId)
-      } else {
-        await timetableInstanceApi.delete(entryId)
-      }
-      loadTimetableData()
-    } catch (error) {
-      console.error('Erreur suppression:', error)
-      alert('Erreur lors de la suppression')
-    }
-  }
+      const startTime = `${hour.toString().padStart(2, '0')}:00`
+      const [startH, startM] = startTime.split(':').map(Number)
+      const totalMinutes = startH * 60 + startM + selectedTemplate.default_duration
+      const endH = Math.floor(totalMinutes / 60)
+      const endM = totalMinutes % 60
+      const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`
 
-  const handleDeleteTemplate = async (templateId: string) => {
-    if (!confirm('Supprimer ce template ?')) return
+      const targetDate = getDateForDay(currentWeekStart, day)
 
-    try {
-      await timetableApi.deleteTemplate(templateId)
-      loadTemplates()
-      if (selectedTemplate?.id === templateId) {
+      console.log('🎯 Création instance:', {
+        template: selectedTemplate,
+        course_id: selectedTemplate.course_id,  // ✅ Vérifier que cette propriété existe
+        classId: selectedTemplate.class_id,
+        weekStart: currentWeekStart,
+        dayOfWeek: day,
+        startTime,
+        endTime,
+        room: selectedTemplate.default_room,
+        targetDate,
+      })
+
+      // ✅ CORRECTION : Utiliser course_id au lieu de template_id
+      const response = await timetableInstanceApi.create({
+        course_id: selectedTemplate.course_id,  // ✅ C'est la colonne qui existe en base
+        class_id: selectedTemplate.class_id,
+        week_start_date: currentWeekStart,
+        day_of_week: day,
+        start_time: startTime,
+        end_time: endTime,
+        room: selectedTemplate.default_room || undefined,  // ✅ Convertir null en undefined
+        created_from_template: true,  // ✅ Marquer comme créé depuis template
+      })
+
+      if (response.success) {
+        console.log('✅ Instance créée:', response.data)
+        refreshCurrentWeek()
         setSelectedTemplate(null)
       }
     } catch (error) {
-      console.error('Erreur suppression template:', error)
-      alert('Erreur lors de la suppression')
+      console.error('❌ Erreur création instance:', error)
     }
-  }
+ }
+  const handleDeleteTemplate = async (templateId: string) => {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer ce template ?')) return
 
-  const handleCancelCourseForDate = (entry: any) => {
-    const date = getDateForDayOfWeek(entry.day_of_week)
-    setEditingEntry({ ...entry, override_date: date })
-    setShowCancelModal(true)
-  }
-
-  const handleChangeRoomForDate = (entry: any) => {
-    const date = getDateForDayOfWeek(entry.day_of_week)
-    setEditingEntry({ ...entry, override_date: date })
-    setShowChangeRoomModal(true)
-  }
-
-  const handleModifyTimeForDate = (entry: any) => {
-    const date = getDateForDayOfWeek(entry.day_of_week)
-    setEditingEntry({ ...entry, override_date: date })
-    setShowModifyTimeModal(true)
-  }
-
-  const getDateForDayOfWeek = (dayOfWeek: number): string => {
-  if (!currentWeekStart) {
-    console.warn('⚠️ currentWeekStart est vide!')
-    return ''
-  }
-  
-  const weekStart = new Date(currentWeekStart + 'T00:00:00') // Force UTC
-  const targetDate = new Date(weekStart)
-  targetDate.setDate(weekStart.getDate() + (dayOfWeek - 1)) // 1=Dimanche, 2=Lundi, etc.
-  
-  const dateString = targetDate.toISOString().split('T')[0]
-  
-  console.log('📆 Date calculée:', {
-    dayOfWeek,
-    weekStart: currentWeekStart,
-    targetDate: dateString,
-    readable: targetDate.toLocaleDateString('fr-FR')
-  })
-  
-  return dateString
-}
-
-  const getEntriesForDay = (dayOfWeek: number) => {
-    if (timetableMode === 'classic') {
-      const dayEntries = entries.filter(e => e.day_of_week === dayOfWeek)
-      const date = getDateForDayOfWeek(dayOfWeek)
-      
-      if (!date) return dayEntries  // ✅ Si pas de date, retourner sans overrides
-      
-      return dayEntries.map(entry => {
-        const override = overrides.find(
-          o => o.template_entry_id === entry.id && o.override_date === date
-        )
-
-        if (override) {
-          if (override.override_type === 'cancel') {
-            return { ...entry, status: 'cancelled', reason: override.reason }
-          } else if (override.override_type === 'modify_room') {
-            return { ...entry, room: override.new_room, status: 'modified' }
-          } else if (override.override_type === 'modify_time') {
-            return { 
-              ...entry, 
-              start_time: override.new_start_time, 
-              end_time: override.new_end_time,
-              status: 'modified' 
-            }
-          }
+    try {
+      const response = await timetableApi.deleteTemplate(templateId)
+      if (response.success) {
+        loadTemplates()
+        if (selectedTemplate?.id === templateId) {
+          setSelectedTemplate(null)
         }
-
-        return { ...entry, status: 'normal' }
-      }).sort((a, b) => a.start_time.localeCompare(b.start_time))
-    } else {
-      // Mode Dynamic : Instances
-      return instances
-        .filter(i => i.day_of_week === dayOfWeek)
-        .sort((a, b) => a.start_time.localeCompare(b.start_time))
+      }
+    } catch (error) {
+      console.error('❌ Erreur suppression template:', error)
     }
   }
 
-  const filteredTemplates = templates.filter(t =>
-    t.subject_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t.teacher_name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const handleDeleteEntry = async (entryId: string) => {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer ce cours ?')) return
 
-  // Statistiques
-  const totalCourses = timetableMode === 'classic' ? entries.length : instances.length
-  const totalHours = timetableMode === 'classic'
-    ? entries.reduce((sum, e) => {
-        const [sh, sm] = e.start_time.split(':').map(Number)
-        const [eh, em] = e.end_time.split(':').map(Number)
-        return sum + ((eh * 60 + em) - (sh * 60 + sm))
-      }, 0) / 60
-    : instances.reduce((sum, i) => {
-        const [sh, sm] = i.start_time.split(':').map(Number)
-        const [eh, em] = i.end_time.split(':').map(Number)
-        return sum + ((eh * 60 + em) - (sh * 60 + sm))
-      }, 0) / 60
+    try {
+      if (timetableMode === 'classic') {
+        const response = await timetableApi.deleteEntry(entryId)
+        if (response.success) {
+          refreshCurrentWeek()
+        }
+      } else {
+        const response = await timetableInstanceApi.delete(entryId)
+        if (response.success) {
+          refreshCurrentWeek()
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erreur suppression cours:', error)
+    }
+  }
 
-  const dataSource = timetableMode === 'classic' ? entries : instances
-  const uniqueSubjects = new Set(dataSource.map(e => e.subject_name)).size
-  const uniqueTeachers = new Set(dataSource.map(e => e.teacher_name)).size
+  // ==================== CALCULS STATISTIQUES ====================
+
+  const displayedEntries = useMemo(() => {
+    if (timetableMode === 'classic') {
+      return entries.map(entry => {
+        const override = overrides.find(
+          o => o.timetable_entry_id === entry.id && o.override_date === currentWeekStart
+        )
+        
+        if (override?.is_cancelled) return null
+        
+        return {
+          ...entry,
+          room: override?.new_room || entry.room,
+          start_time: override?.new_start_time || entry.start_time,
+          end_time: override?.new_end_time || entry.end_time,
+          override_date: override?.override_date,
+        }
+      }).filter(Boolean)
+    } else {
+      return instances
+    }
+  }, [entries, instances, overrides, currentWeekStart, timetableMode])
+
+  const totalCourses = displayedEntries.length
+
+  const totalHours = useMemo(() => {
+    return displayedEntries.reduce((sum, entry: any) => {
+      const [startH, startM] = entry.start_time.split(':').map(Number)
+      const [endH, endM] = entry.end_time.split(':').map(Number)
+      const duration = (endH * 60 + endM) - (startH * 60 + startM)
+      return sum + duration / 60
+    }, 0)
+  }, [displayedEntries])
+
+  const uniqueSubjects = useMemo(() => {
+    const subjects = new Set(displayedEntries.map((e: any) => e.subject_name))
+    return subjects.size
+  }, [displayedEntries])
+
+  const uniqueTeachers = useMemo(() => {
+    const teachers = new Set(
+      displayedEntries
+        .map((e: any) => e.teacher_name)
+        .filter(Boolean)
+    )
+    return teachers.size
+  }, [displayedEntries])
+
+  // ==================== FILTRAGE CLASSES ====================
+
+  const filteredClasses = useMemo(() => {
+    if (!searchQuery) return classes
+    
+    const query = searchQuery.toLowerCase()
+    return classes.filter(c => 
+      c.class_name?.toLowerCase().includes(query) ||
+      c.level_name?.toLowerCase().includes(query)
+    )
+  }, [classes, searchQuery])
+
+  // ==================== RENDU ====================
 
   return (
     <DashboardLayout requiredRole="staff">
-      <div className="flex h-screen overflow-hidden">
-        {/* Bibliothèque de templates (gauche) */}
-        <div className="w-80 border-r bg-gray-50 overflow-y-auto flex-shrink-0">
-          <div className="p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">📖 Mes Templates</h2>
-              {selectedTemplate && (
-                <span className="text-xs bg-primary text-white px-2 py-1 rounded">
-                  Sélectionné
-                </span>
-              )}
-            </div>
-
-            {selectedTemplate && (
-              <div className="text-xs text-muted-foreground bg-blue-50 p-2 rounded">
-                → Cliquez sur une case horaire pour créer un cours
-              </div>
-            )}
-
-            {/* Recherche */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Rechercher..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-
-            {/* Bouton créer */}
-            <Button
-              onClick={() => setShowCreateTemplateModal(true)}
-              className="w-full"
-              variant="outline"
-            >
-              + Créer un template
-            </Button>
-
-            {/* Liste des templates */}
-            <div className="space-y-2">
-              {filteredTemplates.map(template => (
-                <div
-                  key={template.id}
-                  className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                    selectedTemplate?.id === template.id
-                      ? 'border-primary bg-primary/5'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                  style={{ borderLeftWidth: '4px', borderLeftColor: template.subject_color }}
-                  onClick={() => handleUseTemplate(template)}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate">
-                        {template.subject_name}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        {template.teacher_name}
-                      </div>
-                      <div className="flex gap-2 mt-2">
-                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
-                          {template.default_duration}min
-                        </span>
-                        {template.default_room && (
-                          <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
-                            📍 {template.default_room}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setEditingTemplate(template)
-                            setShowEditTemplateModal(true)
-                          }}
-                        >
-                          <Pencil className="h-4 w-4 mr-2" />
-                          Modifier
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDeleteTemplate(template.id)
-                          }}
-                          className="text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Supprimer
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              ))}
-
-              {filteredTemplates.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground text-sm">
-                  {searchQuery ? 'Aucun template trouvé' : 'Aucun template créé'}
-                </div>
-              )}
-            </div>
-          </div>
+      <div className="p-6">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold mb-2">Emplois du temps</h1>
+          <p className="text-muted-foreground">
+            Gérez les emplois du temps de toutes les classes
+          </p>
         </div>
 
-        {/* Calendrier (droite) */}
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="space-y-6 max-w-7xl mx-auto">
-            {/* Header avec mode */}
-            <div className="flex items-center justify-between">
-              <h1 className="text-2xl font-bold">📚 Emploi du temps</h1>
-              <ModeIndicator mode={timetableMode} />
-            </div>
-
-            {/* Sélection classe */}
+        <div className="grid grid-cols-12 gap-6">
+          {/* Sidebar Templates */}
+          <div className="col-span-3">
             <Card>
-              <CardContent className="pt-6">
-                <Select value={selectedClassId} onValueChange={setSelectedClassId}>
-                  <SelectTrigger className="w-full max-w-xs">
-                    <SelectValue placeholder="Sélectionner une classe" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {classes.map((c, index) => (
-                      <SelectItem key={c.class_id || `class-${index}`} value={c.class_id}>
-                        {c.class_label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    📋 Mes Templates
+                  </h3>
+                </div>
+
+                <div className="relative mb-4">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Rechercher..."
+                    className="pl-9"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+
+                <Button
+                  variant="outline"
+                  className="w-full mb-4"
+                  onClick={() => setShowCreateTemplateModal(true)}
+                >
+                  + Créer un template
+                </Button>
+
+                <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                  {templates.map((template) => (
+                    <div
+                      key={template.id}
+                      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                        selectedTemplate?.id === template.id
+                          ? 'bg-primary/10 border-primary'
+                          : 'hover:bg-muted'
+                      }`}
+                      onClick={() => handleUseTemplate(template)}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm truncate">
+                            {template.subject_name}
+                          </div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            {template.teacher_name || 'Professeur Demo'}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs">
+                              {template.default_duration}min
+                            </span>
+                            <span className="text-xs text-primary">
+                              🔴 {template.default_room || '305'}
+                            </span>
+                          </div>
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEditingTemplate(template)
+                                setShowEditTemplateModal(true)
+                              }}
+                            >
+                              <Pencil className="h-4 w-4 mr-2" />
+                              Modifier
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteTemplate(template.id)
+                              }}
+                              className="text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Supprimer
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
+          </div>
 
-            {/* Navigation semaine */}
+          {/* Main Content */}
+          <div className="col-span-9 space-y-6">
             <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-4">
+                    <ModeIndicator mode={timetableMode} />
+                    
+                    <Select
+                      value={selectedClassId}
+                      onValueChange={setSelectedClassId}
+                    >
+                      <SelectTrigger className="w-[300px]">
+                        <SelectValue placeholder="Sélectionner une classe" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {filteredClasses.map((c) => (
+                          <SelectItem key={c.class_id} value={c.class_id}>
+                            {c.level_name} - {c.class_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {timetableMode === 'dynamic' && (
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowCopyWeekModal(true)}
+                        disabled={!selectedClassId}
+                      >
+                        <Copy className="h-4 w-4 mr-2" />
+                        Copier une autre semaine
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowGenerateModal(true)}
+                        disabled={!selectedClassId}
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Copier depuis template
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Navigation semaine */}
+                <div className="flex items-center justify-between mb-6 p-4 bg-muted rounded-lg">
                   <Button
                     variant="outline"
-                    onClick={() => setCurrentWeekOffset(prev => prev - 1)}
+                    size="sm"
+                    onClick={handlePreviousWeek}
                   >
-                    <ChevronLeft className="h-4 w-4 mr-2" />
+                    <ChevronLeft className="h-4 w-4" />
                     Semaine précédente
                   </Button>
 
                   <div className="text-center">
-                    <div className="font-medium">{weekLabel}</div>
-                    {currentWeekOffset !== 0 && (
+                    <div className="font-semibold">{weekLabel}</div>
+                    {weekOffset !== 0 && (
                       <Button
                         variant="link"
                         size="sm"
-                        onClick={() => setCurrentWeekOffset(0)}
+                        onClick={handleReturnToCurrentWeek}
                         className="text-xs"
                       >
                         Retour à cette semaine
@@ -597,155 +637,141 @@ export default function StaffEmploisDuTempsPage() {
 
                   <Button
                     variant="outline"
-                    onClick={() => setCurrentWeekOffset(prev => prev + 1)}
+                    size="sm"
+                    onClick={handleNextWeek}
                   >
                     Semaine suivante
-                    <ChevronRight className="h-4 w-4 ml-2" />
+                    <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
 
-                {/* Actions mode Dynamic */}
-                {timetableMode === 'dynamic' && (
-                  <div className="flex gap-2 mt-4 pt-4 border-t">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowGenerateModal(true)}
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Copier depuis template
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowCopyWeekModal(true)}
-                    >
-                      <Copy className="h-4 w-4 mr-2" />
-                      Copier une autre semaine
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Grille emploi du temps */}
-            <Card>
-              <CardContent className="pt-6">
-                <h3 className="font-medium mb-4">Emploi du temps</h3>
-
+                {/* Grille emploi du temps */}
                 {loading ? (
+                  <div className="text-center py-12">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+                    <p className="text-muted-foreground mt-4">Chargement...</p>
+                  </div>
+                ) : !selectedClassId ? (
                   <div className="text-center py-12 text-muted-foreground">
-                    Chargement...
+                    Sélectionnez une classe pour voir l'emploi du temps
                   </div>
                 ) : (
-                  <div className="flex gap-2">
-                    {/* Colonne des heures */}
-                    <div className="w-16 flex-shrink-0">
-                      <div className="h-12 mb-3"></div>
-                      {[8, 9, 10, 11, 13, 14, 15, 16, 17, 18].map(hour => (
-                        <div
-                          key={hour}
-                          className="h-20 flex items-center justify-end pr-2 text-sm text-muted-foreground font-medium"
-                          style={{ minHeight: '80px' }}
-                        >
-                          {hour}:00
-                        </div>
-                      ))}
-                    </div>
+                  <div className="overflow-x-auto">
+                    <div className="min-w-[800px]">
+                      <div className="grid grid-cols-6 gap-2">
+                        {/* Header */}
+                        <div className="font-semibold p-2">Horaire</div>
+                        {DAYS.map(day => (
+                          <div key={day} className="font-semibold p-2 text-center">
+                            {day}
+                          </div>
+                        ))}
 
-                    {/* Grille des jours */}
-                    <div className="flex-1 grid grid-cols-5 gap-4">
-                      {DAYS_NUMBERS.map((dayNum, idx) => (
-                        <div key={dayNum}>
-                          <h3 className="font-medium text-center mb-3 sticky top-0 bg-white py-2 h-12">
-                            {DAYS[idx]}
-                          </h3>
+                        {/* Time slots */}
+                        {Array.from({ length: 8 }, (_, i) => i + 8).map(hour => (
+                          <React.Fragment key={hour}>
+                            <div className="p-2 text-sm text-muted-foreground">
+                              {hour}:00
+                            </div>
 
-                          <div className="space-y-2 relative">
-                            {[8, 9, 10, 11, 13, 14, 15, 16, 17, 18].map(hour => {
-                              const hourEntries = getEntriesForDay(dayNum).filter(e => {
-                                const [h] = e.start_time.split(':').map(Number)
-                                return h === hour
+                            {DAYS_NUMBERS.map(dayNum => {
+                              const targetDate = getDateForDay(currentWeekStart, dayNum)
+                              
+                              const hourEntries = displayedEntries.filter((entry: any) => {
+                                const entryHour = parseInt(entry.start_time.split(':')[0])
+                                return entry.day_of_week === dayNum && entryHour === hour
                               })
+
+                              //console.log('📆 Date calculée:', {
+                               // dayOfWeek: dayNum,
+                               // weekStart: currentWeekStart,
+                               // targetDate,
+                             // })
 
                               return (
                                 <div
                                   key={`${dayNum}-${hour}`}
-                                  className={`min-h-[80px] p-2 rounded border-2 border-dashed transition-all relative ${
+                                  className={`min-h-[80px] p-2 border rounded cursor-pointer transition-colors ${
                                     selectedTemplate
-                                      ? 'border-primary bg-primary/5 cursor-pointer hover:bg-primary/10'
-                                      : 'border-gray-200'
+                                      ? 'hover:bg-primary/5 hover:border-primary'
+                                      : 'hover:bg-muted'
                                   }`}
-                                  onClick={() => selectedTemplate && handleTimeSlotClick(dayNum, hour)}
+                                  onClick={() => handleTimeSlotClick(dayNum, hour)}
                                 >
-                                  {/* Cours existants */}
-                                  {hourEntries.map(entry => {
-                                    const [startH, startM] = entry.start_time.split(':').map(Number)
-                                    const [endH, endM] = entry.end_time.split(':').map(Number)
-                                    const durationMinutes = (endH * 60 + endM) - (startH * 60 + startM)
-                                    const durationHours = durationMinutes / 60
-                                    const numberOfSlots = Math.ceil(durationHours)
-                                    const height = (numberOfSlots * 80) + ((numberOfSlots - 1) * 8)
-
-                                    const isCancelled = (entry as any).status === 'cancelled'
-                                    const isModified = (entry as any).status === 'modified'
+                                  {hourEntries.map((entry: any) => {
+                                    const isOverride = !!entry.override_date
+                                    const isCancelled = entry.is_cancelled
 
                                     return (
                                       <div
                                         key={entry.id}
-                                        className={`p-2 rounded border mb-1 group relative ${
-                                          isCancelled ? 'opacity-50 bg-red-50' : ''
-                                        }`}
-                                        style={{
-                                          backgroundColor: !isCancelled ? `${entry.subject_color}20` : undefined,
-                                          borderColor: entry.subject_color || '#ccc',
-                                          minHeight: `${height}px`,
-                                          height: `${height}px`,
-                                        }}
+                                        className={`p-2 rounded text-xs ${
+                                          isCancelled
+                                            ? 'bg-red-100 border-red-300'
+                                            : isOverride
+                                            ? 'bg-yellow-100 border-yellow-300'
+                                            : 'bg-blue-100 border-blue-300'
+                                        } border`}
                                         onClick={(e) => e.stopPropagation()}
                                       >
-                                        <div className="flex items-start justify-between h-full">
+                                        <div className="flex items-start justify-between">
                                           <div className="flex-1 min-w-0">
-                                            <div className={`font-semibold text-xs truncate ${isCancelled ? 'line-through' : ''}`}>
+                                            <div className="font-medium truncate">
                                               {entry.subject_name}
                                             </div>
-                                            <div className="text-xs text-muted-foreground mt-0.5">
+                                            <div className="text-muted-foreground truncate">
                                               {entry.start_time} - {entry.end_time}
                                             </div>
-                                            <div className="text-xs mt-0.5">{entry.teacher_name}</div>
-                                            {entry.room && (
-                                              <div className="text-xs">
-                                                📍 {entry.room}
-                                                {isModified && <span className="ml-1 text-blue-600">(modifié)</span>}
-                                              </div>
-                                            )}
-                                            
-                                            {isCancelled && (entry as any).reason && (
-                                              <div className="text-xs text-red-600 mt-1">
-                                                ⚠️ {(entry as any).reason}
-                                              </div>
-                                            )}
-
-                                            {durationMinutes > 90 && (
-                                              <div className="text-xs font-medium text-blue-600 mt-1">
-                                                ⏱️ {Math.floor(durationHours)}h{durationMinutes % 60 > 0 ? (durationMinutes % 60) + 'min' : ''}
+                                            <div className="text-muted-foreground truncate">
+                                              {entry.teacher_name || 'Professeur Demo'}
+                                            </div>
+                                            <div className="text-primary font-medium">
+                                              🔴 {entry.room || '305'}
+                                            </div>
+                                            {timetableMode === 'dynamic' && (
+                                              <div className="text-xs text-muted-foreground mt-1">
+                                                📅 {targetDate}
                                               </div>
                                             )}
                                           </div>
 
                                           <DropdownMenu>
                                             <DropdownMenuTrigger asChild>
-                                              <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100"
-                                              >
+                                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
                                                 <MoreVertical className="h-3 w-3" />
                                               </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
                                               {timetableMode === 'classic' ? (
                                                 <>
+                                                  <DropdownMenuItem
+                                                    onClick={() => {
+                                                      setEditingEntry({ ...entry, override_date: currentWeekStart })
+                                                      setShowCancelModal(true)
+                                                    }}
+                                                  >
+                                                    <XCircle className="h-4 w-4 mr-2" />
+                                                    Annuler ce cours
+                                                  </DropdownMenuItem>
+                                                  <DropdownMenuItem
+                                                    onClick={() => {
+                                                      setEditingEntry({ ...entry, override_date: currentWeekStart })
+                                                      setShowChangeRoomModal(true)
+                                                    }}
+                                                  >
+                                                    <Home className="h-4 w-4 mr-2" />
+                                                    Changer de salle
+                                                  </DropdownMenuItem>
+                                                  <DropdownMenuItem
+                                                    onClick={() => {
+                                                      setEditingEntry({ ...entry, override_date: currentWeekStart })
+                                                      setShowModifyTimeModal(true)
+                                                    }}
+                                                  >
+                                                    <Clock className="h-4 w-4 mr-2" />
+                                                    Modifier l'horaire
+                                                  </DropdownMenuItem>
+                                                  <DropdownMenuSeparator />
                                                   <DropdownMenuItem
                                                     onClick={() => {
                                                       setEditingEntry(entry)
@@ -755,20 +781,6 @@ export default function StaffEmploisDuTempsPage() {
                                                     <Pencil className="h-4 w-4 mr-2" />
                                                     Modifier le template
                                                   </DropdownMenuItem>
-                                                  <DropdownMenuSeparator />
-                                                  <DropdownMenuItem onClick={() => handleCancelCourseForDate(entry)}>
-                                                    <XCircle className="h-4 w-4 mr-2" />
-                                                    Annuler ce jour
-                                                  </DropdownMenuItem>
-                                                  <DropdownMenuItem onClick={() => handleChangeRoomForDate(entry)}>
-                                                    <Home className="h-4 w-4 mr-2" />
-                                                    Changer la salle
-                                                  </DropdownMenuItem>
-                                                  <DropdownMenuItem onClick={() => handleModifyTimeForDate(entry)}>
-                                                    <Clock className="h-4 w-4 mr-2" />
-                                                    Modifier l'horaire
-                                                  </DropdownMenuItem>
-                                                  <DropdownMenuSeparator />
                                                   <DropdownMenuItem
                                                     onClick={() => handleDeleteEntry(entry.id)}
                                                     className="text-red-600"
@@ -812,9 +824,9 @@ export default function StaffEmploisDuTempsPage() {
                                 </div>
                               )
                             })}
-                          </div>
-                        </div>
-                      ))}
+                          </React.Fragment>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -874,7 +886,7 @@ export default function StaffEmploisDuTempsPage() {
             setSelectedTimeSlot(null)
           }}
           onSuccess={() => {
-            loadTimetableData()
+            refreshCurrentWeek()
             setShowCreateFromTemplateModal(false)
             setSelectedTimeSlot(null)
             setSelectedTemplate(null)
@@ -905,7 +917,7 @@ export default function StaffEmploisDuTempsPage() {
             setEditingEntry(null)
           }}
           onSuccess={() => {
-            loadTimetableData()
+            refreshCurrentWeek()
             setShowEditEntryModal(false)
             setEditingEntry(null)
           }}
@@ -921,7 +933,7 @@ export default function StaffEmploisDuTempsPage() {
             setEditingEntry(null)
           }}
           onSuccess={() => {
-            loadTimetableData()
+            refreshCurrentWeek()
             setShowCancelModal(false)
             setEditingEntry(null)
           }}
@@ -937,7 +949,7 @@ export default function StaffEmploisDuTempsPage() {
             setEditingEntry(null)
           }}
           onSuccess={() => {
-            loadTimetableData()
+            refreshCurrentWeek()
             setShowChangeRoomModal(false)
             setEditingEntry(null)
           }}
@@ -953,7 +965,7 @@ export default function StaffEmploisDuTempsPage() {
             setEditingEntry(null)
           }}
           onSuccess={() => {
-            loadTimetableData()
+            refreshCurrentWeek()
             setShowModifyTimeModal(false)
             setEditingEntry(null)
           }}
@@ -966,7 +978,7 @@ export default function StaffEmploisDuTempsPage() {
           sourceWeek={currentWeekStart}
           onClose={() => setShowCopyWeekModal(false)}
           onSuccess={() => {
-            loadTimetableData()
+            refreshCurrentWeek()
             setShowCopyWeekModal(false)
           }}
         />
@@ -978,7 +990,7 @@ export default function StaffEmploisDuTempsPage() {
           weekStartDate={currentWeekStart}
           onClose={() => setShowGenerateModal(false)}
           onSuccess={() => {
-            loadTimetableData()
+            refreshCurrentWeek()
             setShowGenerateModal(false)
           }}
         />

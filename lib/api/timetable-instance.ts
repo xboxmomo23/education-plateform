@@ -30,6 +30,7 @@ export interface CreateInstanceData {
   end_time: string;
   room?: string;
   notes?: string;
+  created_from_template?: boolean  // ✅ AJOUTER CETTE LIGNE
 }
 
 export const timetableInstanceApi = {

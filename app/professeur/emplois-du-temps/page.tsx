@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { timetableApi, type TimetableEntry } from "@/lib/api/timetable"
-import { useAuth } from "@/hooks/useAuth" // ✅ NOUVEAU HOOK
+import { useAuth } from "@/hooks/useAuth"
 import { Calendar } from "lucide-react"
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi']

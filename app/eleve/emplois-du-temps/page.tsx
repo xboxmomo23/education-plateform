@@ -5,7 +5,6 @@ import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { timetableApi, type TimetableEntry } from "@/lib/api/timetable"
-import { getUserSession } from "@/lib/auth-new"
 import { Calendar, Download } from "lucide-react"
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi']
@@ -15,45 +14,75 @@ export default function EleveEmploiDuTempsPage() {
   const [entries, setEntries] = useState<TimetableEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [classId, setClassId] = useState<string | null>(null)
-  const user = getUserSession()
 
+  // ✅ CORRECTION: Charger la classe une seule fois au montage
   useEffect(() => {
-    loadStudentClass()
-  }, [])
+    const controller = new AbortController()
+    let isMounted = true
 
-  useEffect(() => {
-    if (classId) {
-      loadTimetable()
-    }
-  }, [classId])
-
- const loadStudentClass = async () => {
-  try {
-    const response = await timetableApi.getStudentClass()  // ✅ Utilise le client API
-    if (response.success) {
-      setClassId(response.data.class_id)
-    } else {
-      setLoading(false)
-    }
-  } catch (error) {
-    console.error('Erreur:', error)
-    setLoading(false)
-  }
-}
-
-  const loadTimetable = async () => {
-    try {
-      setLoading(true)
-      const response = await timetableApi.getClassTimetable(classId!)
-      if (response.success) {
-        setEntries(response.data)
+    const loadStudentClass = async () => {
+      try {
+        const response = await timetableApi.getStudentClass(controller.signal)
+        if (isMounted && response.success) {
+          setClassId(response.data.class_id)
+        } else if (isMounted) {
+          setLoading(false)
+        }
+      } catch (error: any) {
+        if (error.name === 'AbortError') {
+          console.log('Requête annulée (composant démonté)')
+          return
+        }
+        console.error('Erreur chargement classe:', error)
+        if (isMounted) {
+          setLoading(false)
+        }
       }
-    } catch (error) {
-      console.error('Erreur:', error)
-    } finally {
-      setLoading(false)
     }
-  }
+
+    loadStudentClass()
+
+    return () => {
+      isMounted = false
+      controller.abort()
+    }
+  }, []) // ✅ Aucune dépendance - exécuté une seule fois
+
+  // ✅ CORRECTION: Charger le timetable uniquement quand classId est défini
+  useEffect(() => {
+    if (!classId) return
+
+    const controller = new AbortController()
+    let isMounted = true
+
+    const loadTimetable = async () => {
+      try {
+        setLoading(true)
+        const response = await timetableApi.getClassTimetable(classId, undefined, controller.signal)
+        
+        if (isMounted && response.success) {
+          setEntries(response.data)
+        }
+      } catch (error: any) {
+        if (error.name === 'AbortError') {
+          console.log('Requête annulée (composant démonté)')
+          return
+        }
+        console.error('Erreur chargement emploi du temps:', error)
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadTimetable()
+
+    return () => {
+      isMounted = false
+      controller.abort()
+    }
+  }, [classId]) // ✅ Dépendance uniquement sur classId (primitive)
 
   const getEntriesForDay = (dayOfWeek: number) => {
     return entries.filter(e => e.day_of_week === dayOfWeek)

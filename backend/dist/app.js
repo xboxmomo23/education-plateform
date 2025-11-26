@@ -10,7 +10,12 @@ const dotenv_1 = __importDefault(require("dotenv"));
 const security_middleware_1 = require("./middleware/security.middleware");
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const grade_routes_1 = __importDefault(require("./routes/grade.routes"));
-const course_routes_1 = __importDefault(require("./routes/course.routes")); // ✅ AJOUTÉ
+const course_routes_1 = __importDefault(require("./routes/course.routes"));
+const timetable_routes_1 = __importDefault(require("./routes/timetable.routes"));
+const timetable_override_routes_1 = __importDefault(require("./routes/timetable-override.routes"));
+const timetable_instance_routes_1 = __importDefault(require("./routes/timetable-instance.routes"));
+const establishment_routes_1 = __importDefault(require("./routes/establishment.routes"));
+//import attendanceRoutes from './routes/attendance.routes';
 // Charger les variables d'environnement
 dotenv_1.default.config();
 const app = (0, express_1.default)();
@@ -50,10 +55,16 @@ app.get('/health', (req, res) => {
         environment: process.env.NODE_ENV || 'development',
     });
 });
-// Routes d'authentification
+// Routes d'API
 app.use('/api/auth', auth_routes_1.default);
 app.use('/api/grades', grade_routes_1.default);
-app.use('/api/courses', course_routes_1.default); // ✅ AJOUTER CETTE LIGNE
+app.use('/api/courses', course_routes_1.default);
+// Routes spécifiques AVANT les générales
+app.use('/api/timetable/overrides', timetable_override_routes_1.default); // ← Spécifique en premier
+app.use('/api/timetable/instances', timetable_instance_routes_1.default); // ← Spécifique en premier
+app.use('/api/timetable', timetable_routes_1.default); // ← Général à la fin
+app.use('/api/establishment', establishment_routes_1.default);
+//app.use('/api/attendance', attendanceRoutes);
 // Route 404
 app.use('*', (req, res) => {
     res.status(404).json({

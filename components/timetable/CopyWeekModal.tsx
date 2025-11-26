@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { AlertCircle } from "lucide-react"
 import { timetableInstanceApi } from "@/lib/api/timetable-instance"
+import { getNearestSunday, formatWeekLabel, isSunday } from "@/lib/date"
 
 interface CopyWeekModalProps {
   classId: string
@@ -30,10 +31,22 @@ export function CopyWeekModal({ classId, sourceWeek, onClose, onSuccess }: CopyW
       return
     }
 
+    // ✅ CORRECTION: Normaliser la date sélectionnée au dimanche le plus proche
+    const normalizedTargetWeek = isSunday(targetWeek) 
+      ? targetWeek 
+      : getNearestSunday(targetWeek)
+
+    if (normalizedTargetWeek !== targetWeek) {
+      console.warn('⚠️ Date normalisée au dimanche:', {
+        selected: targetWeek,
+        normalized: normalizedTargetWeek
+      })
+    }
+
     try {
       setLoading(true)
 
-      const result = await timetableInstanceApi.copyWeek(classId, sourceWeek, targetWeek)
+      const result = await timetableInstanceApi.copyWeek(classId, sourceWeek, normalizedTargetWeek)
 
       alert(`${result.data.count} cours copiés avec succès`)
       onSuccess()
@@ -56,12 +69,12 @@ export function CopyWeekModal({ classId, sourceWeek, onClose, onSuccess }: CopyW
           <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
             <div className="font-medium">Semaine source</div>
             <div className="text-muted-foreground">
-              Dimanche {new Date(sourceWeek).toLocaleDateString('fr-FR')}
+              {formatWeekLabel(sourceWeek)}
             </div>
           </div>
 
           <div>
-            <Label>Semaine cible (Dimanche)</Label>
+            <Label>Semaine cible</Label>
             <Input
               type="date"
               value={targetWeek}
@@ -69,7 +82,7 @@ export function CopyWeekModal({ classId, sourceWeek, onClose, onSuccess }: CopyW
               className="mt-1"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Sélectionnez un dimanche (début de semaine)
+              💡 Sélectionnez n'importe quel jour - il sera automatiquement normalisé au dimanche de la semaine
             </p>
           </div>
 
