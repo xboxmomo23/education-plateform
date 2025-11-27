@@ -30,7 +30,18 @@ export interface CreateInstanceData {
   end_time: string;
   room?: string;
   notes?: string;
-  created_from_template?: boolean  // ✅ AJOUTER CETTE LIGNE
+  created_from_template?: boolean;
+}
+
+export interface BulkGenerateResult {
+  totalCreated: number;
+  weeksAffected: number;
+  details: Array<{
+    week: string;
+    count: number;
+    success: boolean;
+    error?: string;
+  }>;
 }
 
 export const timetableInstanceApi = {
@@ -54,7 +65,7 @@ export const timetableInstanceApi = {
   },
 
   /**
-   * Générer les instances depuis le template
+   * Générer les instances depuis le template (UNE SEULE SEMAINE)
    */
   async generateFromTemplate(classId: string, weekStartDate: string) {
     return apiCall<{ count: number }>('/timetable/instances/generate-from-template', {
@@ -62,6 +73,22 @@ export const timetableInstanceApi = {
       body: JSON.stringify({
         class_id: classId,
         week_start_date: weekStartDate,
+      }),
+    });
+  },
+
+  /**
+   * ✨ NOUVEAU : Générer les instances depuis le template (PLUSIEURS SEMAINES)
+   * @param classId - ID de la classe
+   * @param targetWeeks - Liste des semaines cibles (format 'yyyy-MM-dd')
+   * @returns Résultat détaillé de la génération
+   */
+  async generateFromTemplateBulk(classId: string, targetWeeks: string[]) {
+    return apiCall<BulkGenerateResult>('/timetable/instances/generate-bulk', {
+      method: 'POST',
+      body: JSON.stringify({
+        class_id: classId,
+        target_weeks: targetWeeks,
       }),
     });
   },

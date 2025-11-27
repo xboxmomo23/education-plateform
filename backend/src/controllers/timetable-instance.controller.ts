@@ -170,6 +170,108 @@ export async function generateFromTemplateHandler(req: Request, res: Response) {
 }
 
 /**
+ * ✨ NOUVEAU : POST /api/timetable/instances/generate-bulk
+ * Générer les instances de PLUSIEURS semaines depuis le template
+ */
+export async function generateFromTemplateBulkHandler(req: Request, res: Response) {
+  try {
+    const { userId, role } = req.user!;
+    const { class_id, target_weeks } = req.body;
+
+    console.log('🚀 Génération bulk démarrée:', {
+      class_id,
+      target_weeks_count: target_weeks.length,
+      user_id: userId,
+    });
+
+    // Vérifications d'autorisation
+    if (role !== 'staff' && role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès réservé au personnel',
+      });
+    }
+
+    if (role === 'staff') {
+      const staffCheck = await pool.query(
+        'SELECT 1 FROM class_staff WHERE class_id = $1 AND user_id = $2',
+        [class_id, userId]
+      );
+      if (staffCheck.rows.length === 0) {
+        return res.status(403).json({
+          success: false,
+          error: 'Vous ne gérez pas cette classe',
+        });
+      }
+    }
+
+    // Valider que target_weeks est un tableau
+    if (!Array.isArray(target_weeks) || target_weeks.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'target_weeks doit être un tableau non vide',
+      });
+    }
+
+    // Générer pour chaque semaine
+    let totalCreated = 0;
+    const details: Array<{ week: string; count: number; success: boolean; error?: string }> = [];
+
+    for (const weekStart of target_weeks) {
+      try {
+        console.log(`  📅 Génération pour la semaine: ${weekStart}`);
+        
+        const count = await TimetableInstanceModel.generateFromTemplate(
+          class_id,
+          weekStart,
+          userId
+        );
+        
+        totalCreated += count;
+        details.push({
+          week: weekStart,
+          count: count,
+          success: true,
+        });
+        
+        console.log(`  ✅ ${count} cours créés pour ${weekStart}`);
+      } catch (error: any) {
+        console.error(`  ❌ Erreur pour ${weekStart}:`, error.message);
+        details.push({
+          week: weekStart,
+          count: 0,
+          success: false,
+          error: error.message,
+        });
+      }
+    }
+
+    console.log('✅ Génération bulk terminée:', {
+      totalCreated,
+      weeksAffected: target_weeks.length,
+      successCount: details.filter(d => d.success).length,
+      errorCount: details.filter(d => !d.success).length,
+    });
+
+    return res.json({
+      success: true,
+      message: `${totalCreated} cours générés dans ${target_weeks.length} semaines`,
+      data: {
+        totalCreated,
+        weeksAffected: target_weeks.length,
+        details,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Erreur generateFromTemplateBulkHandler:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la génération bulk',
+    });
+  }
+}
+
+/**
  * POST /api/timetable/instances/copy-week
  * Copier une semaine vers une autre
  */

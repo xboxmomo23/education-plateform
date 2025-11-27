@@ -6,6 +6,7 @@ import {
   getInstancesForWeekHandler,
   createInstanceHandler,
   generateFromTemplateHandler,
+  generateFromTemplateBulkHandler,  // ✨ NOUVEAU HANDLER
   copyWeekHandler,
   updateInstanceHandler,
   deleteInstanceHandler,
@@ -46,7 +47,7 @@ router.post(
 
 /**
  * POST /api/timetable/instances/generate-from-template
- * Générer depuis template
+ * Générer depuis template (UNE SEULE SEMAINE)
  */
 router.post(
   '/generate-from-template',
@@ -56,6 +57,25 @@ router.post(
   body('week_start_date').isDate(),
   validateRequest,
   generateFromTemplateHandler
+);
+
+/**
+ * ✨ NOUVEAU : POST /api/timetable/instances/generate-bulk
+ * Générer depuis template (PLUSIEURS SEMAINES)
+ */
+router.post(
+  '/generate-bulk',
+  authenticate,
+  authorize('staff', 'admin'),
+  body('class_id').isUUID().withMessage('ID de classe invalide'),
+  body('target_weeks')
+    .isArray({ min: 1 })
+    .withMessage('target_weeks doit être un tableau non vide'),
+  body('target_weeks.*')
+    .isDate()
+    .withMessage('Chaque date doit être au format valide (YYYY-MM-DD)'),
+  validateRequest,
+  generateFromTemplateBulkHandler
 );
 
 /**
