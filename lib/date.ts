@@ -116,8 +116,21 @@ export function isSunday(date: string): boolean {
  * getNearestSunday('2025-11-24') // 2025-11-24 (déjà dimanche)
  */
 export function getNearestSunday(date: string): string {
-  return getWeekStart(date)
-}
+     const d = parseISO(date)
+     const dayOfWeek = d.getDay() // 0=Dimanche, 1=Lundi, ..., 6=Samedi
+     
+     if (dayOfWeek === 0) {
+       // C'est déjà dimanche
+       return format(d, 'yyyy-MM-dd')
+     } else if (dayOfWeek === 6) {
+       // Si c'est samedi, aller au dimanche suivant (lendemain)
+       const nextSunday = addDays(d, 1)
+       return format(nextSunday, 'yyyy-MM-dd')
+     } else {
+       // Pour lundi-vendredi, prendre le dimanche de cette semaine (précédent)
+       return getWeekStart(date)
+     }
+   }
 
 /**
  * Valider qu'une string est un dimanche au format YYYY-MM-DD

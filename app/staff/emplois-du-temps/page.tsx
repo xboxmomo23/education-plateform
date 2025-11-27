@@ -691,7 +691,7 @@ export default function StaffEmploisDuTempsPage() {
                               return (
                                 <div
                                   key={`${dayNum}-${hour}`}
-                                  className={`min-h-[80px] p-2 border rounded cursor-pointer transition-colors ${
+                                  className={`min-h-[80px] p-2 border rounded cursor-pointer transition-colors relative ${
                                     selectedTemplate
                                       ? 'hover:bg-primary/5 hover:border-primary'
                                       : 'hover:bg-muted'
@@ -699,19 +699,36 @@ export default function StaffEmploisDuTempsPage() {
                                   onClick={() => handleTimeSlotClick(dayNum, hour)}
                                 >
                                   {hourEntries.map((entry: any) => {
+                                    // ✅ AJOUT 1 : CALCULER LA DURÉE ICI (avant isOverride)
+                                    const [startH, startM] = entry.start_time.split(':').map(Number)
+                                    const [endH, endM] = entry.end_time.split(':').map(Number)
+                                    const durationMinutes = (endH * 60 + endM) - (startH * 60 + startM)
+                                    const durationHours = durationMinutes / 60
+                                    const CELL_HEIGHT_PX = 80
+                                    const courseHeightPx = durationHours * CELL_HEIGHT_PX - 8
+                                    // ✅ FIN AJOUT 1
+                                    
                                     const isOverride = !!entry.override_date
                                     const isCancelled = entry.is_cancelled
-
+                                    
                                     return (
                                       <div
                                         key={entry.id}
-                                        className={`p-2 rounded text-xs ${
+                                        // ✅ AJOUT 2 : Ajouter "absolute top-1 left-1 right-1" ici
+                                        className={`p-2 rounded text-xs absolute top-1 left-1 right-1 ${
                                           isCancelled
                                             ? 'bg-red-100 border-red-300'
                                             : isOverride
                                             ? 'bg-yellow-100 border-yellow-300'
                                             : 'bg-blue-100 border-blue-300'
-                                        } border`}
+                                        } border overflow-auto`}
+                                        // ✅ AJOUT 3 : Ajouter le style inline ici
+                                        style={{
+                                          height: `${courseHeightPx}px`,
+                                          minHeight: `${courseHeightPx}px`,
+                                          zIndex: 10,
+                                        }}
+                                        // ✅ FIN AJOUT 3
                                         onClick={(e) => e.stopPropagation()}
                                       >
                                         <div className="flex items-start justify-between">
