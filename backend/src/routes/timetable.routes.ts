@@ -16,8 +16,11 @@ import {
   createTemplateHandler,
   updateTemplateHandler,
   deleteTemplateHandler,
-  createEntryFromTemplateHandler,
+  createFromTemplateHandler,
   getStaffClassesHandler,
+  // ✨ NOUVEAUX HANDLERS
+  getClassTimetableForWeekHandler,
+  getTeacherTimetableForWeekHandler,
 } from '../controllers/timetable.controller';
 
 const router = Router();
@@ -69,6 +72,45 @@ const createFromTemplateValidation = [
   body('room').optional().isString().withMessage('Salle invalide'),
   body('notes').optional().isString().withMessage('Notes invalides'),
 ];
+
+// =========================
+// ✨ NOUVELLES ROUTES - ÉLÈVES & PROFESSEURS
+// =========================
+
+/**
+ * GET /api/timetable/class/:classId/week/:weekStartDate
+ * Récupérer l'emploi du temps d'une classe pour une semaine spécifique
+ * Accessible par : élèves, professeurs, staff, admin
+ * Détection automatique du mode (dynamic/classic)
+ */
+router.get(
+  '/class/:classId/week/:weekStartDate',
+  authenticate,
+  authorize('student', 'teacher', 'staff', 'admin'),
+  param('classId').isUUID().withMessage('ID de classe invalide'),
+  param('weekStartDate')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Date invalide (format YYYY-MM-DD)'),
+  validateRequest,
+  getClassTimetableForWeekHandler
+);
+
+/**
+ * GET /api/timetable/teacher/:teacherId/week/:weekStartDate
+ * Récupérer l'emploi du temps d'un professeur pour une semaine spécifique
+ * Accessible par : professeurs, staff, admin
+ */
+router.get(
+  '/teacher/:teacherId/week/:weekStartDate',
+  authenticate,
+  authorize('teacher', 'staff', 'admin'),
+  param('teacherId').isUUID().withMessage('ID de professeur invalide'),
+  param('weekStartDate')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Date invalide (format YYYY-MM-DD)'),
+  validateRequest,
+  getTeacherTimetableForWeekHandler
+);
 
 // =========================
 // ROUTES SPÉCIFIQUES (EN PREMIER)
@@ -248,7 +290,7 @@ router.post(
   authorize('staff', 'admin'),
   createFromTemplateValidation,
   validateRequest,
-  createEntryFromTemplateHandler
+  createFromTemplateHandler
 );
 
 /**
@@ -296,7 +338,8 @@ router.delete(
 
 /**
  * GET /api/timetable/class/:classId
- * Récupérer l'emploi du temps d'une classe
+ * Récupérer l'emploi du temps d'une classe (mode classic seulement)
+ * LEGACY - Utiliser /class/:classId/week/:weekStartDate à la place
  */
 router.get(
   '/class/:classId',
@@ -310,7 +353,8 @@ router.get(
 
 /**
  * GET /api/timetable/teacher/:teacherId
- * Récupérer l'emploi du temps d'un professeur
+ * Récupérer l'emploi du temps d'un professeur (mode classic seulement)
+ * LEGACY - Utiliser /teacher/:teacherId/week/:weekStartDate à la place
  */
 router.get(
   '/teacher/:teacherId',

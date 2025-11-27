@@ -489,4 +489,9 @@ export const TimetableModel = {
     const result = await pool.query(query, [classId]);
     return result.rows;
   }
+
+
+
+  
+
 };
