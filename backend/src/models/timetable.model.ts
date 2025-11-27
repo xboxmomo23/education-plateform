@@ -221,6 +221,20 @@ export const TimetableModel = {
   },
 
   /**
+   * ✨ NOUVEAU : Créer plusieurs créneaux en masse
+   */
+  async bulkCreateEntries(entries: CreateTimetableEntryData[]): Promise<TimetableEntry[]> {
+    const created: TimetableEntry[] = [];
+    
+    for (const entryData of entries) {
+      const entry = await TimetableModel.createEntry(entryData);
+      created.push(entry);
+    }
+    
+    return created;
+  },
+
+  /**
    * Mettre à jour un créneau
    */
   async updateEntry(entryId: string, data: Partial<CreateTimetableEntryData>): Promise<TimetableEntry> {
@@ -489,9 +503,4 @@ export const TimetableModel = {
     const result = await pool.query(query, [classId]);
     return result.rows;
   }
-
-
-
-  
-
 };

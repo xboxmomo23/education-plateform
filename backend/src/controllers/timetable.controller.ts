@@ -85,7 +85,6 @@ export async function getClassTimetableForWeekHandler(req: Request, res: Respons
         ti.end_time,
         ti.room,
         ti.notes,
-        ti.status,
         ti.week_start_date,
         s.name as subject_name,
         s.code as subject_code,
@@ -103,6 +102,18 @@ export async function getClassTimetableForWeekHandler(req: Request, res: Respons
 
     const instancesResult = await pool.query(instancesQuery, [classId, weekStartDate]);
 
+    // VÉRIFIER SI LA CLASSE UTILISE LE MODE DYNAMIC
+    // (En regardant s'il existe au moins une instance pour cette classe, n'importe quelle semaine)
+    const checkDynamicQuery = `
+      SELECT EXISTS(
+        SELECT 1 FROM timetable_instances 
+        WHERE class_id = $1 
+        LIMIT 1
+      ) as uses_dynamic
+    `;
+    const checkResult = await pool.query(checkDynamicQuery, [classId]);
+    const usesDynamicMode = checkResult.rows[0].uses_dynamic;
+
     if (instancesResult.rows.length > 0) {
       // MODE DYNAMIC DÉTECTÉ
       console.log(`✅ Mode DYNAMIC détecté - ${instancesResult.rows.length} cours trouvés`);
@@ -119,7 +130,7 @@ export async function getClassTimetableForWeekHandler(req: Request, res: Respons
         end_time: row.end_time,
         room: row.room,
         notes: row.notes,
-        status: row.status || 'normal',
+        status: 'normal', // Par défaut normal (pas de colonne status dans timetable_instances)
         week_start_date: row.week_start_date,
       }));
 
@@ -128,6 +139,19 @@ export async function getClassTimetableForWeekHandler(req: Request, res: Respons
         data: {
           mode: 'dynamic',
           courses: courses,
+        },
+      });
+    }
+
+    // SI LA CLASSE UTILISE LE MODE DYNAMIC MAIS PAS D'INSTANCES CETTE SEMAINE
+    // → Retourner un tableau VIDE (ne pas fallback sur le template)
+    if (usesDynamicMode) {
+      console.log(`📭 Mode DYNAMIC - Aucun cours pour cette semaine`);
+      return res.json({
+        success: true,
+        data: {
+          mode: 'dynamic',
+          courses: [], // Tableau vide
         },
       });
     }
@@ -333,7 +357,6 @@ export async function getTeacherTimetableForWeekHandler(req: Request, res: Respo
           ti.end_time,
           ti.room,
           ti.notes,
-          ti.status,
           ti.week_start_date,
           s.name as subject_name,
           s.code as subject_code,
@@ -350,6 +373,17 @@ export async function getTeacherTimetableForWeekHandler(req: Request, res: Respo
 
       const instancesResult = await pool.query(instancesQuery, [class_id, weekStartDate, teacherId]);
 
+      // Vérifier si cette classe utilise le mode dynamic
+      const checkDynamicQuery = `
+        SELECT EXISTS(
+          SELECT 1 FROM timetable_instances 
+          WHERE class_id = $1 
+          LIMIT 1
+        ) as uses_dynamic
+      `;
+      const checkResult = await pool.query(checkDynamicQuery, [class_id]);
+      const usesDynamicMode = checkResult.rows[0].uses_dynamic;
+
       if (instancesResult.rows.length > 0) {
         // Mode dynamic pour cette classe
         instancesResult.rows.forEach((row: any) => {
@@ -365,12 +399,12 @@ export async function getTeacherTimetableForWeekHandler(req: Request, res: Respo
             end_time: row.end_time,
             room: row.room,
             notes: row.notes,
-            status: row.status || 'normal',
+            status: 'normal', // Par défaut normal (pas de colonne status dans timetable_instances)
             week_start_date: row.week_start_date,
           });
         });
-      } else {
-        // Mode classic pour cette classe
+      } else if (!usesDynamicMode) {
+        // Mode classic pour cette classe (UNIQUEMENT si la classe n'utilise PAS le mode dynamic)
         const entriesQuery = `
           SELECT 
             te.id,
@@ -1193,30 +1227,35 @@ export async function checkConflictsHandler(req: Request, res: Response) {
   }
 }
 
+
+
+  /**
+ * Récupérer les classes pour le staff
+ */
 export async function getStaffClassesHandler(req: Request, res: Response) {
   try {
-    const { userId } = req.user!;
-
     const query = `
-      SELECT DISTINCT
+      SELECT 
         c.id as class_id,
         c.label as class_label,
-        c.code as class_code,
-        c.level
+        c.level,
+        c.code,
+        COUNT(co.id) as course_count
       FROM classes c
-      JOIN class_staff cs ON c.id = cs.class_id
-      WHERE cs.user_id = $1
+      LEFT JOIN courses co ON co.class_id = c.id
+      WHERE c.archived = false
+      GROUP BY c.id, c.label, c.level, c.code
       ORDER BY c.level, c.label
     `;
 
-    const result = await pool.query(query, [userId]);
+    const result = await pool.query(query);
 
     return res.json({
       success: true,
       data: result.rows,
     });
   } catch (error) {
-    console.error('Erreur getStaffClasses:', error);
+    console.error('Erreur getStaffClassesHandler:', error);
     return res.status(500).json({
       success: false,
       error: 'Erreur lors de la récupération des classes',

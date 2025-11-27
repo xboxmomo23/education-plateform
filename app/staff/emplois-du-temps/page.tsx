@@ -36,6 +36,7 @@ import { CreateTemplateModal } from "@/components/timetable/CreateTemplateModal"
 import { CreateFromTemplateModal } from "@/components/timetable/CreateFromTemplateModal"
 import { EditTemplateModal } from "@/components/timetable/EditTemplateModal"
 import { EditEntryModal } from "@/components/timetable/EditEntryModal"
+import { EditInstanceModal } from "@/components/timetable/EditInstanceModal"
 import { CancelCourseModal } from "@/components/timetable/CancelCourseModal"
 import { ChangeRoomModal } from "@/components/timetable/ChangeRoomModal"
 import { ModifyTimeModal } from "@/components/timetable/ModifyTimeModal"
@@ -107,6 +108,7 @@ export default function StaffEmploisDuTempsPage() {
   const [showCreateFromTemplateModal, setShowCreateFromTemplateModal] = useState(false)
   const [showEditTemplateModal, setShowEditTemplateModal] = useState(false)
   const [showEditEntryModal, setShowEditEntryModal] = useState(false)
+  const [showEditInstanceModal, setShowEditInstanceModal] = useState(false)
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [showChangeRoomModal, setShowChangeRoomModal] = useState(false)
   const [showModifyTimeModal, setShowModifyTimeModal] = useState(false)
@@ -394,6 +396,19 @@ export default function StaffEmploisDuTempsPage() {
     }
   }
 
+
+  const handleEditEntry = (entry: any) => {
+    setEditingEntry(entry)
+    
+    if (timetableMode === 'dynamic') {
+      // Mode dynamic : Modifier l'instance directement
+      setShowEditInstanceModal(true)  // Nouveau modal pour instances
+    } else {
+      // Mode classic : Modifier l'entry (template)
+      setShowEditEntryModal(true)
+    }
+  }
+
   // ==================== CALCULS STATISTIQUES ====================
 
   const displayedEntries = useMemo(() => {
@@ -450,8 +465,9 @@ export default function StaffEmploisDuTempsPage() {
     
     const query = searchQuery.toLowerCase()
     return classes.filter(c => 
-      c.class_name?.toLowerCase().includes(query) ||
-      c.level_name?.toLowerCase().includes(query)
+      c.level?.toLowerCase().includes(query) ||
+      c.class_label?.toLowerCase().includes(query) ||
+      c.code?.toLowerCase().includes(query)
     )
   }, [classes, searchQuery])
 
@@ -579,7 +595,7 @@ export default function StaffEmploisDuTempsPage() {
                       <SelectContent>
                         {filteredClasses.map((c) => (
                           <SelectItem key={c.class_id} value={c.class_id}>
-                            {c.level_name} - {c.class_name}
+                            {c.class_label} ({c.code})
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -790,13 +806,10 @@ export default function StaffEmploisDuTempsPage() {
                                                   </DropdownMenuItem>
                                                   <DropdownMenuSeparator />
                                                   <DropdownMenuItem
-                                                    onClick={() => {
-                                                      setEditingEntry(entry)
-                                                      setShowEditEntryModal(true)
-                                                    }}
+                                                    onClick={() => handleEditEntry(entry)}
                                                   >
                                                     <Pencil className="h-4 w-4 mr-2" />
-                                                    Modifier le template
+                                                    Modifier
                                                   </DropdownMenuItem>
                                                   <DropdownMenuItem
                                                     onClick={() => handleDeleteEntry(entry.id)}
@@ -809,10 +822,7 @@ export default function StaffEmploisDuTempsPage() {
                                               ) : (
                                                 <>
                                                   <DropdownMenuItem
-                                                    onClick={() => {
-                                                      setEditingEntry(entry)
-                                                      setShowEditEntryModal(true)
-                                                    }}
+                                                    onClick={() => handleEditEntry(entry)}
                                                   >
                                                     <Pencil className="h-4 w-4 mr-2" />
                                                     Modifier
@@ -936,6 +946,22 @@ export default function StaffEmploisDuTempsPage() {
           onSuccess={() => {
             refreshCurrentWeek()
             setShowEditEntryModal(false)
+            setEditingEntry(null)
+          }}
+        />
+      )}
+
+
+      {showEditInstanceModal && editingEntry && (
+        <EditInstanceModal
+          instance={editingEntry}
+          onClose={() => {
+            setShowEditInstanceModal(false)
+            setEditingEntry(null)
+          }}
+          onSuccess={() => {
+            refreshCurrentWeek()
+            setShowEditInstanceModal(false)
             setEditingEntry(null)
           }}
         />
