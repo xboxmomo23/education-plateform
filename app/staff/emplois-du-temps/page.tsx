@@ -21,20 +21,14 @@ import {
   Trash2, 
   Pencil,
   Calendar,
-  XCircle,
-  Home,
-  Clock,
-  UserX,
   Copy,
   Download
 } from "lucide-react"
-import { timetableApi, type TimetableEntry } from "@/lib/api/timetable"
+import { timetableApi } from "@/lib/api/timetable"
 import { timetableInstanceApi, type TimetableInstance } from "@/lib/api/timetable-instance"
 import { establishmentApi } from "@/lib/api/establishment"
 import { CreateTemplateModal } from "@/components/timetable/CreateTemplateModal"
-import { CreateFromTemplateModal } from "@/components/timetable/CreateFromTemplateModal"
 import { EditTemplateModal } from "@/components/timetable/EditTemplateModal"
-import { EditEntryModal } from "@/components/timetable/EditEntryModal"
 import { EditInstanceModal } from "@/components/timetable/EditInstanceModal"
 import { CopyWeekModal } from "@/components/timetable/CopyWeekModal"
 import { GenerateFromTemplateModal } from "@/components/timetable/GenerateFromTemplateModal"
@@ -98,13 +92,8 @@ export default function StaffEmploisDuTempsPage() {
   // ==================== MODALS ====================
   
   const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false)
-  const [showCreateFromTemplateModal, setShowCreateFromTemplateModal] = useState(false)
   const [showEditTemplateModal, setShowEditTemplateModal] = useState(false)
-  const [showEditEntryModal, setShowEditEntryModal] = useState(false)
   const [showEditInstanceModal, setShowEditInstanceModal] = useState(false)
-  const [showCancelModal, setShowCancelModal] = useState(false)
-  const [showChangeRoomModal, setShowChangeRoomModal] = useState(false)
-  const [showModifyTimeModal, setShowModifyTimeModal] = useState(false)
   const [showCopyWeekModal, setShowCopyWeekModal] = useState(false)
   const [showGenerateModal, setShowGenerateModal] = useState(false)
   
@@ -205,9 +194,7 @@ export default function StaffEmploisDuTempsPage() {
   useEffect(() => {
     // Condition de garde
     if (!selectedClassId) {
-      setEntries([])
       setInstances([])
-      setOverrides([])
       return
     }
 
@@ -800,23 +787,7 @@ export default function StaffEmploisDuTempsPage() {
         />
       )}
 
-      {showCreateFromTemplateModal && selectedTemplate && selectedTimeSlot && (
-        <CreateFromTemplateModal
-          template={selectedTemplate}
-          dayOfWeek={selectedTimeSlot.day}
-          defaultHour={selectedTimeSlot.hour}
-          onClose={() => {
-            setShowCreateFromTemplateModal(false)
-            setSelectedTimeSlot(null)
-          }}
-          onSuccess={() => {
-            refreshCurrentWeek()
-            setShowCreateFromTemplateModal(false)
-            setSelectedTimeSlot(null)
-            setSelectedTemplate(null)
-          }}
-        />
-      )}
+      
 
       {showEditTemplateModal && editingTemplate && (
         <EditTemplateModal
@@ -833,20 +804,7 @@ export default function StaffEmploisDuTempsPage() {
         />
       )}
 
-      {showEditEntryModal && editingEntry && (
-        <EditEntryModal
-          entry={editingEntry}
-          onClose={() => {
-            setShowEditEntryModal(false)
-            setEditingEntry(null)
-          }}
-          onSuccess={() => {
-            refreshCurrentWeek()
-            setShowEditEntryModal(false)
-            setEditingEntry(null)
-          }}
-        />
-      )}
+      
 
 
       {showEditInstanceModal && editingEntry && (
@@ -864,53 +822,8 @@ export default function StaffEmploisDuTempsPage() {
         />
       )}
 
-      {showCancelModal && editingEntry && (
-        <CancelCourseModal
-          entry={editingEntry}
-          overrideDate={editingEntry.override_date}
-          onClose={() => {
-            setShowCancelModal(false)
-            setEditingEntry(null)
-          }}
-          onSuccess={() => {
-            refreshCurrentWeek()
-            setShowCancelModal(false)
-            setEditingEntry(null)
-          }}
-        />
-      )}
-
-      {showChangeRoomModal && editingEntry && (
-        <ChangeRoomModal
-          entry={editingEntry}
-          overrideDate={editingEntry.override_date}
-          onClose={() => {
-            setShowChangeRoomModal(false)
-            setEditingEntry(null)
-          }}
-          onSuccess={() => {
-            refreshCurrentWeek()
-            setShowChangeRoomModal(false)
-            setEditingEntry(null)
-          }}
-        />
-      )}
-
-      {showModifyTimeModal && editingEntry && (
-        <ModifyTimeModal
-          entry={editingEntry}
-          overrideDate={editingEntry.override_date}
-          onClose={() => {
-            setShowModifyTimeModal(false)
-            setEditingEntry(null)
-          }}
-          onSuccess={() => {
-            refreshCurrentWeek()
-            setShowModifyTimeModal(false)
-            setEditingEntry(null)
-          }}
-        />
-      )}
+      
+      
 
       {showCopyWeekModal && (
         <CopyWeekModal

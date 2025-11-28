@@ -358,11 +358,6 @@ export default function EleveEmploiDuTempsPage() {
                               )}
                             </div>
                           )}
-                          {course.override_reason && (
-                            <div className="mt-2 text-xs text-muted-foreground italic">
-                              Raison : {course.override_reason}
-                            </div>
-                          )}
                         </div>
                       ))}
                     </div>
