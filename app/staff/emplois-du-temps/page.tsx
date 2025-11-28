@@ -29,7 +29,6 @@ import {
   Download
 } from "lucide-react"
 import { timetableApi, type TimetableEntry } from "@/lib/api/timetable"
-import { timetableOverrideApi } from "@/lib/api/timetable-override"
 import { timetableInstanceApi, type TimetableInstance } from "@/lib/api/timetable-instance"
 import { establishmentApi } from "@/lib/api/establishment"
 import { CreateTemplateModal } from "@/components/timetable/CreateTemplateModal"
@@ -37,9 +36,6 @@ import { CreateFromTemplateModal } from "@/components/timetable/CreateFromTempla
 import { EditTemplateModal } from "@/components/timetable/EditTemplateModal"
 import { EditEntryModal } from "@/components/timetable/EditEntryModal"
 import { EditInstanceModal } from "@/components/timetable/EditInstanceModal"
-import { CancelCourseModal } from "@/components/timetable/CancelCourseModal"
-import { ChangeRoomModal } from "@/components/timetable/ChangeRoomModal"
-import { ModifyTimeModal } from "@/components/timetable/ModifyTimeModal"
 import { CopyWeekModal } from "@/components/timetable/CopyWeekModal"
 import { GenerateFromTemplateModal } from "@/components/timetable/GenerateFromTemplateModal"
 import { ModeIndicator } from "@/components/timetable/ModeIndicator"
@@ -63,8 +59,7 @@ export default function StaffEmploisDuTempsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   
   // Mode de l'établissement
-  const [timetableMode, setTimetableMode] = useState<'classic' | 'dynamic'>('classic')
-  
+  const [timetableMode, setTimetableMode] = useState<'dynamic'>('dynamic')  
   // Templates
   const [templates, setTemplates] = useState<CourseTemplate[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<CourseTemplate | null>(null)
@@ -91,9 +86,7 @@ export default function StaffEmploisDuTempsPage() {
   
   // ==================== DONNÉES ====================
   
-  const [entries, setEntries] = useState<TimetableEntry[]>([])
   const [instances, setInstances] = useState<TimetableInstance[]>([])
-  const [overrides, setOverrides] = useState<any[]>([])
   
   // ==================== CHARGEMENT ====================
   
@@ -132,7 +125,8 @@ export default function StaffEmploisDuTempsPage() {
     try {
       const response = await establishmentApi.getTimetableConfig()
       if (response.success) {
-        setTimetableMode(response.data.timetable_mode)
+        // timetable_mode supprimé - toujours en mode dynamic
+        // Plus rien à faire ici pour le mode
       }
     } catch (error) {
       console.error('❌ Erreur chargement config:', error)
@@ -172,39 +166,21 @@ export default function StaffEmploisDuTempsPage() {
     try {
       setLoading(true)
 
-      if (timetableMode === 'classic') {
-        // Mode Classic : Template + Overrides
-        const [entriesRes, overridesRes] = await Promise.all([
-          timetableApi.getClassTimetable(selectedClassId),
-          timetableOverrideApi.getForWeek(selectedClassId, weekStart),
-        ])
+      // Mode Dynamic uniquement - Récupération des instances
+      const instancesRes = await timetableInstanceApi.getForWeek(selectedClassId, weekStart)
 
-        // Vérifier si la requête n'a pas été annulée
-        if (signal.aborted) {
-          console.log('⏹️ Requête annulée (classic):', weekStart)
-          return
-        }
+      // Vérifier si la requête n'a pas été annulée
+      if (signal.aborted) {
+        console.log('⏹️ Requête annulée:', weekStart)
+        return
+      }
 
-        if (entriesRes.success) setEntries(entriesRes.data)
-        if (overridesRes.success) setOverrides(overridesRes.data)
-        setInstances([])
-
-        console.log('✅ Données chargées (classic):', { weekStart, entriesCount: entriesRes.data?.length || 0 })
-
-      } else {
-        // Mode Dynamic : Instances
-        const instancesRes = await timetableInstanceApi.getForWeek(selectedClassId, weekStart)
-
-        if (signal.aborted) {
-          console.log('⏹️ Requête annulée (dynamic):', weekStart)
-          return
-        }
-
-        if (instancesRes.success) setInstances(instancesRes.data)
-        setEntries([])
-        setOverrides([])
-
-        console.log('✅ Données chargées (dynamic):', { weekStart, instancesCount: instancesRes.data?.length || 0 })
+      if (instancesRes.success) {
+        setInstances(instancesRes.data)
+        console.log('✅ Données chargées (dynamic):', { 
+          weekStart, 
+          instancesCount: instancesRes.data?.length || 0 
+        })
       }
 
     } catch (error: any) {
@@ -219,7 +195,7 @@ export default function StaffEmploisDuTempsPage() {
         setLoading(false)
       }
     }
-  }, [selectedClassId, timetableMode])
+  }, [selectedClassId])  // ← timetableMode supprimé des dépendances
 
 
   
@@ -306,12 +282,8 @@ export default function StaffEmploisDuTempsPage() {
 
     setSelectedTimeSlot({ day, hour })
     
-    if (timetableMode === 'classic') {
-      setShowCreateFromTemplateModal(true)
-    } else {
-      // Mode Dynamic : Créer directement l'instance
-      createInstanceFromTemplate(day, hour)
-    }
+    // Mode Dynamic : Créer directement l'instance
+    createInstanceFromTemplate(day, hour)
   }
 
   const createInstanceFromTemplate = async (day: number, hour: number) => {
@@ -380,16 +352,10 @@ export default function StaffEmploisDuTempsPage() {
     if (!confirm('Êtes-vous sûr de vouloir supprimer ce cours ?')) return
 
     try {
-      if (timetableMode === 'classic') {
-        const response = await timetableApi.deleteEntry(entryId)
-        if (response.success) {
-          refreshCurrentWeek()
-        }
-      } else {
-        const response = await timetableInstanceApi.delete(entryId)
-        if (response.success) {
-          refreshCurrentWeek()
-        }
+      // Mode Dynamic : Supprimer l'instance
+      const response = await timetableInstanceApi.delete(entryId)
+      if (response.success) {
+        refreshCurrentWeek()
       }
     } catch (error) {
       console.error('❌ Erreur suppression cours:', error)
@@ -400,38 +366,16 @@ export default function StaffEmploisDuTempsPage() {
   const handleEditEntry = (entry: any) => {
     setEditingEntry(entry)
     
-    if (timetableMode === 'dynamic') {
-      // Mode dynamic : Modifier l'instance directement
-      setShowEditInstanceModal(true)  // Nouveau modal pour instances
-    } else {
-      // Mode classic : Modifier l'entry (template)
-      setShowEditEntryModal(true)
-    }
+    // Mode dynamic : Modifier l'instance directement
+    setShowEditInstanceModal(true)
   }
 
   // ==================== CALCULS STATISTIQUES ====================
 
   const displayedEntries = useMemo(() => {
-    if (timetableMode === 'classic') {
-      return entries.map(entry => {
-        const override = overrides.find(
-          o => o.timetable_entry_id === entry.id && o.override_date === currentWeekStart
-        )
-        
-        if (override?.is_cancelled) return null
-        
-        return {
-          ...entry,
-          room: override?.new_room || entry.room,
-          start_time: override?.new_start_time || entry.start_time,
-          end_time: override?.new_end_time || entry.end_time,
-          override_date: override?.override_date,
-        }
-      }).filter(Boolean)
-    } else {
-      return instances
-    }
-  }, [entries, instances, overrides, currentWeekStart, timetableMode])
+    // Mode dynamic : Retourner directement les instances
+    return instances
+  }, [instances])
 
   const totalCourses = displayedEntries.length
 
@@ -775,67 +719,20 @@ export default function StaffEmploisDuTempsPage() {
                                               </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
-                                              {timetableMode === 'classic' ? (
-                                                <>
-                                                  <DropdownMenuItem
-                                                    onClick={() => {
-                                                      setEditingEntry({ ...entry, override_date: currentWeekStart })
-                                                      setShowCancelModal(true)
-                                                    }}
-                                                  >
-                                                    <XCircle className="h-4 w-4 mr-2" />
-                                                    Annuler ce cours
-                                                  </DropdownMenuItem>
-                                                  <DropdownMenuItem
-                                                    onClick={() => {
-                                                      setEditingEntry({ ...entry, override_date: currentWeekStart })
-                                                      setShowChangeRoomModal(true)
-                                                    }}
-                                                  >
-                                                    <Home className="h-4 w-4 mr-2" />
-                                                    Changer de salle
-                                                  </DropdownMenuItem>
-                                                  <DropdownMenuItem
-                                                    onClick={() => {
-                                                      setEditingEntry({ ...entry, override_date: currentWeekStart })
-                                                      setShowModifyTimeModal(true)
-                                                    }}
-                                                  >
-                                                    <Clock className="h-4 w-4 mr-2" />
-                                                    Modifier l'horaire
-                                                  </DropdownMenuItem>
-                                                  <DropdownMenuSeparator />
-                                                  <DropdownMenuItem
-                                                    onClick={() => handleEditEntry(entry)}
-                                                  >
-                                                    <Pencil className="h-4 w-4 mr-2" />
-                                                    Modifier
-                                                  </DropdownMenuItem>
-                                                  <DropdownMenuItem
-                                                    onClick={() => handleDeleteEntry(entry.id)}
-                                                    className="text-red-600"
-                                                  >
-                                                    <Trash2 className="h-4 w-4 mr-2" />
-                                                    Supprimer du template
-                                                  </DropdownMenuItem>
-                                                </>
-                                              ) : (
-                                                <>
-                                                  <DropdownMenuItem
-                                                    onClick={() => handleEditEntry(entry)}
-                                                  >
-                                                    <Pencil className="h-4 w-4 mr-2" />
-                                                    Modifier
-                                                  </DropdownMenuItem>
-                                                  <DropdownMenuItem
-                                                    onClick={() => handleDeleteEntry(entry.id)}
-                                                    className="text-red-600"
-                                                  >
-                                                    <Trash2 className="h-4 w-4 mr-2" />
-                                                    Supprimer
-                                                  </DropdownMenuItem>
-                                                </>
-                                              )}
+                                              {/* Mode Dynamic uniquement */}
+                                              <DropdownMenuItem
+                                                onClick={() => handleEditEntry(entry)}
+                                              >
+                                                <Pencil className="h-4 w-4 mr-2" />
+                                                Modifier
+                                              </DropdownMenuItem>
+                                              <DropdownMenuItem
+                                                onClick={() => handleDeleteEntry(entry.id)}
+                                                className="text-red-600"
+                                              >
+                                                <Trash2 className="h-4 w-4 mr-2" />
+                                                Supprimer
+                                              </DropdownMenuItem>
                                             </DropdownMenuContent>
                                           </DropdownMenu>
                                         </div>

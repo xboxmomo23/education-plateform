@@ -4,6 +4,9 @@ import pool from '../config/database';
 /**
  * GET /api/establishment/timetable-config
  * Récupérer la config emploi du temps
+ * 
+ * MODE DYNAMIC UNIQUEMENT
+ * Le champ timetable_mode a été supprimé de la réponse
  */
 export async function getTimetableConfigHandler(req: Request, res: Response) {
   try {
@@ -12,7 +15,6 @@ export async function getTimetableConfigHandler(req: Request, res: Response) {
     // Récupérer l'établissement de l'utilisateur
     const query = `
       SELECT 
-        e.timetable_mode,
         e.auto_generate_weeks,
         e.school_year_start_date,
         e.school_year_end_date
@@ -46,11 +48,14 @@ export async function getTimetableConfigHandler(req: Request, res: Response) {
 /**
  * PUT /api/establishment/timetable-config
  * Mettre à jour la config (admin uniquement)
+ * 
+ * MODE DYNAMIC UNIQUEMENT
+ * Le champ timetable_mode n'est plus accepté/mis à jour
  */
 export async function updateTimetableConfigHandler(req: Request, res: Response) {
   try {
     const { userId, role } = req.user!;
-    const { timetable_mode, auto_generate_weeks, school_year_start_date, school_year_end_date } = req.body;
+    const { auto_generate_weeks, school_year_start_date, school_year_end_date } = req.body;
 
     if (role !== 'admin') {
       return res.status(403).json({
@@ -64,20 +69,18 @@ export async function updateTimetableConfigHandler(req: Request, res: Response) 
     const userResult = await pool.query(userQuery, [userId]);
     const establishmentId = userResult.rows[0].establishment_id;
 
-    // Mettre à jour
+    // Mettre à jour (sans timetable_mode)
     const updateQuery = `
       UPDATE establishments
       SET 
-        timetable_mode = COALESCE($1, timetable_mode),
-        auto_generate_weeks = COALESCE($2, auto_generate_weeks),
-        school_year_start_date = COALESCE($3, school_year_start_date),
-        school_year_end_date = COALESCE($4, school_year_end_date)
-      WHERE id = $5
-      RETURNING timetable_mode, auto_generate_weeks, school_year_start_date, school_year_end_date
+        auto_generate_weeks = COALESCE($1, auto_generate_weeks),
+        school_year_start_date = COALESCE($2, school_year_start_date),
+        school_year_end_date = COALESCE($3, school_year_end_date)
+      WHERE id = $4
+      RETURNING auto_generate_weeks, school_year_start_date, school_year_end_date
     `;
 
     const result = await pool.query(updateQuery, [
-      timetable_mode || null,
       auto_generate_weeks !== undefined ? auto_generate_weeks : null,
       school_year_start_date || null,
       school_year_end_date || null,

@@ -62,8 +62,8 @@ export interface TimetableCourse {
   notes?: string | null;
   status: 'normal' | 'cancelled' | 'modified';
   week_start_date?: string;
-  override_reason?: string;
-  override_date?: string;
+  //override_reason?: string;
+  //override_date?: string;
   modifications?: {
     original_start_time?: string;
     original_end_time?: string;

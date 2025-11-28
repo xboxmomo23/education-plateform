@@ -1,7 +1,13 @@
 import { apiCall } from './base';
 
+/**
+ * Configuration de l'établissement pour les emplois du temps
+ * 
+ * MODE DYNAMIC UNIQUEMENT
+ * La propriété timetable_mode a été supprimée car le système
+ * utilise maintenant exclusivement le mode dynamic (instances).
+ */
 export interface EstablishmentTimetableConfig {
-  timetable_mode: 'classic' | 'dynamic';
   auto_generate_weeks: boolean;
   school_year_start_date: string | null;
   school_year_end_date: string | null;

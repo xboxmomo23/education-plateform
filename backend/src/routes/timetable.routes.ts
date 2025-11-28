@@ -3,24 +3,33 @@ import { body, param, query } from 'express-validator';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import { validateRequest } from '../middleware/validation.middleware';
 import {
-  getClassTimetableHandler,
-  getTeacherTimetableHandler,
-  getAvailableCoursesHandler,
-  createEntryHandler,
-  bulkCreateEntriesHandler,
-  updateEntryHandler,
-  deleteEntryHandler,
-  duplicateTimetableHandler,
-  checkConflictsHandler,
+  // Handlers INSTANCES (mode DYNAMIC)
+  getClassTimetableForWeekHandler,
+  getTeacherTimetableForWeekHandler,
+  createInstanceHandler,
+  bulkCreateInstancesHandler,
+  updateInstanceHandler,
+  deleteInstanceHandler,
+  copyWeekHandler,
+  // Handlers TEMPLATES
   getTemplatesByClassHandler,
   createTemplateHandler,
   updateTemplateHandler,
   deleteTemplateHandler,
-  createFromTemplateHandler,
+  generateFromTemplatesHandler,
+  // Handlers STAFF & UTILITAIRES
   getStaffClassesHandler,
-  // ✨ NOUVEAUX HANDLERS
-  getClassTimetableForWeekHandler,
-  getTeacherTimetableForWeekHandler,
+  getAvailableCoursesHandler,
+  checkConflictsHandler,
+  // Handlers LEGACY (compatibility)
+  getClassTimetableHandler,
+  getTeacherTimetableHandler,
+  createEntryHandler,
+  bulkCreateEntriesHandler,
+  updateEntryHandler,
+  deleteEntryHandler,
+  createFromTemplateHandler,
+  duplicateTimetableHandler,
 } from '../controllers/timetable.controller';
 
 const router = Router();
@@ -28,6 +37,25 @@ const router = Router();
 // =========================
 // VALIDATIONS
 // =========================
+
+const createInstanceValidation = [
+  body('course_id').isUUID().withMessage('ID de cours invalide'),
+  body('class_id').isUUID().withMessage('ID de classe invalide'),
+  body('week_start_date')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Date invalide (format YYYY-MM-DD)'),
+  body('day_of_week')
+    .isInt({ min: 1, max: 7 })
+    .withMessage('Jour de la semaine invalide (1-7)'),
+  body('start_time')
+    .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
+    .withMessage('Heure de début invalide (format HH:MM)'),
+  body('end_time')
+    .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
+    .withMessage('Heure de fin invalide (format HH:MM)'),
+  body('room').optional().isString().withMessage('Salle invalide'),
+  body('notes').optional().isString().withMessage('Notes invalides'),
+];
 
 const createEntryValidation = [
   body('course_id').isUUID().withMessage('ID de cours invalide'),
@@ -50,38 +78,26 @@ const createEntryValidation = [
 
 const createTemplateValidation = [
   body('course_id').isUUID().withMessage('ID de cours invalide'),
-  body('default_duration')
-    .optional()
-    .isInt({ min: 15, max: 480 })
-    .withMessage('Durée invalide (15-480 minutes)'),
-  body('default_room').optional().isString().withMessage('Salle invalide'),
-  body('display_order')
-    .optional()
-    .isInt({ min: 0 })
-    .withMessage('Ordre d\'affichage invalide'),
-];
-
-const createFromTemplateValidation = [
-  body('template_id').isUUID().withMessage('ID de template invalide'),
   body('day_of_week')
     .isInt({ min: 1, max: 7 })
     .withMessage('Jour de la semaine invalide (1-7)'),
   body('start_time')
     .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
     .withMessage('Heure de début invalide (format HH:MM)'),
+  body('end_time')
+    .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
+    .withMessage('Heure de fin invalide (format HH:MM)'),
   body('room').optional().isString().withMessage('Salle invalide'),
-  body('notes').optional().isString().withMessage('Notes invalides'),
 ];
 
 // =========================
-// ✨ NOUVELLES ROUTES - ÉLÈVES & PROFESSEURS
+// ROUTES INSTANCES (MODE DYNAMIC)
 // =========================
 
 /**
  * GET /api/timetable/class/:classId/week/:weekStartDate
  * Récupérer l'emploi du temps d'une classe pour une semaine spécifique
  * Accessible par : élèves, professeurs, staff, admin
- * Détection automatique du mode (dynamic/classic)
  */
 router.get(
   '/class/:classId/week/:weekStartDate',
@@ -112,99 +128,75 @@ router.get(
   getTeacherTimetableForWeekHandler
 );
 
-// =========================
-// ROUTES SPÉCIFIQUES (EN PREMIER)
-// =========================
-
 /**
- * GET /api/timetable/staff/classes
- * Récupérer les classes gérées par le staff
- */
-router.get(
-  '/staff/classes',
-  authenticate,
-  authorize('staff', 'admin'),
-  getStaffClassesHandler
-);
-
-/**
- * GET /api/timetable/student/class
- * Récupérer la classe d'un élève
- */
-router.get(
-  '/student/class',
-  authenticate,
-  authorize('student'),
-  async (req: any, res) => {
-    try {
-      const userId = req.user.userId;
-      
-      const pool = (await import('../config/database')).default;
-      const result = await pool.query(
-        `SELECT s.class_id, c.label, c.level
-         FROM students s
-         JOIN classes c ON s.class_id = c.id
-         WHERE s.user_id = $1`,
-        [userId]
-      );
-
-      if (result.rows.length === 0) {
-        return res.status(404).json({
-          success: false,
-          error: 'Élève non trouvé ou non assigné à une classe',
-        });
-      }
-
-      return res.json({
-        success: true,
-        data: result.rows[0],
-      });
-    } catch (error) {
-      console.error('Erreur récupération classe élève:', error);
-      return res.status(500).json({
-        success: false,
-        error: 'Erreur serveur',
-      });
-    }
-  }
-);
-
-/**
- * POST /api/timetable/duplicate
- * Dupliquer un emploi du temps
+ * POST /api/timetable/instances
+ * Créer une instance de cours
  */
 router.post(
-  '/duplicate',
+  '/instances',
   authenticate,
   authorize('staff', 'admin'),
-  body('sourceClassId').isUUID().withMessage('ID de classe source invalide'),
-  body('targetClassId').isUUID().withMessage('ID de classe cible invalide'),
+  createInstanceValidation,
   validateRequest,
-  duplicateTimetableHandler
+  createInstanceHandler
 );
 
 /**
- * POST /api/timetable/check-conflicts
- * Vérifier les conflits
+ * POST /api/timetable/instances/bulk
+ * Créer plusieurs instances en masse
  */
 router.post(
-  '/check-conflicts',
+  '/instances/bulk',
   authenticate,
   authorize('staff', 'admin'),
-  body('course_id').isUUID().withMessage('ID de cours invalide'),
-  body('day_of_week')
-    .isInt({ min: 1, max: 7 })
-    .withMessage('Jour de la semaine invalide'),
-  body('start_time')
-    .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
-    .withMessage('Heure de début invalide'),
-  body('end_time')
-    .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
-    .withMessage('Heure de fin invalide'),
-  body('room').optional().isString(),
-  body('exclude_entry_id').optional().isUUID(),
+  body('instances').isArray({ min: 1 }).withMessage('Au moins une instance requise'),
   validateRequest,
-  checkConflictsHandler
+  bulkCreateInstancesHandler
+);
+
+/**
+ * PUT /api/timetable/instances/:id
+ * Mettre à jour une instance
+ */
+router.put(
+  '/instances/:id',
+  authenticate,
+  authorize('staff', 'admin'),
+  param('id').isUUID().withMessage('ID invalide'),
+  validateRequest,
+  updateInstanceHandler
+);
+
+/**
+ * DELETE /api/timetable/instances/:id
+ * Supprimer une instance
+ */
+router.delete(
+  '/instances/:id',
+  authenticate,
+  authorize('staff', 'admin'),
+  param('id').isUUID().withMessage('ID invalide'),
+  validateRequest,
+  deleteInstanceHandler
+);
+
+/**
+ * POST /api/timetable/instances/copy-week
+ * Copier les instances d'une semaine vers une autre
+ */
+router.post(
+  '/instances/copy-week',
+  authenticate,
+  authorize('staff', 'admin'),
+  body('classId').isUUID().withMessage('ID de classe invalide'),
+  body('sourceWeekStart')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Date source invalide'),
+  body('targetWeekStart')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Date cible invalide'),
+  validateRequest,
+  copyWeekHandler
 );
 
 // =========================
@@ -263,8 +255,125 @@ router.delete(
   deleteTemplateHandler
 );
 
+/**
+ * POST /api/timetable/templates/generate
+ * Générer des instances depuis les templates pour une période
+ */
+router.post(
+  '/templates/generate',
+  authenticate,
+  authorize('staff', 'admin'),
+  body('classId').isUUID().withMessage('ID de classe invalide'),
+  body('startDate')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Date de début invalide'),
+  body('endDate')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Date de fin invalide'),
+  validateRequest,
+  generateFromTemplatesHandler
+);
+
 // =========================
-// ROUTES ENTRIES
+// ROUTES STAFF & UTILITAIRES
+// =========================
+
+/**
+ * GET /api/timetable/staff/classes
+ * Récupérer les classes gérées par le staff
+ */
+router.get(
+  '/staff/classes',
+  authenticate,
+  authorize('staff', 'admin'),
+  getStaffClassesHandler
+);
+
+/**
+ * GET /api/timetable/student/class
+ * Récupérer la classe d'un élève
+ */
+router.get(
+  '/student/class',
+  authenticate,
+  authorize('student'),
+  async (req: any, res) => {
+    try {
+      const userId = req.user.userId;
+      
+      const pool = (await import('../config/database')).default;
+      const result = await pool.query(
+        `SELECT s.class_id, c.label, c.level
+         FROM students s
+         JOIN classes c ON s.class_id = c.id
+         WHERE s.user_id = $1`,
+        [userId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Élève non trouvé ou non assigné à une classe',
+        });
+      }
+
+      return res.json({
+        success: true,
+        data: result.rows[0],
+      });
+    } catch (error) {
+      console.error('Erreur récupération classe élève:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Erreur serveur',
+      });
+    }
+  }
+);
+
+/**
+ * GET /api/timetable/courses/:classId
+ * Récupérer les cours disponibles pour une classe
+ */
+router.get(
+  '/courses/:classId',
+  authenticate,
+  authorize('staff', 'admin'),
+  param('classId').isUUID().withMessage('ID de classe invalide'),
+  validateRequest,
+  getAvailableCoursesHandler
+);
+
+/**
+ * POST /api/timetable/check-conflicts
+ * Vérifier les conflits
+ */
+router.post(
+  '/check-conflicts',
+  authenticate,
+  authorize('staff', 'admin'),
+  body('course_id').isUUID().withMessage('ID de cours invalide'),
+  body('class_id').isUUID().withMessage('ID de classe invalide'),
+  body('week_start_date')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Date invalide'),
+  body('day_of_week')
+    .isInt({ min: 1, max: 7 })
+    .withMessage('Jour de la semaine invalide'),
+  body('start_time')
+    .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
+    .withMessage('Heure de début invalide'),
+  body('end_time')
+    .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
+    .withMessage('Heure de fin invalide'),
+  body('room').optional().isString(),
+  body('exclude_instance_id').optional().isUUID(),
+  validateRequest,
+  checkConflictsHandler
+);
+
+// =========================
+// ROUTES ENTRIES (Templates - Compatibilité)
 // =========================
 
 /**
@@ -288,7 +397,15 @@ router.post(
   '/entries/from-template',
   authenticate,
   authorize('staff', 'admin'),
-  createFromTemplateValidation,
+  body('template_id').isUUID().withMessage('ID de template invalide'),
+  body('day_of_week')
+    .isInt({ min: 1, max: 7 })
+    .withMessage('Jour de la semaine invalide'),
+  body('start_time')
+    .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
+    .withMessage('Heure de début invalide'),
+  body('room').optional().isString(),
+  body('notes').optional().isString(),
   validateRequest,
   createFromTemplateHandler
 );
@@ -333,13 +450,27 @@ router.delete(
 );
 
 // =========================
-// ROUTES AVEC PARAMÈTRES (EN DERNIER)
+// ROUTES LEGACY (Compatibilité)
 // =========================
 
 /**
+ * POST /api/timetable/duplicate
+ * Dupliquer un emploi du temps (DEPRECATED)
+ */
+router.post(
+  '/duplicate',
+  authenticate,
+  authorize('staff', 'admin'),
+  body('sourceClassId').isUUID().withMessage('ID de classe source invalide'),
+  body('targetClassId').isUUID().withMessage('ID de classe cible invalide'),
+  validateRequest,
+  duplicateTimetableHandler
+);
+
+/**
  * GET /api/timetable/class/:classId
- * Récupérer l'emploi du temps d'une classe (mode classic seulement)
- * LEGACY - Utiliser /class/:classId/week/:weekStartDate à la place
+ * Récupérer l'emploi du temps d'une classe (LEGACY)
+ * @deprecated Utiliser /class/:classId/week/:weekStartDate à la place
  */
 router.get(
   '/class/:classId',
@@ -353,8 +484,8 @@ router.get(
 
 /**
  * GET /api/timetable/teacher/:teacherId
- * Récupérer l'emploi du temps d'un professeur (mode classic seulement)
- * LEGACY - Utiliser /teacher/:teacherId/week/:weekStartDate à la place
+ * Récupérer l'emploi du temps d'un professeur (LEGACY)
+ * @deprecated Utiliser /teacher/:teacherId/week/:weekStartDate à la place
  */
 router.get(
   '/teacher/:teacherId',
@@ -364,19 +495,6 @@ router.get(
   query('week').optional().isIn(['A', 'B']).withMessage('Semaine invalide'),
   validateRequest,
   getTeacherTimetableHandler
-);
-
-/**
- * GET /api/timetable/courses/:classId
- * Récupérer les cours disponibles pour une classe
- */
-router.get(
-  '/courses/:classId',
-  authenticate,
-  authorize('staff', 'admin'),
-  param('classId').isUUID().withMessage('ID de classe invalide'),
-  validateRequest,
-  getAvailableCoursesHandler
 );
 
 export default router;
