@@ -246,8 +246,9 @@ export async function getUserWithProfile(userId: string, role: UserRole, establi
       break;
     case 'admin':
       break;
+    case 'super_admin':
+      break;
   }
-  
   return { user, profile };
 }
 

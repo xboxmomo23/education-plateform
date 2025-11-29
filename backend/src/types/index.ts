@@ -2,7 +2,7 @@
 // TYPES DE BASE
 // ============================================
 
-export type UserRole = 'student' | 'teacher' | 'staff' | 'admin' | 'parent';
+export type UserRole = 'student' | 'teacher' | 'staff' | 'admin' | 'parent' |"super_admin";
 
 // ============================================
 // TYPES POUR JWT

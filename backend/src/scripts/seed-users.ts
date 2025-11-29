@@ -33,8 +33,8 @@ const DEMO_USERS = [
   {
     email: 'admin@example.com',
     password: 'admin123',
-    role: 'admin' as const,
-    full_name: 'Administrateur Demo',
+    role: 'super_admin' as const,
+    full_name: 'Super Administrateur',
   },
   {
     email: 'staff1@test.com',
