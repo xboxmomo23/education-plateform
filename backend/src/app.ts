@@ -9,6 +9,7 @@ import courseRoutes from './routes/course.routes';
 import timetableRoutes from './routes/timetable.routes';
 import timetableInstanceRoutes from './routes/timetable-instance.routes';
 import establishmentRoutes from './routes/establishment.routes';
+import attendanceRoutes from './routes/attendance.routes';
 //import attendanceRoutes from './routes/attendance.routes';
 
 // Charger les variables d'environnement
@@ -70,7 +71,7 @@ app.use('/api/timetable', timetableRoutes);  // ← Général à la fin
 
 app.use('/api/establishment', establishmentRoutes);
 
-//app.use('/api/attendance', attendanceRoutes);
+app.use('/api/attendance', attendanceRoutes);
 
 // Route 404
 app.use('*', (req: Request, res: Response) => {

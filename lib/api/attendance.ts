@@ -1,50 +1,70 @@
-import { api } from './client';
+import { apiCall } from './base';
 
 // ============================================
 // TYPES
 // ============================================
 
-export type AttendanceStatus = 
-  | 'present' 
-  | 'absent' 
-  | 'late' 
-  | 'excused' 
-  | 'remote' 
-  | 'excluded';
+export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused' | 'excluded' | 'remote';
 
 export interface AttendanceSession {
   id: string;
+  instance_id: string;
+  class_id: string;
   course_id: string;
+  teacher_id: string;
   session_date: string;
-  scheduled_start: string;
-  scheduled_end: string;
-  status: string;
-  recorded_by: string | null;
-  created_at: string;
-  // Données enrichies
-  course_title?: string;
-  subject_name?: string;
-  subject_code?: string;
-  class_label?: string;
-  class_id?: string;
-  teacher_name?: string;
-  teacher_id?: string;
+  start_time: string;
+  end_time: string;
+  status: 'open' | 'closed' | 'validated';
+  notes: string | null;
+  establishment_id: string;
+  // Détails enrichis
+  class_label: string;
+  subject_name: string;
+  subject_code: string;
+  subject_color: string;
+  teacher_name: string;
+  room: string | null;
+  day_of_week: number;
+  week_start_date: string;
+  // Stats
+  total_students: number;
+  present_count: number;
+  absent_count: number;
+  late_count: number;
 }
 
-export interface StudentAttendanceData {
-  student_id: string;
-  student_name: string;
-  student_no: string;
-  record_id: string | null;
+export interface StudentForAttendance {
+  user_id: string;
+  full_name: string;
+  email: string;
+  student_number: string | null;
   status: AttendanceStatus | null;
+  comment: string | null;
   late_minutes: number | null;
-  justification: string | null;
+  record_id: string | null;
 }
 
-export interface AttendanceSessionDetails {
-  session: AttendanceSession;
-  students: StudentAttendanceData[];
-  canModify: boolean;
+export interface TeacherWeekCourse {
+  instance_id: string;
+  session_id: string | null;
+  class_id: string;
+  class_label: string;
+  course_id: string;
+  subject_name: string;
+  subject_code: string;
+  subject_color: string;
+  day_of_week: number;
+  session_date: string;
+  start_time: string;
+  end_time: string;
+  room: string | null;
+  has_session: boolean;
+  status: 'open' | 'closed' | 'validated' | null;
+  present_count: number;
+  absent_count: number;
+  late_count: number;
+  total_students: number;
 }
 
 export interface AttendanceRecord {
@@ -52,24 +72,23 @@ export interface AttendanceRecord {
   session_id: string;
   student_id: string;
   status: AttendanceStatus;
+  comment: string | null;
   late_minutes: number | null;
-  justification: string | null;
-  justified: boolean;
-  justified_by: string | null;
-  justified_at: string | null;
-  justification_document: string | null;
-  recorded_at: string;
-  recorded_by: string | null;
-  last_modified_at?: string;
-  last_modified_by?: string | null;
-  // Données enrichies
-  student_name?: string;
-  student_no?: string;
-  session_date?: string;
-  subject_name?: string;
-  class_label?: string;
-  scheduled_start?: string;
-  scheduled_end?: string;
+}
+
+export interface AttendanceHistoryItem {
+  id: string;
+  session_id: string;
+  student_id: string;
+  status: AttendanceStatus;
+  comment: string | null;
+  late_minutes: number | null;
+  session_date: string;
+  start_time: string;
+  end_time: string;
+  subject_name: string;
+  subject_color: string;
+  class_label: string;
 }
 
 export interface AttendanceStats {
@@ -78,139 +97,231 @@ export interface AttendanceStats {
   absent: number;
   late: number;
   excused: number;
-  remote: number;
-  excluded: number;
-  attendance_rate: number;
+  rate: number;
 }
 
-export interface AttendanceHistoryData {
-  records: AttendanceRecord[];
-  stats: AttendanceStats;
-}
-
-export interface StaffClass {
-  id: string;
-  code: string;
-  label: string;
-  level: string;
-  current_size: number;
-  is_main: boolean;
-}
-
-export interface AttendanceRecordInput {
-  student_id: string;
-  status: AttendanceStatus;
-  late_minutes?: number;
-  justification?: string;
-}
-
-export interface BulkAttendanceResponse {
-  message: string;
-  data: AttendanceRecord[];
+export interface SessionResponse {
+  session: AttendanceSession;
+  students: StudentForAttendance[];
 }
 
 // ============================================
-// API ATTENDANCE
+// API CLIENT
 // ============================================
 
 export const attendanceApi = {
-  /**
-   * Récupérer les sessions du jour (teacher ou staff)
-   */
-  getSessions: (date?: string) => {
-    const endpoint = date 
-      ? `/attendance/sessions?date=${date}` 
-      : '/attendance/sessions';
-    
-    return api.get<AttendanceSession[]>(endpoint);
-  },
+
+
+
+  
+  
+
+
+  // ============================================
+  // SEMAINE PROFESSEUR
+  // ============================================
 
   /**
-   * Récupérer les détails d'une session avec les élèves
+   * Récupérer les cours d'un professeur pour une semaine avec statut présence
+   * @param weekStart - Date de début de semaine (YYYY-MM-DD)
+   * @param teacherId - ID du professeur (optionnel, par défaut utilisateur connecté)
    */
-  getSessionDetails: (sessionId: string) => {
-    return api.get<AttendanceSessionDetails>(`/attendance/sessions/${sessionId}`);
-  },
-
-  /**
-   * Enregistrer/modifier l'appel complet (bulk)
-   */
-  bulkSaveAttendance: (sessionId: string, records: AttendanceRecordInput[]) => {
-    return api.post<BulkAttendanceResponse>(
-      `/attendance/sessions/${sessionId}/records/bulk`,
-      { records }
-    );
-  },
-
-  /**
-   * Modifier une présence individuelle
-   */
-  updateRecord: (
-    recordId: string,
-    data: {
-      status?: AttendanceStatus;
-      late_minutes?: number | null;
-      justification?: string;
+  async getTeacherWeek(weekStart: string, teacherId?: string) {
+    const params = new URLSearchParams({ weekStart });
+    if (teacherId) {
+      params.append('teacherId', teacherId);
     }
-  ) => {
-    return api.put<{ message: string; data: AttendanceRecord }>(
-      `/attendance/records/${recordId}`,
-      data
+    return apiCall<TeacherWeekCourse[]>(`/attendance/week?${params.toString()}`);
+  },
+
+  // ============================================
+  // SESSION
+  // ============================================
+
+  /**
+   * Récupérer (ou créer automatiquement) une session de présence
+   * @param instanceId - ID de l'instance de cours (timetable_instances.id)
+   */
+  async getSession(instanceId: string) {
+    return apiCall<SessionResponse>(`/attendance/session/${instanceId}`);
+  },
+
+  /**
+   * Vérifier si une session existe (sans la créer)
+   * @param instanceId - ID de l'instance de cours
+   */
+  async checkSessionExists(instanceId: string) {
+    return apiCall<{ exists: boolean; session: AttendanceSession | null }>(
+      `/attendance/instance/${instanceId}/check`
     );
   },
 
   /**
-   * Récupérer l'historique des présences d'un élève
+   * Fermer une session de présence
+   * @param sessionId - ID de la session
    */
-  getStudentHistory: (
+  async closeSession(sessionId: string) {
+    return apiCall<AttendanceSession>(`/attendance/session/${sessionId}/close`, {
+      method: 'POST',
+    });
+  },
+
+  // ============================================
+  // MARQUAGE PRÉSENCE
+  // ============================================
+
+  /**
+   * Marquer la présence d'un seul élève
+   */
+  async markAttendance(
+    sessionId: string,
+    studentId: string,
+    status: AttendanceStatus,
+    options?: {
+      comment?: string;
+      lateMinutes?: number;
+    }
+  ) {
+    return apiCall<AttendanceRecord>('/attendance/mark', {
+      method: 'POST',
+      body: JSON.stringify({
+        sessionId,
+        studentId,
+        status,
+        comment: options?.comment,
+        lateMinutes: options?.lateMinutes,
+      }),
+    });
+  },
+
+  /**
+   * Marquer la présence de plusieurs élèves en masse
+   */
+  async bulkMarkAttendance(
+    sessionId: string,
+    records: Array<{
+      studentId: string;
+      status: AttendanceStatus;
+      comment?: string;
+      lateMinutes?: number;
+    }>
+  ) {
+    return apiCall<AttendanceRecord[]>('/attendance/bulk', {
+      method: 'POST',
+      body: JSON.stringify({
+        sessionId,
+        records,
+      }),
+    });
+  },
+
+  // ============================================
+  // HISTORIQUE ÉLÈVE
+  // ============================================
+
+  /**
+   * Récupérer l'historique de présence d'un élève
+   */
+  async getStudentHistory(
     studentId: string,
     options?: {
       startDate?: string;
       endDate?: string;
+      courseId?: string;
       limit?: number;
     }
-  ) => {
-    let endpoint = `/attendance/students/${studentId}/records`;
-    const params: string[] = [];
+  ) {
+    const params = new URLSearchParams();
+    if (options?.startDate) params.append('startDate', options.startDate);
+    if (options?.endDate) params.append('endDate', options.endDate);
+    if (options?.courseId) params.append('courseId', options.courseId);
+    if (options?.limit) params.append('limit', options.limit.toString());
 
-    if (options?.startDate) params.push(`startDate=${options.startDate}`);
-    if (options?.endDate) params.push(`endDate=${options.endDate}`);
-    if (options?.limit) params.push(`limit=${options.limit}`);
+    const queryString = params.toString();
+    const url = `/attendance/student/${studentId}${queryString ? `?${queryString}` : ''}`;
 
-    if (params.length > 0) {
-      endpoint += `?${params.join('&')}`;
-    }
-
-    return api.get<AttendanceHistoryData>(endpoint);
+    return apiCall<{ history: AttendanceHistoryItem[]; stats: AttendanceStats }>(url);
   },
 
   /**
-   * Récupérer les statistiques d'un élève
+   * Récupérer les statistiques de présence d'un élève
    */
-  getStudentStats: (
+  async getStudentStats(
     studentId: string,
     options?: {
       startDate?: string;
       endDate?: string;
+      courseId?: string;
     }
-  ) => {
-    let endpoint = `/attendance/students/${studentId}/stats`;
-    const params: string[] = [];
+  ) {
+    const params = new URLSearchParams();
+    if (options?.startDate) params.append('startDate', options.startDate);
+    if (options?.endDate) params.append('endDate', options.endDate);
+    if (options?.courseId) params.append('courseId', options.courseId);
 
-    if (options?.startDate) params.push(`startDate=${options.startDate}`);
-    if (options?.endDate) params.push(`endDate=${options.endDate}`);
+    const queryString = params.toString();
+    const url = `/attendance/student/${studentId}/stats${queryString ? `?${queryString}` : ''}`;
 
-    if (params.length > 0) {
-      endpoint += `?${params.join('&')}`;
-    }
-
-    return api.get<AttendanceStats>(endpoint);
-  },
-
-  /**
-   * Récupérer les classes gérées par le staff
-   */
-  getStaffClasses: () => {
-    return api.get<StaffClass[]>('/attendance/staff/classes');
+    return apiCall<AttendanceStats>(url);
   },
 };
+
+// ============================================
+// HELPERS
+// ============================================
+
+/**
+ * Obtenir le label français d'un statut
+ */
+export function getStatusLabel(status: AttendanceStatus): string {
+  const labels: Record<AttendanceStatus, string> = {
+    present: 'Présent',
+    absent: 'Absent',
+    late: 'En retard',
+    excused: 'Excusé',
+    excluded: 'Exclu',
+    remote: 'À distance',
+  };
+  return labels[status];
+}
+
+/**
+ * Obtenir la couleur d'un statut
+ */
+export function getStatusColor(status: AttendanceStatus): string {
+  const colors: Record<AttendanceStatus, string> = {
+    present: 'bg-green-100 text-green-800 border-green-300',
+    absent: 'bg-red-100 text-red-800 border-red-300',
+    late: 'bg-orange-100 text-orange-800 border-orange-300',
+    excused: 'bg-blue-100 text-blue-800 border-blue-300',
+    excluded: 'bg-purple-100 text-purple-800 border-purple-300',
+    remote: 'bg-cyan-100 text-cyan-800 border-cyan-300',
+  };
+  return colors[status];
+}
+
+/**
+ * Obtenir l'icône d'un statut (pour Lucide)
+ */
+export function getStatusIcon(status: AttendanceStatus): string {
+  const icons: Record<AttendanceStatus, string> = {
+    present: 'check-circle',
+    absent: 'x-circle',
+    late: 'clock',
+    excused: 'shield-check',
+    excluded: 'ban',
+    remote: 'monitor',
+  };
+  return icons[status];
+}
+
+/**
+ * Formater une durée de retard
+ */
+export function formatLateMinutes(minutes: number | null): string {
+  if (!minutes) return '';
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return mins > 0 ? `${hours}h${mins}` : `${hours}h`;
+}

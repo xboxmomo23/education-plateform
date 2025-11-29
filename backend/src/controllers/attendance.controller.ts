@@ -1,179 +1,273 @@
 import { Request, Response } from 'express';
-import { AttendanceModel } from '../models/attendance.model';
-import { AttendanceStatus } from '../types';
-import { emitAttendanceUpdate } from '../services/attendance.sse';
+import { AttendanceModel, AttendanceStatus } from '../models/attendance.model';
 import pool from '../config/database';
 
-// =========================
-// SESSIONS
-// =========================
+// ============================================
+// HANDLERS - SEMAINE PROFESSEUR
+// ============================================
 
 /**
- * GET /api/attendance/sessions
- * Récupérer les sessions du jour pour le professeur ou le staff
+ * GET /api/attendance/week
+ * Récupérer tous les cours d'un professeur pour une semaine avec statut présence
  */
-export async function getSessionsHandler(req: Request, res: Response) {
+export async function getTeacherWeekHandler(req: Request, res: Response) {
   try {
     const { userId, role } = req.user!;
-    const date = req.query.date as string | undefined;
+    const { teacherId, weekStart } = req.query;
 
-    const sessions = await AttendanceModel.getSessions(userId, role, date);
-
-    return res.json({
-      success: true,
-      data: sessions,
-    });
-  } catch (error) {
-    console.error('Erreur getSessionsHandler:', error);
-    return res.status(500).json({
-      success: false,
-      error: 'Erreur lors de la récupération des sessions',
-    });
-  }
-}
-
-/**
- * GET /api/attendance/sessions/:id
- * Récupérer les élèves d'une session pour faire l'appel
- */
-export async function getSessionStudentsHandler(req: Request, res: Response) {
-  try {
-    const { userId, role } = req.user!;
-    const { id: sessionId } = req.params;
+    // Si pas de teacherId spécifié, utiliser l'utilisateur connecté
+    const targetTeacherId = teacherId as string || userId;
 
     // Vérifier les permissions
-    if (role === 'teacher') {
-      const isOwner = await AttendanceModel.isTeacherOwnerOfSession(userId, sessionId);
-      if (!isOwner) {
-        return res.status(403).json({
-          success: false,
-          error: 'Vous ne pouvez faire l\'appel que sur vos propres cours',
-        });
-      }
-    } else if (role === 'staff') {
-      const isManager = await AttendanceModel.isStaffManagerOfSession(userId, sessionId);
-      if (!isManager) {
-        return res.status(403).json({
-          success: false,
-          error: 'Vous ne gérez pas cette classe',
-        });
-      }
-    } else if (role !== 'admin') {
+    if (role !== 'admin' && role !== 'staff' && targetTeacherId !== userId) {
       return res.status(403).json({
         success: false,
-        error: 'Accès refusé',
+        error: 'Accès non autorisé',
       });
     }
 
-    // Récupérer les détails de la session
-    const data = await AttendanceModel.getSessionDetails(sessionId, userId, role);
-
-    return res.json({
-      success: true,
-      data,
-    });
-  } catch (error) {
-    console.error('Erreur getSessionStudentsHandler:', error);
-    const message = error instanceof Error ? error.message : 'Erreur lors de la récupération des élèves';
-    return res.status(500).json({
-      success: false,
-      error: message,
-    });
-  }
-}
-
-// =========================
-// RECORDS - CREATE/UPDATE
-// =========================
-
-/**
- * POST /api/attendance/sessions/:id/records/bulk
- * Sauvegarder l'appel complet (batch)
- */
-export async function bulkCreateRecordsHandler(req: Request, res: Response) {
-  try {
-    const { userId, role } = req.user!;
-    const { id: sessionId } = req.params;
-    const { records } = req.body;
-
-    // Vérifier les permissions
-    if (role === 'teacher') {
-      const isOwner = await AttendanceModel.isTeacherOwnerOfSession(userId, sessionId);
-      if (!isOwner) {
-        return res.status(403).json({
-          success: false,
-          error: 'Vous ne pouvez faire l\'appel que sur vos propres cours',
-        });
-      }
-    } else if (role === 'staff') {
-      const isManager = await AttendanceModel.isStaffManagerOfSession(userId, sessionId);
-      if (!isManager) {
-        return res.status(403).json({
-          success: false,
-          error: 'Vous ne gérez pas cette classe',
-        });
-      }
-    } else if (role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        error: 'Accès refusé',
-      });
-    }
-
-    // Récupérer la session pour vérifier le délai
-    const session = await AttendanceModel.getSessionById(sessionId);
-    if (!session) {
-      return res.status(404).json({
-        success: false,
-        error: 'Session non trouvée',
-      });
-    }
-
-    // Vérifier si on peut modifier
-    const canModify = await AttendanceModel.canModifyAttendance(
-      userId,
-      role,
-      session.session_date,
-      session.scheduled_start
-    );
-
-    if (!canModify) {
-      return res.status(403).json({
-        success: false,
-        error: 'Délai de modification dépassé (48h pour les professeurs)',
-      });
-    }
-
-    // Valider les données
-    if (!Array.isArray(records) || records.length === 0) {
+    if (!weekStart) {
       return res.status(400).json({
         success: false,
-        error: 'Aucun enregistrement fourni',
+        error: 'weekStart est requis',
       });
     }
 
-    // Créer/mettre à jour les enregistrements
-    const results = await AttendanceModel.upsertAttendanceRecords(
-      sessionId,
-      records,
-      userId
+    console.log(`📅 Récupération présences semaine - Teacher: ${targetTeacherId}, Week: ${weekStart}`);
+
+    const courses = await AttendanceModel.getTeacherWeekCourses(
+      targetTeacherId,
+      weekStart as string
     );
 
-    // Notifier en temps réel
-    emitAttendanceUpdate(sessionId, {
-      type: 'bulk_update',
-      sessionId,
-      updatedBy: userId,
-      count: results.length,
-    });
+    console.log(`✅ ${courses.length} cours trouvés`);
 
     return res.json({
       success: true,
-      message: `${results.length} présence(s) enregistrée(s)`,
-      data: results,
+      data: courses,
     });
   } catch (error) {
-    console.error('Erreur bulkCreateRecordsHandler:', error);
+    console.error('Erreur getTeacherWeekHandler:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la récupération des cours',
+    });
+  }
+}
+
+// ============================================
+// HANDLERS - SESSION
+// ============================================
+
+/**
+ * GET /api/attendance/session/:instanceId
+ * Récupérer ou créer une session de présence pour une instance de cours
+ */
+export async function getSessionHandler(req: Request, res: Response) {
+  try {
+    const { userId, role } = req.user!;
+    const { instanceId } = req.params;
+
+    console.log(`📋 Récupération session présence - Instance: ${instanceId}`);
+
+    // Vérifier les permissions
+    const canAccess = await AttendanceModel.canAccessInstance(userId, role, instanceId);
+    if (!canAccess) {
+      return res.status(403).json({
+        success: false,
+        error: 'Vous n\'avez pas accès à ce cours',
+      });
+    }
+
+    // Récupérer ou créer la session
+    const session = await AttendanceModel.getOrCreateSession(instanceId, userId);
+
+    // Récupérer les élèves avec leur statut
+    const students = await AttendanceModel.getSessionStudents(session.id);
+
+    console.log(`✅ Session ${session.id} - ${students.length} élèves`);
+
+    return res.json({
+      success: true,
+      data: {
+        session,
+        students,
+      },
+    });
+  } catch (error: any) {
+    console.error('Erreur getSessionHandler:', error);
+    
+    if (error.message?.includes('Instance non trouvée')) {
+      return res.status(404).json({
+        success: false,
+        error: 'Cours non trouvé',
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la récupération de la session',
+    });
+  }
+}
+
+/**
+ * POST /api/attendance/session/:sessionId/close
+ * Fermer une session de présence
+ */
+export async function closeSessionHandler(req: Request, res: Response) {
+  try {
+    const { userId, role } = req.user!;
+    const { sessionId } = req.params;
+
+    // Vérifier les permissions
+    const canAccess = await AttendanceModel.canAccessSession(userId, role, sessionId);
+    if (!canAccess) {
+      return res.status(403).json({
+        success: false,
+        error: 'Vous n\'avez pas accès à cette session',
+      });
+    }
+
+    const session = await AttendanceModel.closeSession(sessionId, userId);
+
+    return res.json({
+      success: true,
+      message: 'Session fermée',
+      data: session,
+    });
+  } catch (error) {
+    console.error('Erreur closeSessionHandler:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la fermeture de la session',
+    });
+  }
+}
+
+// ============================================
+// HANDLERS - MARQUAGE PRÉSENCE
+// ============================================
+
+/**
+ * POST /api/attendance/mark
+ * Marquer la présence d'un seul élève
+ */
+export async function markAttendanceHandler(req: Request, res: Response) {
+  try {
+    const { userId, role } = req.user!;
+    const { sessionId, studentId, status, comment, lateMinutes } = req.body;
+
+    // Validation
+    if (!sessionId || !studentId || !status) {
+      return res.status(400).json({
+        success: false,
+        error: 'sessionId, studentId et status sont requis',
+      });
+    }
+
+    const validStatuses: AttendanceStatus[] = ['present', 'absent', 'late', 'excused', 'excluded', 'remote'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: `Statut invalide. Valeurs acceptées: ${validStatuses.join(', ')}`,
+      });
+    }
+
+    // Vérifier les permissions
+    const canAccess = await AttendanceModel.canAccessSession(userId, role, sessionId);
+    if (!canAccess) {
+      return res.status(403).json({
+        success: false,
+        error: 'Vous n\'avez pas accès à cette session',
+      });
+    }
+
+    console.log(`✏️ Marquage présence - Session: ${sessionId}, Student: ${studentId}, Status: ${status}`);
+
+    const record = await AttendanceModel.markAttendance(
+      sessionId,
+      studentId,
+      status,
+      userId,
+      { comment, lateMinutes }
+    );
+
+    return res.json({
+      success: true,
+      message: 'Présence enregistrée',
+      data: record,
+    });
+  } catch (error) {
+    console.error('Erreur markAttendanceHandler:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Erreur lors de l\'enregistrement de la présence',
+    });
+  }
+}
+
+/**
+ * POST /api/attendance/bulk
+ * Marquer la présence de plusieurs élèves en masse
+ */
+export async function bulkMarkAttendanceHandler(req: Request, res: Response) {
+  try {
+    const { userId, role } = req.user!;
+    const { sessionId, records } = req.body;
+
+    // Validation
+    if (!sessionId || !records || !Array.isArray(records)) {
+      return res.status(400).json({
+        success: false,
+        error: 'sessionId et records (tableau) sont requis',
+      });
+    }
+
+    if (records.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Le tableau records ne peut pas être vide',
+      });
+    }
+
+    // Valider chaque record
+    const validStatuses: AttendanceStatus[] = ['present', 'absent', 'late', 'excused', 'excluded', 'remote'];
+    for (const record of records) {
+      if (!record.studentId || !record.status) {
+        return res.status(400).json({
+          success: false,
+          error: 'Chaque record doit avoir studentId et status',
+        });
+      }
+      if (!validStatuses.includes(record.status)) {
+        return res.status(400).json({
+          success: false,
+          error: `Statut invalide: ${record.status}`,
+        });
+      }
+    }
+
+    // Vérifier les permissions
+    const canAccess = await AttendanceModel.canAccessSession(userId, role, sessionId);
+    if (!canAccess) {
+      return res.status(403).json({
+        success: false,
+        error: 'Vous n\'avez pas accès à cette session',
+      });
+    }
+
+    console.log(`✏️ Marquage présence bulk - Session: ${sessionId}, ${records.length} élèves`);
+
+    const result = await AttendanceModel.bulkMarkAttendance(sessionId, records, userId);
+
+    return res.json({
+      success: true,
+      message: `${result.length} présences enregistrées`,
+      data: result,
+    });
+  } catch (error) {
+    console.error('Erreur bulkMarkAttendanceHandler:', error);
     return res.status(500).json({
       success: false,
       error: 'Erreur lors de l\'enregistrement des présences',
@@ -181,173 +275,69 @@ export async function bulkCreateRecordsHandler(req: Request, res: Response) {
   }
 }
 
-/**
- * PUT /api/attendance/records/:id
- * Modifier une présence individuelle
- */
-export async function updateRecordHandler(req: Request, res: Response) {
-  try {
-    const { userId, role } = req.user!;
-    const { id: recordId } = req.params;
-    const { status, late_minutes, justification } = req.body;
-
-    // Récupérer l'enregistrement pour obtenir la session
-    const recordQuery = `
-      SELECT ar.*, s.id as session_id, s.session_date, s.scheduled_start
-      FROM attendance_records ar
-      JOIN attendance_sessions s ON ar.session_id = s.id
-      WHERE ar.id = $1
-    `;
-    const recordResult = await pool.query(recordQuery, [recordId]);
-    
-    if (recordResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Enregistrement non trouvé',
-      });
-    }
-
-    const record = recordResult.rows[0];
-    const sessionId = record.session_id;
-
-    // Vérifier les permissions
-    if (role === 'teacher') {
-      const isOwner = await AttendanceModel.isTeacherOwnerOfSession(userId, sessionId);
-      if (!isOwner) {
-        return res.status(403).json({
-          success: false,
-          error: 'Vous ne pouvez modifier que vos propres cours',
-        });
-      }
-    } else if (role === 'staff') {
-      const isManager = await AttendanceModel.isStaffManagerOfSession(userId, sessionId);
-      if (!isManager) {
-        return res.status(403).json({
-          success: false,
-          error: 'Vous ne gérez pas cette classe',
-        });
-      }
-    } else if (role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        error: 'Accès refusé',
-      });
-    }
-
-    // Vérifier si on peut modifier
-    const canModify = await AttendanceModel.canModifyAttendance(
-      userId,
-      role,
-      record.session_date,
-      record.scheduled_start
-    );
-
-    if (!canModify) {
-      return res.status(403).json({
-        success: false,
-        error: 'Délai de modification dépassé (48h pour les professeurs)',
-      });
-    }
-
-    // Mettre à jour
-    const updated = await AttendanceModel.updateAttendanceRecord(recordId, {
-      status,
-      late_minutes,
-      justification,
-      modified_by: userId,
-    });
-
-    // Notifier en temps réel
-    emitAttendanceUpdate(sessionId, {
-      type: 'record_update',
-      sessionId,
-      recordId,
-      studentId: updated.student_id,
-      updatedBy: userId,
-    });
-
-    return res.json({
-      success: true,
-      message: 'Présence mise à jour',
-      data: updated,
-    });
-  } catch (error) {
-    console.error('Erreur updateRecordHandler:', error);
-    return res.status(500).json({
-      success: false,
-      error: 'Erreur lors de la mise à jour de la présence',
-    });
-  }
-}
-
-// =========================
-// STUDENT - CONSULTATION
-// =========================
+// ============================================
+// HANDLERS - HISTORIQUE ÉLÈVE
+// ============================================
 
 /**
- * GET /api/attendance/students/:id/records
- * Historique des présences d'un élève
+ * GET /api/attendance/student/:studentId
+ * Récupérer l'historique de présence d'un élève
  */
-export async function getStudentRecordsHandler(req: Request, res: Response) {
+export async function getStudentHistoryHandler(req: Request, res: Response) {
   try {
     const { userId, role } = req.user!;
-    const { id: studentId } = req.params;
-    const { startDate, endDate, limit } = req.query;
+    const { studentId } = req.params;
+    const { startDate, endDate, courseId, limit } = req.query;
 
     // Vérifier les permissions
-    if (role === 'student') {
-      // Un élève ne peut voir que son propre historique
-      if (userId !== studentId) {
-        return res.status(403).json({
-          success: false,
-          error: 'Vous ne pouvez voir que votre propre historique',
-        });
-      }
-    } else if (role === 'parent') {
-      // Vérifier que le parent est lié à l'élève
-      const linkQuery = `
-        SELECT COUNT(*) as count
-        FROM student_parents
-        WHERE student_id = $1 AND parent_id = $2
-      `;
-      const linkResult = await pool.query(linkQuery, [studentId, userId]);
-
-      if (parseInt(linkResult.rows[0].count) === 0) {
-        return res.status(403).json({
-          success: false,
-          error: 'Vous n\'êtes pas autorisé à voir cet historique',
-        });
-      }
-    } else if (role !== 'teacher' && role !== 'staff' && role !== 'admin') {
+    // L'élève peut voir son propre historique
+    // Les professeurs, staff et admin peuvent voir tout
+    if (role === 'student' && userId !== studentId) {
       return res.status(403).json({
         success: false,
-        error: 'Accès refusé',
+        error: 'Accès non autorisé',
       });
     }
 
-    // Récupérer l'historique
-    const records = await AttendanceModel.getStudentAttendanceHistory(studentId, {
-      startDate: startDate ? new Date(startDate as string) : undefined,
-      endDate: endDate ? new Date(endDate as string) : undefined,
+    // Parents peuvent voir leurs enfants (à implémenter si nécessaire)
+    if (role === 'parent') {
+      // Vérifier le lien parent-enfant
+      const parentCheck = await pool.query(
+        'SELECT 1 FROM student_parents WHERE parent_id = $1 AND student_id = $2',
+        [userId, studentId]
+      );
+      if (parentCheck.rows.length === 0) {
+        return res.status(403).json({
+          success: false,
+          error: 'Accès non autorisé',
+        });
+      }
+    }
+
+    console.log(`📊 Historique présence élève: ${studentId}`);
+
+    const history = await AttendanceModel.getStudentAttendanceHistory(studentId, {
+      startDate: startDate as string,
+      endDate: endDate as string,
+      courseId: courseId as string,
       limit: limit ? parseInt(limit as string) : undefined,
     });
 
-    // Récupérer les statistiques
-    const stats = await AttendanceModel.getStudentAttendanceStats(
-      studentId,
-      startDate ? new Date(startDate as string) : undefined,
-      endDate ? new Date(endDate as string) : undefined
-    );
+    const stats = await AttendanceModel.getStudentAttendanceStats(studentId, {
+      startDate: startDate as string,
+      endDate: endDate as string,
+      courseId: courseId as string,
+    });
 
     return res.json({
       success: true,
       data: {
-        records,
+        history,
         stats,
       },
     });
   } catch (error) {
-    console.error('Erreur getStudentRecordsHandler:', error);
+    console.error('Erreur getStudentHistoryHandler:', error);
     return res.status(500).json({
       success: false,
       error: 'Erreur lors de la récupération de l\'historique',
@@ -356,44 +346,28 @@ export async function getStudentRecordsHandler(req: Request, res: Response) {
 }
 
 /**
- * GET /api/attendance/students/:id/stats
- * Statistiques de présence d'un élève
+ * GET /api/attendance/student/:studentId/stats
+ * Récupérer les statistiques de présence d'un élève
  */
 export async function getStudentStatsHandler(req: Request, res: Response) {
   try {
     const { userId, role } = req.user!;
-    const { id: studentId } = req.params;
-    const { startDate, endDate } = req.query;
+    const { studentId } = req.params;
+    const { startDate, endDate, courseId } = req.query;
 
-    // Vérifier les permissions (même logique que getStudentRecordsHandler)
+    // Vérifier les permissions (même logique que getStudentHistoryHandler)
     if (role === 'student' && userId !== studentId) {
       return res.status(403).json({
         success: false,
-        error: 'Accès refusé',
+        error: 'Accès non autorisé',
       });
     }
 
-    if (role === 'parent') {
-      const linkQuery = `
-        SELECT COUNT(*) as count
-        FROM student_parents
-        WHERE student_id = $1 AND parent_id = $2
-      `;
-      const linkResult = await pool.query(linkQuery, [studentId, userId]);
-
-      if (parseInt(linkResult.rows[0].count) === 0) {
-        return res.status(403).json({
-          success: false,
-          error: 'Accès refusé',
-        });
-      }
-    }
-
-    const stats = await AttendanceModel.getStudentAttendanceStats(
-      studentId,
-      startDate ? new Date(startDate as string) : undefined,
-      endDate ? new Date(endDate as string) : undefined
-    );
+    const stats = await AttendanceModel.getStudentAttendanceStats(studentId, {
+      startDate: startDate as string,
+      endDate: endDate as string,
+      courseId: courseId as string,
+    });
 
     return res.json({
       success: true,
@@ -408,36 +382,32 @@ export async function getStudentStatsHandler(req: Request, res: Response) {
   }
 }
 
-// =========================
-// STAFF - GESTION
-// =========================
+// ============================================
+// HANDLERS - UTILITAIRES
+// ============================================
 
 /**
- * GET /api/attendance/staff/classes
- * Classes gérées par le staff
+ * GET /api/attendance/instance/:instanceId/check
+ * Vérifier si une session existe pour une instance (sans la créer)
  */
-export async function getStaffClassesHandler(req: Request, res: Response) {
+export async function checkSessionExistsHandler(req: Request, res: Response) {
   try {
-    const { userId, role } = req.user!;
+    const { instanceId } = req.params;
 
-    if (role !== 'staff' && role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        error: 'Accès réservé au personnel',
-      });
-    }
-
-    const classes = await AttendanceModel.getStaffClasses(userId);
+    const session = await AttendanceModel.getSessionByInstanceId(instanceId);
 
     return res.json({
       success: true,
-      data: classes,
+      data: {
+        exists: session !== null,
+        session: session,
+      },
     });
   } catch (error) {
-    console.error('Erreur getStaffClassesHandler:', error);
+    console.error('Erreur checkSessionExistsHandler:', error);
     return res.status(500).json({
       success: false,
-      error: 'Erreur lors de la récupération des classes',
+      error: 'Erreur lors de la vérification',
     });
   }
 }

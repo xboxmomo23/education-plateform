@@ -3,134 +3,199 @@ import { body, param, query } from 'express-validator';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import { validateRequest } from '../middleware/validation.middleware';
 import {
-  getSessionsHandler,
-  getSessionStudentsHandler,
-  bulkCreateRecordsHandler,
-  updateRecordHandler,
-  getStudentRecordsHandler,
+  getTeacherWeekHandler,
+  getSessionHandler,
+  closeSessionHandler,
+  markAttendanceHandler,
+  bulkMarkAttendanceHandler,
+  getStudentHistoryHandler,
   getStudentStatsHandler,
-  getStaffClassesHandler,
+  checkSessionExistsHandler,
 } from '../controllers/attendance.controller';
-import { sseStreamHandler } from '../services/attendance.sse';
+import {
+  getMyHistoryHandler,
+  getAllAbsencesHandler,
+  getAccessibleClassesHandler,
+  justifyAbsenceHandler,
+  getClassAttendanceStatsHandler,
+} from '../controllers/attendance-extended.controller';
 
 const router = Router();
 
-// =========================
+// ============================================
 // VALIDATIONS
-// =========================
+// ============================================
 
-const bulkCreateValidation = [
-  param('id').isUUID().withMessage('ID de session invalide'),
-  body('records')
-    .isArray({ min: 1 })
-    .withMessage('Au moins un enregistrement est requis'),
-  body('records.*.student_id')
-    .isUUID()
-    .withMessage('ID étudiant invalide'),
-  body('records.*.status')
-    .isIn(['present', 'absent', 'late', 'excused', 'remote', 'excluded'])
-    .withMessage('Statut invalide'),
-  body('records.*.late_minutes')
-    .optional()
-    .isInt({ min: 0, max: 1440 })
-    .withMessage('Le retard doit être entre 0 et 1440 minutes'),
-  body('records.*.justification')
-    .optional()
-    .isString()
-    .isLength({ max: 500 })
-    .withMessage('La justification ne doit pas dépasser 500 caractères'),
+const markAttendanceValidation = [
+  body('sessionId').isUUID().withMessage('ID de session invalide'),
+  body('studentId').isUUID().withMessage('ID d\'élève invalide'),
+  body('status').isIn(['present', 'absent', 'late', 'excused', 'excluded', 'remote']).withMessage('Statut invalide'),
+  body('comment').optional().isString().isLength({ max: 500 }),
+  body('lateMinutes').optional().isInt({ min: 0, max: 1440 }),
 ];
 
-const updateRecordValidation = [
-  param('id').isUUID().withMessage('ID invalide'),
-  body('status')
-    .optional()
-    .isIn(['present', 'absent', 'late', 'excused', 'remote', 'excluded'])
-    .withMessage('Statut invalide'),
-  body('late_minutes')
-    .optional()
-    .isInt({ min: 0, max: 1440 })
-    .withMessage('Le retard doit être entre 0 et 1440 minutes'),
-  body('justification')
-    .optional()
-    .isString()
-    .isLength({ max: 500 })
-    .withMessage('La justification ne doit pas dépasser 500 caractères'),
+const bulkMarkValidation = [
+  body('sessionId').isUUID().withMessage('ID de session invalide'),
+  body('records').isArray({ min: 1 }).withMessage('records doit être un tableau non vide'),
+  body('records.*.studentId').isUUID().withMessage('ID d\'élève invalide'),
+  body('records.*.status').isIn(['present', 'absent', 'late', 'excused', 'excluded', 'remote']).withMessage('Statut invalide'),
 ];
 
-// =========================
-// ROUTES SESSIONS
-// =========================
+// ============================================
+// ROUTES - SEMAINE PROFESSEUR
+// ============================================
 
-/**
- * GET /api/attendance/sessions
- * Liste des sessions du jour (professeur ou staff)
- */
 router.get(
-  '/sessions',
+  '/week',
   authenticate,
   authorize('teacher', 'staff', 'admin'),
-  query('date').optional().isISO8601().withMessage('Date invalide'),
+  query('weekStart').matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('weekStart invalide'),
+  query('teacherId').optional().isUUID(),
   validateRequest,
-  getSessionsHandler
+  getTeacherWeekHandler
 );
 
-/**
- * GET /api/attendance/sessions/:id
- * Détails d'une session avec les élèves
- */
+// ============================================
+// ROUTES - ÉLÈVE (son propre historique)
+// ============================================
+
 router.get(
-  '/sessions/:id',
+  '/my-history',
+  authenticate,
+  authorize('student'),
+  query('startDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/),
+  query('endDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/),
+  query('limit').optional().isInt({ min: 1, max: 500 }),
+  validateRequest,
+  getMyHistoryHandler
+);
+
+// ============================================
+// ROUTES - SESSION
+// ============================================
+
+router.get(
+  '/session/:instanceId',
   authenticate,
   authorize('teacher', 'staff', 'admin'),
-  param('id').isUUID().withMessage('ID invalide'),
+  param('instanceId').isUUID(),
   validateRequest,
-  getSessionStudentsHandler
+  getSessionHandler
 );
 
-/**
- * GET /api/attendance/sessions/:id/stream
- * Stream SSE pour les mises à jour en temps réel
- */
-router.get(
-  '/sessions/:id/stream',
-  authenticate,
-  authorize('teacher', 'staff', 'admin'),
-  param('id').isUUID().withMessage('ID invalide'),
-  validateRequest,
-  sseStreamHandler
-);
-
-// =========================
-// ROUTES RECORDS
-// =========================
-
-/**
- * POST /api/attendance/sessions/:id/records/bulk
- * Enregistrer/modifier l'appel complet
- */
 router.post(
-  '/sessions/:id/records/bulk',
+  '/session/:sessionId/close',
   authenticate,
   authorize('teacher', 'staff', 'admin'),
-  bulkCreateValidation,
+  param('sessionId').isUUID(),
   validateRequest,
-  bulkCreateRecordsHandler
+  closeSessionHandler
 );
 
-/**
- * PUT /api/attendance/records/:id
- * Modifier une présence individuelle
- */
+router.get(
+  '/instance/:instanceId/check',
+  authenticate,
+  param('instanceId').isUUID(),
+  validateRequest,
+  checkSessionExistsHandler
+);
+
+// ============================================
+// ROUTES - MARQUAGE PRÉSENCE
+// ============================================
+
+router.post(
+  '/mark',
+  authenticate,
+  authorize('teacher', 'staff', 'admin'),
+  markAttendanceValidation,
+  validateRequest,
+  markAttendanceHandler
+);
+
+router.post(
+  '/bulk',
+  authenticate,
+  authorize('teacher', 'staff', 'admin'),
+  bulkMarkValidation,
+  validateRequest,
+  bulkMarkAttendanceHandler
+);
+
+// ============================================
+// ROUTES - HISTORIQUE ÉLÈVE
+// ============================================
+
+router.get(
+  '/student/:studentId',
+  authenticate,
+  param('studentId').isUUID(),
+  query('startDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/),
+  query('endDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/),
+  query('courseId').optional().isUUID(),
+  query('limit').optional().isInt({ min: 1, max: 100 }),
+  validateRequest,
+  getStudentHistoryHandler
+);
+
+router.get(
+  '/student/:studentId/stats',
+  authenticate,
+  param('studentId').isUUID(),
+  query('startDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/),
+  query('endDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/),
+  query('courseId').optional().isUUID(),
+  validateRequest,
+  getStudentStatsHandler
+);
+
+// ============================================
+// ROUTES - STAFF (gestion des absences)
+// ============================================
+
+router.get(
+  '/absences',
+  authenticate,
+  authorize('teacher', 'staff', 'admin'),
+  query('classId').optional(),
+  query('status').optional(),
+  query('schoolYear').optional(),
+  query('startDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/),
+  query('endDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/),
+  query('search').optional(),
+  query('page').optional().isInt({ min: 1 }),
+  query('limit').optional().isInt({ min: 1, max: 100 }),
+  validateRequest,
+  getAllAbsencesHandler
+);
+
+router.get(
+  '/classes',
+  authenticate,
+  authorize('teacher', 'staff', 'admin'),
+  getAccessibleClassesHandler
+);
+
 router.put(
-  '/records/:id',
+  '/absences/:recordId/justify',
   authenticate,
-  authorize('teacher', 'staff', 'admin'),
-  updateRecordValidation,
+  authorize('staff', 'admin'),
+  param('recordId').isUUID(),
+  body('justification').isString().isLength({ min: 1, max: 500 }),
+  body('documentUrl').optional().isString(),
   validateRequest,
-  updateRecordHandler
+  justifyAbsenceHandler
 );
 
-
+router.get(
+  '/stats/class/:classId',
+  authenticate,
+  authorize('teacher', 'staff', 'admin'),
+  param('classId').isUUID(),
+  query('startDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/),
+  query('endDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/),
+  validateRequest,
+  getClassAttendanceStatsHandler
+);
 
 export default router;

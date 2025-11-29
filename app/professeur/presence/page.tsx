@@ -17,12 +17,13 @@ import {
 } from "@/components/ui/select"
 import { 
   attendanceApi, 
-  type AttendanceSession, 
-  type StudentAttendanceData, 
-  type AttendanceStatus 
-} from "@/lib/api/attendance"
+  type TimetableInstanceForAttendance,
+  type StudentWithAttendance,
+  type AttendanceStatus,
+  type AttendanceRecordInput 
+} from "@/lib/api/attendance-new"
 import { getUserSession } from "@/lib/auth-new"
-import { Calendar, Clock, AlertCircle, Check, X, Save, Users } from "lucide-react"
+import { Calendar, Clock, AlertCircle, Check, Save, Users, AlertTriangle } from "lucide-react"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
 
@@ -30,9 +31,9 @@ export default function ProfesseurPresencePage() {
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   )
-  const [sessions, setSessions] = useState<AttendanceSession[]>([])
-  const [selectedSession, setSelectedSession] = useState<AttendanceSession | null>(null)
-  const [students, setStudents] = useState<StudentAttendanceData[]>([])
+  const [instances, setInstances] = useState<TimetableInstanceForAttendance[]>([])
+  const [selectedInstance, setSelectedInstance] = useState<TimetableInstanceForAttendance | null>(null)
+  const [students, setStudents] = useState<StudentWithAttendance[]>([])
   const [canModify, setCanModify] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -41,26 +42,26 @@ export default function ProfesseurPresencePage() {
 
   const user = getUserSession()
 
-  // Charger les sessions quand la date change
+  // Charger les instances quand la date change
   useEffect(() => {
-    loadSessions()
+    loadInstances()
   }, [selectedDate])
 
-  const loadSessions = async () => {
+  const loadInstances = async () => {
     try {
       setLoading(true)
       setError(null)
 
-      const response = await attendanceApi.getSessions(selectedDate)
+      const response = await attendanceApi.getTeacherInstances(selectedDate)
 
       if (response.success && response.data) {
-        setSessions(response.data)
+        setInstances(response.data)
         
-        // Réinitialiser la session sélectionnée
-        setSelectedSession(null)
+        // Réinitialiser la sélection
+        setSelectedInstance(null)
         setStudents([])
       } else {
-        setError(response.error || "Erreur lors du chargement des sessions")
+        setError(response.error || "Erreur lors du chargement des créneaux")
       }
     } catch (err: any) {
       setError(err.message || "Erreur lors du chargement")
@@ -69,15 +70,15 @@ export default function ProfesseurPresencePage() {
     }
   }
 
-  const loadSessionDetails = async (session: AttendanceSession) => {
+  const loadInstanceDetails = async (instance: TimetableInstanceForAttendance) => {
     try {
       setLoading(true)
       setError(null)
 
-      const response = await attendanceApi.getSessionDetails(session.id)
+      const response = await attendanceApi.getInstanceStudents(instance.id)
 
       if (response.success && response.data) {
-        setSelectedSession(session)
+        setSelectedInstance(instance)
         setStudents(response.data.students || [])
         setCanModify(response.data.canModify || false)
       } else {
@@ -92,7 +93,7 @@ export default function ProfesseurPresencePage() {
 
   const updateStudentStatus = (
     studentId: string,
-    field: 'status' | 'late_minutes' | 'justification',
+    field: 'status' | 'late_duration' | 'notes',
     value: any
   ) => {
     setStudents(prev =>
@@ -105,7 +106,7 @@ export default function ProfesseurPresencePage() {
   }
 
   const handleSaveAttendance = async () => {
-    if (!selectedSession) return
+    if (!selectedInstance) return
 
     if (!canModify) {
       setError("Vous ne pouvez plus modifier cette présence (délai de 48h dépassé)")
@@ -118,21 +119,21 @@ export default function ProfesseurPresencePage() {
       setSuccess(null)
 
       // Préparer les données
-      const records = students.map(student => ({
+      const records: AttendanceRecordInput[] = students.map(student => ({
         student_id: student.student_id,
         status: (student.status || 'present') as AttendanceStatus,
-        late_minutes: student.status === 'late' ? student.late_minutes || 0 : undefined,
-        justification: student.justification || undefined,
+        late_duration: student.status === 'late' ? student.late_duration || 0 : undefined,
+        notes: student.notes || undefined,
       }))
 
-      const response = await attendanceApi.bulkSaveAttendance(selectedSession.id, records)
+      const response = await attendanceApi.saveAttendance(selectedInstance.id, records)
 
       if (response.success && response.data) {
         setSuccess(response.data.message || `${records.length} présence(s) enregistrée(s)`)
         
-        // Recharger les détails pour avoir les IDs des records
+        // Recharger les détails pour avoir les IDs
         setTimeout(() => {
-          loadSessionDetails(selectedSession)
+          loadInstanceDetails(selectedInstance)
         }, 500)
       } else {
         setError(response.error || "Erreur lors de l'enregistrement")
@@ -153,18 +154,6 @@ export default function ProfesseurPresencePage() {
       case 'remote': return 'bg-purple-100 text-purple-800 border-purple-200'
       case 'excluded': return 'bg-gray-100 text-gray-800 border-gray-200'
       default: return 'bg-gray-50 text-gray-600 border-gray-200'
-    }
-  }
-
-  const getStatusLabel = (status: AttendanceStatus | null) => {
-    switch (status) {
-      case 'present': return 'Présent'
-      case 'absent': return 'Absent'
-      case 'late': return 'Retard'
-      case 'excused': return 'Excusé'
-      case 'remote': return 'À distance'
-      case 'excluded': return 'Exclu'
-      default: return 'Non renseigné'
     }
   }
 
@@ -194,45 +183,52 @@ export default function ProfesseurPresencePage() {
           </CardContent>
         </Card>
 
-        {/* Liste des sessions */}
+        {/* Liste des créneaux EDT */}
         <Card>
           <CardHeader>
             <CardTitle>Mes cours du {format(new Date(selectedDate), "EEEE d MMMM yyyy", { locale: fr })}</CardTitle>
-            <CardDescription>{sessions.length} cours trouvé(s)</CardDescription>
+            <CardDescription>{instances.length} créneau(x) trouvé(s)</CardDescription>
           </CardHeader>
           <CardContent>
-            {loading && !selectedSession && (
+            {loading && !selectedInstance && (
               <p className="text-sm text-muted-foreground text-center py-8">Chargement...</p>
             )}
 
-            {!loading && sessions.length === 0 && (
+            {!loading && instances.length === 0 && (
               <Alert>
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>Aucun cours trouvé pour cette date</AlertDescription>
               </Alert>
             )}
 
-            {!loading && sessions.length > 0 && (
+            {!loading && instances.length > 0 && (
               <div className="space-y-3">
-                {sessions.map((session) => (
+                {instances.map((instance) => (
                   <Card
-                    key={session.id}
+                    key={instance.id}
                     className={`cursor-pointer transition-all hover:shadow-md ${
-                      selectedSession?.id === session.id ? 'border-primary' : ''
+                      selectedInstance?.id === instance.id ? 'border-primary' : ''
                     }`}
-                    onClick={() => loadSessionDetails(session)}
+                    onClick={() => loadInstanceDetails(instance)}
                   >
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
-                          <h4 className="font-medium">{session.subject_name}</h4>
+                          <div className="flex items-center gap-2 mb-1">
+                            <div
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: instance.subject_color || '#6366f1' }}
+                            />
+                            <h4 className="font-medium">{instance.subject_name}</h4>
+                          </div>
                           <p className="text-sm text-muted-foreground">
-                            {session.class_label} • {session.scheduled_start} - {session.scheduled_end}
+                            {instance.class_label} • {instance.start_time} - {instance.end_time}
+                            {instance.room && ` • Salle ${instance.room}`}
                           </p>
                         </div>
                         <Badge variant="outline">
                           <Clock className="h-3 w-3 mr-1" />
-                          {session.scheduled_start}
+                          {instance.start_time}
                         </Badge>
                       </div>
                     </CardContent>
@@ -244,19 +240,20 @@ export default function ProfesseurPresencePage() {
         </Card>
 
         {/* Formulaire d'appel */}
-        {selectedSession && (
+        {selectedInstance && (
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>
-                    {selectedSession.subject_name} - {selectedSession.class_label}
+                    {selectedInstance.subject_name} - {selectedInstance.class_label}
                   </CardTitle>
                   <CardDescription>
-                    {selectedSession.scheduled_start} - {selectedSession.scheduled_end}
+                    {selectedInstance.start_time} - {selectedInstance.end_time}
+                    {selectedInstance.room && ` • Salle ${selectedInstance.room}`}
                   </CardDescription>
                 </div>
-                <Badge className={getStatusColor(null)}>
+                <Badge className="bg-blue-100 text-blue-800 border-blue-200">
                   <Users className="h-3 w-3 mr-1" />
                   {students.length} élèves
                 </Badge>
@@ -265,7 +262,7 @@ export default function ProfesseurPresencePage() {
             <CardContent className="space-y-4">
               {!canModify && (
                 <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
+                  <AlertTriangle className="h-4 w-4" />
                   <AlertDescription>
                     Vous ne pouvez plus modifier cette présence (délai de 48h dépassé)
                   </AlertDescription>
@@ -288,7 +285,7 @@ export default function ProfesseurPresencePage() {
 
               <div className="space-y-3">
                 {students.map((student) => (
-                  <Card key={student.student_id}>
+                  <Card key={student.student_id} className="hover:shadow transition-shadow">
                     <CardContent className="p-4">
                       <div className="grid gap-4 md:grid-cols-12">
                         {/* Nom de l'élève */}
@@ -331,11 +328,11 @@ export default function ProfesseurPresencePage() {
                               type="number"
                               min="0"
                               max="1440"
-                              value={student.late_minutes || 0}
+                              value={student.late_duration || 0}
                               onChange={(e) =>
                                 updateStudentStatus(
                                   student.student_id,
-                                  'late_minutes',
+                                  'late_duration',
                                   parseInt(e.target.value) || 0
                                 )
                               }
@@ -344,36 +341,43 @@ export default function ProfesseurPresencePage() {
                           </div>
                         )}
 
-                        {/* Justification */}
+                        {/* Notes */}
                         <div className={student.status === 'late' ? 'md:col-span-3' : 'md:col-span-5'}>
-                          <Label className="text-xs text-muted-foreground">Justification (optionnel)</Label>
+                          <Label className="text-xs text-muted-foreground">Notes (optionnel)</Label>
                           <Input
                             type="text"
-                            placeholder="Motif..."
-                            value={student.justification || ''}
+                            placeholder="Commentaire..."
+                            value={student.notes || ''}
                             onChange={(e) =>
-                              updateStudentStatus(student.student_id, 'justification', e.target.value)
+                              updateStudentStatus(student.student_id, 'notes', e.target.value)
                             }
                             disabled={!canModify}
                           />
                         </div>
                       </div>
+
+                      {/* Afficher la justification si elle existe */}
+                      {student.is_justified && student.justification_reason && (
+                        <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-sm">
+                          <strong className="text-blue-900">Justification :</strong>{' '}
+                          {student.justification_reason}
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 ))}
               </div>
 
               {canModify && (
-                <div className="flex gap-3">
-                  <Button
-                    onClick={handleSaveAttendance}
-                    disabled={saving || students.length === 0}
-                    className="flex-1"
-                  >
-                    <Save className="h-4 w-4 mr-2" />
-                    {saving ? "Enregistrement..." : "Enregistrer l'appel"}
-                  </Button>
-                </div>
+                <Button
+                  onClick={handleSaveAttendance}
+                  disabled={saving || students.length === 0}
+                  className="w-full"
+                  size="lg"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {saving ? "Enregistrement..." : "Enregistrer l'appel"}
+                </Button>
               )}
             </CardContent>
           </Card>
