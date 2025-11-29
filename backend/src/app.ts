@@ -10,7 +10,8 @@ import timetableRoutes from './routes/timetable.routes';
 import timetableInstanceRoutes from './routes/timetable-instance.routes';
 import establishmentRoutes from './routes/establishment.routes';
 import attendanceRoutes from './routes/attendance.routes';
-//import attendanceRoutes from './routes/attendance.routes';
+import superAdminRoutes from './routes/super-admin.routes';
+
 
 // Charger les variables d'environnement
 dotenv.config();
@@ -72,6 +73,8 @@ app.use('/api/timetable', timetableRoutes);  // ← Général à la fin
 app.use('/api/establishment', establishmentRoutes);
 
 app.use('/api/attendance', attendanceRoutes);
+app.use('/api/super-admin', superAdminRoutes);
+
 
 // Route 404
 app.use('*', (req: Request, res: Response) => {
