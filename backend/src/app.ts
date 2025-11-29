@@ -7,7 +7,6 @@ import authRoutes from './routes/auth.routes';
 import gradeRoutes from './routes/grade.routes';
 import courseRoutes from './routes/course.routes';
 import timetableRoutes from './routes/timetable.routes';
-import timetableOverrideRoutes from './routes/timetable-override.routes';
 import timetableInstanceRoutes from './routes/timetable-instance.routes';
 import establishmentRoutes from './routes/establishment.routes';
 //import attendanceRoutes from './routes/attendance.routes';
@@ -66,7 +65,6 @@ app.use('/api/grades', gradeRoutes);
 app.use('/api/courses', courseRoutes);
 
 // Routes spécifiques AVANT les générales
-app.use('/api/timetable/overrides', timetableOverrideRoutes);  // ← Spécifique en premier
 app.use('/api/timetable/instances', timetableInstanceRoutes);  // ← Spécifique en premier
 app.use('/api/timetable', timetableRoutes);  // ← Général à la fin
 

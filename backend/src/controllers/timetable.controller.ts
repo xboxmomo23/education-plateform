@@ -254,14 +254,37 @@ export async function getTemplatesByClassHandler(req: Request, res: Response) {
   try {
     const { classId } = req.params;
 
-    const templates = await TimetableModel.getEntriesByClass(classId);
+    const result = await pool.query(
+      `
+      SELECT 
+        ct.id,
+        ct.course_id,
+        ct.default_duration,
+        ct.default_room,
+        ct.display_order,
+        s.name  AS subject_name,
+        s.code  AS subject_code,
+        s.color AS subject_color,
+        u.full_name AS teacher_name,
+        cl.label AS class_label,
+        cl.id    AS class_id
+      FROM course_templates ct
+      JOIN courses   c  ON ct.course_id = c.id
+      JOIN subjects  s  ON c.subject_id = s.id
+      JOIN users     u  ON c.teacher_id = u.id
+      JOIN classes   cl ON c.class_id = cl.id
+      WHERE c.class_id = $1
+      ORDER BY s.name, u.full_name
+      `,
+      [classId]
+    );
 
     return res.json({
       success: true,
-      data: templates,
+      data: result.rows,
     });
   } catch (error) {
-    console.error('Erreur getTemplates:', error);
+    console.error('Erreur getTemplatesByClassHandler:', error);
     return res.status(500).json({
       success: false,
       error: 'Erreur lors de la récupération des templates',
@@ -269,16 +292,88 @@ export async function getTemplatesByClassHandler(req: Request, res: Response) {
   }
 }
 
+
 /**
  * Créer un template
  */
+/**
+ * Créer un template (course_templates)
+ */
 export async function createTemplateHandler(req: Request, res: Response) {
   try {
-    const template = await TimetableModel.createEntry(req.body);
+    const { course_id, default_duration, default_room, display_order } = req.body;
+    const userId = req.user?.userId ?? null;
+
+    // Empêcher les doublons de template pour un même cours
+    const existing = await pool.query(
+      'SELECT 1 FROM course_templates WHERE course_id = $1',
+      [course_id]
+    );
+
+    if (existing.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        error: 'Un template existe déjà pour ce cours',
+      });
+    }
+
+    // Création du template dans course_templates
+    const insertResult = await pool.query(
+      `
+      INSERT INTO course_templates (
+        course_id,
+        default_duration,
+        default_room,
+        display_order,
+        created_by
+      ) VALUES (
+        $1,
+        COALESCE($2, 90),
+        $3,
+        COALESCE($4, 0),
+        $5
+      )
+      RETURNING id
+      `,
+      [
+        course_id,
+        default_duration ?? null,
+        default_room ?? null,
+        display_order ?? 0,
+        userId,
+      ]
+    );
+
+    const newId = insertResult.rows[0].id;
+
+    // Recharger le template avec toutes les infos utiles pour le front
+    const result = await pool.query(
+      `
+      SELECT 
+        ct.id,
+        ct.course_id,
+        ct.default_duration,
+        ct.default_room,
+        ct.display_order,
+        s.name  AS subject_name,
+        s.code  AS subject_code,
+        s.color AS subject_color,
+        u.full_name AS teacher_name,
+        cl.label AS class_label,
+        cl.id    AS class_id
+      FROM course_templates ct
+      JOIN courses   c  ON ct.course_id = c.id
+      JOIN subjects  s  ON c.subject_id = s.id
+      JOIN users     u  ON c.teacher_id = u.id
+      JOIN classes   cl ON c.class_id   = cl.id
+      WHERE ct.id = $1
+      `,
+      [newId]
+    );
 
     return res.status(201).json({
       success: true,
-      data: template,
+      data: result.rows[0],
     });
   } catch (error) {
     console.error('Erreur createTemplate:', error);
@@ -292,32 +387,83 @@ export async function createTemplateHandler(req: Request, res: Response) {
 /**
  * Mettre à jour un template
  */
+
+/**
+ * Mettre à jour un template
+ */
 export async function updateTemplateHandler(req: Request, res: Response) {
   try {
     const { id } = req.params;
+    const { default_duration, default_room } = req.body;
 
-    const template = await TimetableModel.updateEntry(id, req.body);
+    console.log('📝 Mise à jour template:', { id, default_duration, default_room });
 
-    return res.json({
-      success: true,
-      data: template,
-    });
-  } catch (error: any) {
-    console.error('Erreur updateTemplate:', error);
-    
-    if (error.message === 'Template non trouvé') {
+    if (default_duration === undefined && default_room === undefined) {
+      return res.status(400).json({
+        success: false,
+        error: 'Aucune donnée à mettre à jour',
+      });
+    }
+
+    // Mise à jour
+    const updateResult = await pool.query(
+      `
+      UPDATE course_templates 
+      SET 
+        default_duration = COALESCE($1, default_duration),
+        default_room     = COALESCE($2, default_room),
+        updated_at       = NOW()
+      WHERE id = $3
+      RETURNING id
+      `,
+      [default_duration ?? null, default_room ?? null, id]
+    );
+
+    if (updateResult.rows.length === 0) {
       return res.status(404).json({
         success: false,
         error: 'Template non trouvé',
       });
     }
 
+    // Rechargement avec données enrichies
+    const result = await pool.query(
+      `
+      SELECT 
+        ct.id,
+        ct.course_id,
+        ct.default_duration,
+        ct.default_room,
+        ct.display_order,
+        s.name  AS subject_name,
+        s.code  AS subject_code,
+        s.color AS subject_color,
+        u.full_name AS teacher_name,
+        cl.label AS class_label,
+        cl.id    AS class_id
+      FROM course_templates ct
+      JOIN courses   c  ON ct.course_id = c.id
+      JOIN subjects  s  ON c.subject_id = s.id
+      JOIN users     u  ON c.teacher_id = u.id
+      JOIN classes   cl ON c.class_id = cl.id       -- ✅ ICI on joint sur courses
+      WHERE ct.id = $1
+      `,
+      [id]
+    );
+
+    return res.json({
+      success: true,
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('❌ Erreur updateTemplate:', error);
     return res.status(500).json({
       success: false,
       error: 'Erreur lors de la mise à jour du template',
     });
   }
 }
+
 
 /**
  * Supprimer un template
@@ -326,21 +472,24 @@ export async function deleteTemplateHandler(req: Request, res: Response) {
   try {
     const { id } = req.params;
 
-    const template = await TimetableModel.deleteEntry(id);
+    const result = await pool.query(
+      'DELETE FROM course_templates WHERE id = $1 RETURNING *',
+      [id]
+    );
 
-    return res.json({
-      success: true,
-      data: template,
-    });
-  } catch (error: any) {
-    console.error('Erreur deleteTemplate:', error);
-    
-    if (error.message === 'Template non trouvé') {
+    if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
         error: 'Template non trouvé',
       });
     }
+
+    return res.json({
+      success: true,
+      data: result.rows[0],
+    });
+  } catch (error: any) {
+    console.error('Erreur deleteTemplate:', error);
 
     return res.status(500).json({
       success: false,
@@ -348,6 +497,7 @@ export async function deleteTemplateHandler(req: Request, res: Response) {
     });
   }
 }
+
 
 /**
  * Générer des instances depuis les templates pour une période

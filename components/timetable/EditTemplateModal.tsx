@@ -17,7 +17,7 @@ interface EditTemplateModalProps {
 export function EditTemplateModal({ template, onClose, onSuccess }: EditTemplateModalProps) {
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
-    default_duration: template.default_duration,
+    default_duration: template.default_duration || 60,  // ✅ AJOUTEZ || 60
     default_room: template.default_room || '',
   })
 
@@ -62,8 +62,9 @@ export function EditTemplateModal({ template, onClose, onSuccess }: EditTemplate
           {/* Durée modifiable */}
           <div>
             <Label>Durée par défaut</Label>
+            // APRÈS
             <Select
-              value={formData.default_duration.toString()}
+              value={formData.default_duration?.toString() || '60'}  // ✅ Safe access
               onValueChange={(value) => setFormData({ ...formData, default_duration: parseInt(value) })}
             >
               <SelectTrigger>

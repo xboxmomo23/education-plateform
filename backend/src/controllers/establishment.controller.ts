@@ -10,9 +10,18 @@ import pool from '../config/database';
  */
 export async function getTimetableConfigHandler(req: Request, res: Response) {
   try {
-    const { userId } = req.user!;
+    const user = req.user;
 
-    // Récupérer l'établissement de l'utilisateur
+    if (!user || !user.userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Utilisateur non authentifié',
+      });
+    }
+
+    const userId = user.userId;
+
+    // 1) Essayer de trouver l'établissement lié à l'utilisateur
     const query = `
       SELECT 
         e.auto_generate_weeks,
@@ -25,16 +34,32 @@ export async function getTimetableConfigHandler(req: Request, res: Response) {
 
     const result = await pool.query(query, [userId]);
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Établissement non trouvé',
+    if (result.rows.length > 0) {
+      return res.json({
+        success: true,
+        data: result.rows[0],
       });
     }
 
-    return res.json({
-      success: true,
-      data: result.rows[0],
+    // 2) Fallback DEV : prendre le premier établissement existant
+    const fallback = await pool.query(
+      `SELECT auto_generate_weeks, school_year_start_date, school_year_end_date
+       FROM establishments
+       ORDER BY created_at ASC
+       LIMIT 1`
+    );
+
+    if (fallback.rows.length > 0) {
+      return res.json({
+        success: true,
+        data: fallback.rows[0],
+      });
+    }
+
+    // 3) Cas extrême : vraiment aucun établissement
+    return res.status(404).json({
+      success: false,
+      error: 'Établissement non trouvé',
     });
   } catch (error) {
     console.error('Erreur getTimetableConfigHandler:', error);
@@ -44,6 +69,7 @@ export async function getTimetableConfigHandler(req: Request, res: Response) {
     });
   }
 }
+
 
 /**
  * PUT /api/establishment/timetable-config

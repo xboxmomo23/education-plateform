@@ -273,8 +273,8 @@ export const timetableApi = {
     });
   },
 
-  async updateTemplate(templateId: string, data: Partial<CreateTemplateData>): Promise<{ success: boolean; data: CourseTemplate }> {
-    return apiCall(`/timetable/templates/${templateId}`, {
+  async updateTemplate(templateId: string, data: Partial<CreateTemplateData>) {
+    return apiCall(`/timetable/templates/${templateId}`, {  // ✅ PARENTHÈSES
       method: 'PUT',
       body: JSON.stringify(data),
     });

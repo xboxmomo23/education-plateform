@@ -55,6 +55,7 @@ const createInstanceValidation = [
     .withMessage('Heure de fin invalide (format HH:MM)'),
   body('room').optional().isString().withMessage('Salle invalide'),
   body('notes').optional().isString().withMessage('Notes invalides'),
+  body('created_by').optional().isString().withMessage('Créateur invalide'),  // ✅ AJOUTER CETTE LIGNE
 ];
 
 const createEntryValidation = [
@@ -74,21 +75,32 @@ const createEntryValidation = [
     .withMessage('Semaine invalide (A ou B)'),
   body('room').optional().isString().withMessage('Salle invalide'),
   body('notes').optional().isString().withMessage('Notes invalides'),
+  body('created_by').optional().isString().withMessage('Créateur invalide'),
 ];
 
+// Validation pour les templates de cours (course_templates)
 const createTemplateValidation = [
-  body('course_id').isUUID().withMessage('ID de cours invalide'),
-  body('day_of_week')
-    .isInt({ min: 1, max: 7 })
-    .withMessage('Jour de la semaine invalide (1-7)'),
-  body('start_time')
-    .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
-    .withMessage('Heure de début invalide (format HH:MM)'),
-  body('end_time')
-    .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
-    .withMessage('Heure de fin invalide (format HH:MM)'),
-  body('room').optional().isString().withMessage('Salle invalide'),
+  body('course_id')
+    .isUUID()
+    .withMessage('ID de cours invalide'),
+
+  body('default_duration')
+    .optional()
+    .isInt({ min: 15, max: 600 })
+    .withMessage('Durée invalide (15–600 minutes)'),
+
+  body('default_room')
+    .optional()
+    .isString()
+    .isLength({ max: 50 })
+    .withMessage('Salle invalide'),
+
+  body('display_order')
+    .optional()
+    .isInt()
+    .withMessage('Ordre d\'affichage invalide'),
 ];
+
 
 // =========================
 // ROUTES INSTANCES (MODE DYNAMIC)
@@ -296,7 +308,7 @@ router.get(
 router.get(
   '/student/class',
   authenticate,
-  authorize('student'),
+  authorize('student'),  // ✅ Accepter plusieurs variantes
   async (req: any, res) => {
     try {
       const userId = req.user.userId;

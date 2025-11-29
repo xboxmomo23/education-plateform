@@ -122,6 +122,14 @@ export default function StaffEmploisDuTempsPage() {
     }
   }
 
+  // Ajouter en haut du fichier, avec les autres helpers
+  function formatDateForAPI(date: Date): string {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
   const loadStaffClasses = async () => {
     try {
       const response = await timetableApi.getStaffClasses()
@@ -274,51 +282,47 @@ export default function StaffEmploisDuTempsPage() {
   }
 
   const createInstanceFromTemplate = async (day: number, hour: number) => {
-    if (!selectedTemplate) return
+  if (!selectedTemplate || !selectedClassId) return  // ✅ Vérification ajoutée
 
-    try {
-      const startTime = `${hour.toString().padStart(2, '0')}:00`
-      const [startH, startM] = startTime.split(':').map(Number)
-      const totalMinutes = startH * 60 + startM + selectedTemplate.default_duration
-      const endH = Math.floor(totalMinutes / 60)
-      const endM = totalMinutes % 60
-      const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`
+  try {
+    const startTime = `${hour.toString().padStart(2, '0')}:00`
+    const [startH, startM] = startTime.split(':').map(Number)
+    const duration = selectedTemplate.default_duration || 60  // ✅ Valeur par défaut
+    const totalMinutes = startH * 60 + startM + duration
+    const endH = Math.floor(totalMinutes / 60)
+    const endM = totalMinutes % 60
+    const endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`
 
-      const targetDate = getDateForDay(currentWeekStart, day)
+    // ✅ Formater correctement la date
+    const weekStartFormatted = typeof currentWeekStart === 'string' 
+      ? currentWeekStart 
+      : formatDateForAPI(currentWeekStart)   
+       
+    console.log('📝 Création instance:', {
+      course_id: selectedTemplate.course_id,
+      class_id: selectedClassId,
+      week_start_date: weekStartFormatted,
+      day_of_week: day,
+      start_time: startTime,
+      end_time: endTime,
+    })
 
-      console.log('🎯 Création instance:', {
-        template: selectedTemplate,
-        course_id: selectedTemplate.course_id,  // ✅ Vérifier que cette propriété existe
-        classId: selectedTemplate.class_id,
-        weekStart: currentWeekStart,
-        dayOfWeek: day,
-        startTime,
-        endTime,
-        room: selectedTemplate.default_room,
-        targetDate,
-      })
-
-      // ✅ CORRECTION : Utiliser course_id au lieu de template_id
-      const response = await timetableInstanceApi.create({
-        course_id: selectedTemplate.course_id,  // ✅ C'est la colonne qui existe en base
-        class_id: selectedTemplate.class_id,
-        week_start_date: currentWeekStart,
-        day_of_week: day,
-        start_time: startTime,
-        end_time: endTime,
-        room: selectedTemplate.default_room || undefined,  // ✅ Convertir null en undefined
-        created_from_template: true,  // ✅ Marquer comme créé depuis template
-      })
-
-      if (response.success) {
-        console.log('✅ Instance créée:', response.data)
-        refreshCurrentWeek()
-        setSelectedTemplate(null)
-      }
-    } catch (error) {
-      console.error('❌ Erreur création instance:', error)
-    }
- }
+    await timetableInstanceApi.create({
+      course_id: selectedTemplate.course_id,
+      class_id: selectedClassId,  // ✅ Doit être défini
+      week_start_date: weekStartFormatted,  // ✅ Format YYYY-MM-DD
+      day_of_week: day,
+      start_time: startTime,
+      end_time: endTime,
+      room: selectedTemplate.default_room || undefined,
+    })
+    
+    refreshCurrentWeek()
+  } catch (error) {
+    console.error('❌ Erreur création instance:', error)
+    alert('Erreur lors de la création du cours')
+  }
+}  
   const handleDeleteTemplate = async (templateId: string) => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer ce template ?')) return
 
