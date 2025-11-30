@@ -11,6 +11,8 @@ import timetableInstanceRoutes from './routes/timetable-instance.routes';
 import establishmentRoutes from './routes/establishment.routes';
 import attendanceRoutes from './routes/attendance.routes';
 import superAdminRoutes from './routes/super-admin.routes';
+import adminRoutes from './routes/admin.routes';
+
 
 
 // Charger les variables d'environnement
@@ -74,6 +76,8 @@ app.use('/api/establishment', establishmentRoutes);
 
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/super-admin', superAdminRoutes);
+app.use('/api/admin', adminRoutes);
+
 
 
 // Route 404
