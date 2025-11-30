@@ -8,6 +8,10 @@ import {
   getAdminStudentsHandler,
   createStudentForAdminHandler,
   updateStudentStatusHandler,
+  getAdminTeachersHandler,
+  createTeacherForAdminHandler,
+  updateTeacherForAdminHandler,
+  updateTeacherStatusHandler,
 } from "../controllers/admin.controller";
 import { body } from "express-validator";
 import { validateRequest } from "../middleware/validation.middleware";
@@ -96,6 +100,47 @@ router.patch(
   ],
   validateRequest,
   updateStudentStatusHandler
+);
+
+
+
+// Professeurs
+router.get("/teachers", getAdminTeachersHandler);
+
+router.post(
+  "/teachers",
+  [
+    body("full_name")
+      .isString()
+      .notEmpty()
+      .withMessage("Le nom complet du professeur est obligatoire"),
+    body("email").isEmail().withMessage("Email du professeur invalide"),
+  ],
+  validateRequest,
+  createTeacherForAdminHandler
+);
+
+router.patch(
+  "/teachers/:userId",
+  [
+    body("email")
+      .optional()
+      .isEmail()
+      .withMessage("Email du professeur invalide"),
+  ],
+  validateRequest,
+  updateTeacherForAdminHandler
+);
+
+router.patch(
+  "/teachers/:userId/status",
+  [
+    body("active")
+      .isBoolean()
+      .withMessage("Le champ 'active' doit être un booléen"),
+  ],
+  validateRequest,
+  updateTeacherStatusHandler
 );
 
 export default router;

@@ -531,3 +531,365 @@ export async function updateStudentStatusHandler(req: Request, res: Response) {
     });
   }
 }
+
+
+/**
+ * GET /api/admin/teachers
+ * Liste des professeurs de l'établissement de l'admin
+ */
+export async function getAdminTeachersHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        u.id AS user_id,
+        u.full_name,
+        u.email,
+        u.active,
+        tp.employee_no,
+        tp.hire_date,
+        tp.specialization,
+        tp.phone,
+        tp.office_room
+      FROM users u
+      LEFT JOIN teacher_profiles tp ON tp.user_id = u.id
+      WHERE u.role = 'teacher'
+        AND u.establishment_id = $1
+      ORDER BY u.full_name ASC
+    `,
+      [estId]
+    );
+
+    return res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error("Erreur getAdminTeachersHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors du chargement des professeurs",
+    });
+  }
+}
+
+/**
+ * POST /api/admin/teachers
+ * Création d'un professeur (user + teacher_profile)
+ */
+export async function createTeacherForAdminHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const {
+      full_name,
+      email,
+      password,
+      employee_no,
+      hire_date,
+      specialization,
+      phone,
+      office_room,
+    } = req.body;
+
+    if (!full_name || !email) {
+      return res.status(400).json({
+        success: false,
+        error: "Les champs 'full_name' et 'email' sont obligatoires",
+      });
+    }
+
+    const initialPassword: string = password || "prof123";
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    // Création du user
+    const user = await createUser({
+      email,
+      password: initialPassword,
+      role: "teacher",
+      full_name,
+      establishmentId: estId,
+    });
+
+    // Création du profil professeur
+    const profileInsert = await pool.query(
+      `
+      INSERT INTO teacher_profiles (
+        user_id,
+        employee_no,
+        hire_date,
+        specialization,
+        phone,
+        office_room
+      )
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING user_id, employee_no, hire_date, specialization, phone, office_room
+    `,
+      [
+        user.id,
+        employee_no || null,
+        hire_date ? new Date(hire_date) : null,
+        specialization || null,
+        phone || null,
+        office_room || null,
+      ]
+    );
+
+    const profile = profileInsert.rows[0];
+
+    return res.status(201).json({
+      success: true,
+      message: "Professeur créé avec succès",
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          full_name: user.full_name,
+          active: user.active,
+        },
+        profile,
+        initial_password: initialPassword,
+      },
+    });
+  } catch (error: any) {
+    console.error("Erreur createTeacherForAdminHandler:", error);
+
+    if (error.code === "23505") {
+      return res.status(409).json({
+        success: false,
+        error: "Un utilisateur avec cet email existe déjà",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la création du professeur",
+    });
+  }
+}
+
+/**
+ * PATCH /api/admin/teachers/:userId
+ * Mise à jour du profil + user (nom, email, téléphone, spécialité, etc.)
+ */
+export async function updateTeacherForAdminHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const targetUserId = req.params.userId;
+
+    const {
+      full_name,
+      email,
+      employee_no,
+      hire_date,
+      specialization,
+      phone,
+      office_room,
+    } = req.body;
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    // Vérifier que le user est bien un prof de cet établissement
+    const teacherResult = await pool.query(
+      `
+      SELECT id, role, establishment_id
+      FROM users
+      WHERE id = $1
+        AND establishment_id = $2
+        AND role = 'teacher'
+    `,
+      [targetUserId, estId]
+    );
+
+    if (teacherResult.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Professeur introuvable pour cet établissement",
+      });
+    }
+
+    // Mise à jour de la table users (nom / email)
+    if (full_name || email) {
+      await pool.query(
+        `
+        UPDATE users
+        SET
+          full_name = COALESCE($1, full_name),
+          email = COALESCE($2, email)
+        WHERE id = $3
+      `,
+        [full_name ?? null, email ?? null, targetUserId]
+      );
+    }
+
+    // Vérifier si un profil professeur existe déjà
+    const profileResult = await pool.query(
+      `SELECT user_id FROM teacher_profiles WHERE user_id = $1 LIMIT 1`,
+      [targetUserId]
+    );
+
+    let profileRow;
+
+    if (profileResult.rowCount === 0) {
+      // Pas de profil => INSERT
+      const insertProfile = await pool.query(
+        `
+        INSERT INTO teacher_profiles (
+          user_id,
+          employee_no,
+          hire_date,
+          specialization,
+          phone,
+          office_room
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING user_id, employee_no, hire_date, specialization, phone, office_room
+      `,
+        [
+          targetUserId,
+          employee_no || null,
+          hire_date ? new Date(hire_date) : null,
+          specialization || null,
+          phone || null,
+          office_room || null,
+        ]
+      );
+      profileRow = insertProfile.rows[0];
+    } else {
+      // Profil existe => UPDATE
+      const updateProfile = await pool.query(
+        `
+        UPDATE teacher_profiles
+        SET
+          employee_no = COALESCE($2, employee_no),
+          hire_date = COALESCE($3, hire_date),
+          specialization = COALESCE($4, specialization),
+          phone = COALESCE($5, phone),
+          office_room = COALESCE($6, office_room)
+        WHERE user_id = $1
+        RETURNING user_id, employee_no, hire_date, specialization, phone, office_room
+      `,
+        [
+          targetUserId,
+          employee_no || null,
+          hire_date ? new Date(hire_date) : null,
+          specialization || null,
+          phone || null,
+          office_room || null,
+        ]
+      );
+      profileRow = updateProfile.rows[0];
+    }
+
+    // Retourner les données à jour
+    const finalResult = await pool.query(
+      `
+      SELECT
+        u.id AS user_id,
+        u.full_name,
+        u.email,
+        u.active,
+        tp.employee_no,
+        tp.hire_date,
+        tp.specialization,
+        tp.phone,
+        tp.office_room
+      FROM users u
+      LEFT JOIN teacher_profiles tp ON tp.user_id = u.id
+      WHERE u.id = $1
+    `,
+      [targetUserId]
+    );
+
+    return res.json({
+      success: true,
+      message: "Professeur mis à jour avec succès",
+      data: finalResult.rows[0],
+    });
+  } catch (error: any) {
+    console.error("Erreur updateTeacherForAdminHandler:", error);
+
+    if (error.code === "23505") {
+      return res.status(409).json({
+        success: false,
+        error: "Un utilisateur avec cet email existe déjà",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la mise à jour du professeur",
+    });
+  }
+}
+
+/**
+ * PATCH /api/admin/teachers/:userId/status
+ * Activer / désactiver un professeur
+ */
+export async function updateTeacherStatusHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const targetUserId = req.params.userId;
+    const { active } = req.body as { active: boolean };
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE users
+      SET active = $1
+      WHERE id = $2
+        AND role = 'teacher'
+        AND establishment_id = $3
+    `,
+      [active, targetUserId, estId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Professeur introuvable pour cet établissement",
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Statut du professeur mis à jour",
+    });
+  } catch (error) {
+    console.error("Erreur updateTeacherStatusHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la mise à jour du statut du professeur",
+    });
+  }
+}

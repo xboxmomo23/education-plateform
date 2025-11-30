@@ -1,111 +1,185 @@
-// app/admin/teachers/page.tsx
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
+"use client";
 
-// TODO: remplacer par /api/admin/teachers
-const MOCK_TEACHERS = [
-  {
-    id: "1",
-    fullName: "M. Karim Prof Demo",
-    email: "karim.prof@example.com",
-    phone: "+213 555 000 111",
-    mainSubject: "Mathématiques",
-    isActive: true,
-  },
-  {
-    id: "2",
-    fullName: "Mme Nadia Test",
-    email: "nadia.test@example.com",
-    phone: "+213 555 000 222",
-    mainSubject: "Français",
-    isActive: true,
-  },
-]
+import { useEffect, useState } from "react";
+import { teachersApi, type AdminTeacher } from "@/lib/api/teachers";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { EditTeacherModal } from "@/components/admin/EditTeacherModal";
+import { CreateTeacherModal } from "@/components/admin/CreateTeacherModal";
 
-export default async function AdminTeachersPage() {
-  const teachers = MOCK_TEACHERS
+export default function AdminTeachersPage() {
+  const [teachers, setTeachers] = useState<AdminTeacher[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [selectedTeacher, setSelectedTeacher] = useState<AdminTeacher | null>(
+    null
+  );
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
+  async function load() {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await teachersApi.list();
+      if (res.success) {
+        setTeachers(res.data);
+      } else {
+        setError("Impossible de charger les professeurs");
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "Erreur lors du chargement des professeurs");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const handleToggleActive = async (teacher: AdminTeacher) => {
+    try {
+      await teachersApi.updateStatus(teacher.user_id, !teacher.active);
+      setTeachers((prev) =>
+        prev.map((t) =>
+          t.user_id === teacher.user_id ? { ...t, active: !t.active } : t
+        )
+      );
+    } catch (err: any) {
+      console.error(err);
+      alert("Erreur lors de la mise à jour du statut du professeur");
+    }
+  };
+
+  const handleTeacherUpdated = (updated: AdminTeacher) => {
+    setTeachers((prev) =>
+      prev.map((t) => (t.user_id === updated.user_id ? updated : t))
+    );
+  };
+
+  const handleTeacherCreated = (created: AdminTeacher) => {
+    setTeachers((prev) => [...prev, created]);
+  };
 
   return (
-    <div className="min-h-screen bg-muted/30 p-6">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Professeurs</h1>
-            <p className="text-muted-foreground">
-              Créez et gérez les comptes enseignants de l&apos;établissement.
-            </p>
-          </div>
-          <Button>
-            {/* TODO: modale ajout professeur (user + teacher_profile) */}
-            Ajouter un professeur
-          </Button>
-        </header>
+    <main className="mx-auto max-w-6xl px-4 py-8">
+      {/* Header */}
+      <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Professeurs</h1>
+          <p className="text-sm text-muted-foreground">
+            Gérer les comptes professeurs de votre établissement.
+          </p>
+        </div>
+        <Button onClick={() => setShowCreateModal(true)}>+ Créer un professeur</Button>
+      </header>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Liste des professeurs</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nom complet</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Téléphone</TableHead>
-                  <TableHead>Matière principale</TableHead>
-                  <TableHead>Statut</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {teachers.map((teacher) => (
-                  <TableRow key={teacher.id}>
-                    <TableCell className="font-medium">{teacher.fullName}</TableCell>
-                    <TableCell>{teacher.email}</TableCell>
-                    <TableCell>{teacher.phone}</TableCell>
-                    <TableCell>{teacher.mainSubject}</TableCell>
-                    <TableCell>
-                      <Badge variant={teacher.isActive ? "default" : "outline"}>
-                        {teacher.isActive ? "Actif" : "Désactivé"}
+      {/* États de chargement / erreur */}
+      {loading && (
+        <p className="text-sm text-muted-foreground">
+          Chargement des professeurs...
+        </p>
+      )}
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
+
+      {!loading && !error && teachers.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          Aucun professeur pour le moment. Cliquez sur &quot;Créer un professeur&quot;
+          pour ajouter un compte.
+        </p>
+      )}
+
+      {/* Tableau */}
+      {!loading && !error && teachers.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border bg-card">
+          <table className="min-w-full text-sm">
+            <thead className="border-b bg-muted/60">
+              <tr>
+                <th className="px-4 py-2 text-left">Nom</th>
+                <th className="px-4 py-2 text-left">Email</th>
+                <th className="px-4 py-2 text-left">Téléphone</th>
+                <th className="px-4 py-2 text-left">Spécialité</th>
+                <th className="px-4 py-2 text-left">Bureau</th>
+                <th className="px-4 py-2 text-left">Statut</th>
+                <th className="px-4 py-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {teachers.map((t) => (
+                <tr key={t.user_id} className="border-b last:border-0">
+                  <td className="px-4 py-2">
+                    <div className="font-medium">{t.full_name}</div>
+                    {t.employee_no && (
+                      <div className="text-xs text-muted-foreground">
+                        Matricule : {t.employee_no}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-2">
+                    <div className="text-xs font-mono">{t.email}</div>
+                  </td>
+                  <td className="px-4 py-2 text-xs">
+                    {t.phone || <span className="text-muted-foreground">—</span>}
+                  </td>
+                  <td className="px-4 py-2 text-xs">
+                    {t.specialization || (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-xs">
+                    {t.office_room || (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={t.active}
+                        onCheckedChange={() => handleToggleActive(t)}
+                      />
+                      <Badge
+                        variant={t.active ? "default" : "outline"}
+                        className={t.active ? "bg-emerald-100 text-emerald-800" : ""}
+                      >
+                        {t.active ? "Actif" : "Désactivé"}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="flex justify-end gap-2">
-                      <Button variant="outline" size="sm">
-                        Modifier
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        Désactiver
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                    </div>
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setSelectedTeacher(t)}
+                    >
+                      Modifier
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-                {teachers.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
-                      Aucun professeur pour le moment.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+      {/* Modale édition */}
+      {selectedTeacher && (
+        <EditTeacherModal
+          teacher={selectedTeacher}
+          onClose={() => setSelectedTeacher(null)}
+          onSaved={handleTeacherUpdated}
+        />
+      )}
 
-        <Button variant="ghost" asChild>
-          <Link href="/admin">← Retour au dashboard</Link>
-        </Button>
-      </div>
-    </div>
-  )
+      {/* Modale création */}
+      <CreateTeacherModal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreated={handleTeacherCreated}
+      />
+    </main>
+  );
 }
