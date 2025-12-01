@@ -8,11 +8,22 @@ import {
   getAdminStudentsHandler,
   createStudentForAdminHandler,
   updateStudentStatusHandler,
+  // 👇 Professeurs
   getAdminTeachersHandler,
   createTeacherForAdminHandler,
   updateTeacherForAdminHandler,
   updateTeacherStatusHandler,
+  // 👇 Matières
+  getAdminSubjectsHandler,
+  createSubjectForAdminHandler,
+  updateSubjectForAdminHandler,
+  // 👇 Cours (affectations)
+  getClassCoursesForAdminHandler,
+  createCourseForAdminHandler,
+  updateCourseForAdminHandler,
 } from "../controllers/admin.controller";
+
+
 import { body } from "express-validator";
 import { validateRequest } from "../middleware/validation.middleware";
 
@@ -102,6 +113,102 @@ router.patch(
   updateStudentStatusHandler
 );
 
+
+
+// Matières
+router.get("/subjects", getAdminSubjectsHandler);
+
+router.post(
+  "/subjects",
+  [
+    body("name")
+      .isString()
+      .notEmpty()
+      .withMessage("Le nom de la matière est obligatoire"),
+    body("short_code")
+      .optional()
+      .isString()
+      .withMessage("short_code doit être une chaîne"),
+    body("color")
+      .optional()
+      .isString()
+      .withMessage("color doit être une chaîne"),
+    body("level")
+      .optional()
+      .isString()
+      .withMessage("level doit être une chaîne"),
+  ],
+  validateRequest,
+  createSubjectForAdminHandler
+);
+
+router.patch(
+  "/subjects/:subjectId",
+  [
+    body("name").optional().isString().withMessage("name doit être une chaîne"),
+    body("short_code")
+      .optional()
+      .isString()
+      .withMessage("short_code doit être une chaîne"),
+    body("color")
+      .optional()
+      .isString()
+      .withMessage("color doit être une chaîne"),
+    body("level")
+      .optional()
+      .isString()
+      .withMessage("level doit être une chaîne"),
+  ],
+  validateRequest,
+  updateSubjectForAdminHandler
+);
+
+// Cours (affectations matière + prof + classe)
+router.get(
+  "/classes/:classId/courses",
+  getClassCoursesForAdminHandler
+);
+
+router.post(
+  "/courses",
+  [
+    body("class_id")
+      .isUUID()
+      .withMessage("class_id doit être un UUID valide"),
+    body("subject_id")
+      .isUUID()
+      .withMessage("subject_id doit être un UUID valide"),
+    body("teacher_id")
+      .isUUID()
+      .withMessage("teacher_id doit être un UUID valide"),
+    body("default_room")
+      .optional()
+      .isString()
+      .withMessage("default_room doit être une chaîne"),
+  ],
+  validateRequest,
+  createCourseForAdminHandler
+);
+
+router.patch(
+  "/courses/:courseId",
+  [
+    body("subject_id")
+      .optional()
+      .isUUID()
+      .withMessage("subject_id doit être un UUID valide"),
+    body("teacher_id")
+      .optional()
+      .isUUID()
+      .withMessage("teacher_id doit être un UUID valide"),
+    body("default_room")
+      .optional()
+      .isString()
+      .withMessage("default_room doit être une chaîne"),
+  ],
+  validateRequest,
+  updateCourseForAdminHandler
+);
 
 
 // Professeurs

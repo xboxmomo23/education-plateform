@@ -893,3 +893,442 @@ export async function updateTeacherStatusHandler(req: Request, res: Response) {
     });
   }
 }
+
+
+/**
+ * GET /api/admin/subjects
+ * Liste des matières de l'établissement de l'admin
+ */
+export async function getAdminSubjectsHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        id,
+        name,
+        short_code,
+        color,
+        level,
+        establishment_id,
+        created_at
+      FROM subjects
+      WHERE establishment_id = $1
+      ORDER BY name ASC
+    `,
+      [estId]
+    );
+
+    return res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error("Erreur getAdminSubjectsHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors du chargement des matières",
+    });
+  }
+}
+
+/**
+ * POST /api/admin/subjects
+ * Création d'une matière
+ */
+export async function createSubjectForAdminHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const { name, short_code, color, level } = req.body;
+
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        error: "Le nom de la matière est obligatoire",
+      });
+    }
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const insertResult = await pool.query(
+      `
+      INSERT INTO subjects (
+        name,
+        short_code,
+        color,
+        level,
+        establishment_id
+      )
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id, name, short_code, color, level, establishment_id, created_at
+    `,
+      [name, short_code || null, color || null, level || null, estId]
+    );
+
+    return res.status(201).json({
+      success: true,
+      data: insertResult.rows[0],
+    });
+  } catch (error) {
+    console.error("Erreur createSubjectForAdminHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la création de la matière",
+    });
+  }
+}
+
+/**
+ * PATCH /api/admin/subjects/:subjectId
+ * Mise à jour d'une matière
+ */
+export async function updateSubjectForAdminHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const subjectId = req.params.subjectId;
+    const { name, short_code, color, level } = req.body;
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const subjectCheck = await pool.query(
+      `SELECT id FROM subjects WHERE id = $1 AND establishment_id = $2`,
+      [subjectId, estId]
+    );
+
+    if (subjectCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Matière introuvable pour cet établissement",
+      });
+    }
+
+    const updateResult = await pool.query(
+      `
+      UPDATE subjects
+      SET
+        name = COALESCE($1, name),
+        short_code = COALESCE($2, short_code),
+        color = COALESCE($3, color),
+        level = COALESCE($4, level)
+      WHERE id = $5
+      RETURNING id, name, short_code, color, level, establishment_id, created_at
+    `,
+      [name ?? null, short_code ?? null, color ?? null, level ?? null, subjectId]
+    );
+
+    return res.json({
+      success: true,
+      data: updateResult.rows[0],
+    });
+  } catch (error) {
+    console.error("Erreur updateSubjectForAdminHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la mise à jour de la matière",
+    });
+  }
+}
+
+/**
+ * GET /api/admin/classes/:classId/courses
+ * Liste des cours (matière + prof) d'une classe
+ */
+export async function getClassCoursesForAdminHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const classId = req.params.classId;
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const classCheck = await pool.query(
+      `SELECT id FROM classes WHERE id = $1 AND establishment_id = $2`,
+      [classId, estId]
+    );
+
+    if (classCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Classe introuvable pour cet établissement",
+      });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        c.id,
+        c.class_id,
+        c.subject_id,
+        c.teacher_id,
+        c.default_room,
+        s.name AS subject_name,
+        s.short_code AS subject_short_code,
+        s.color AS subject_color,
+        u.full_name AS teacher_name
+      FROM courses c
+      JOIN subjects s ON s.id = c.subject_id
+      JOIN users u ON u.id = c.teacher_id
+      WHERE c.class_id = $1
+        AND c.establishment_id = $2
+      ORDER BY s.name ASC
+    `,
+      [classId, estId]
+    );
+
+    return res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error("Erreur getClassCoursesForAdminHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors du chargement des cours de la classe",
+    });
+  }
+}
+
+/**
+ * POST /api/admin/courses
+ * Création d'un cours (classe + matière + professeur)
+ */
+export async function createCourseForAdminHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const { class_id, subject_id, teacher_id, default_room } = req.body;
+
+    if (!class_id || !subject_id || !teacher_id) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "Les champs class_id, subject_id et teacher_id sont obligatoires",
+      });
+    }
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const classCheck = await pool.query(
+      `SELECT id FROM classes WHERE id = $1 AND establishment_id = $2`,
+      [class_id, estId]
+    );
+    if (classCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Classe introuvable pour cet établissement",
+      });
+    }
+
+    const subjectCheck = await pool.query(
+      `SELECT id FROM subjects WHERE id = $1 AND establishment_id = $2`,
+      [subject_id, estId]
+    );
+    if (subjectCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Matière introuvable pour cet établissement",
+      });
+    }
+
+    const teacherCheck = await pool.query(
+      `SELECT id FROM users WHERE id = $1 AND establishment_id = $2 AND role = 'teacher'`,
+      [teacher_id, estId]
+    );
+    if (teacherCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Professeur introuvable pour cet établissement",
+      });
+    }
+
+    const insertResult = await pool.query(
+      `
+      INSERT INTO courses (
+        class_id,
+        subject_id,
+        teacher_id,
+        default_room,
+        establishment_id
+      )
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id, class_id, subject_id, teacher_id, default_room, establishment_id, created_at
+    `,
+      [class_id, subject_id, teacher_id, default_room || null, estId]
+    );
+
+    const courseRow = insertResult.rows[0];
+
+    const finalResult = await pool.query(
+      `
+      SELECT
+        c.id,
+        c.class_id,
+        c.subject_id,
+        c.teacher_id,
+        c.default_room,
+        s.name AS subject_name,
+        s.short_code AS subject_short_code,
+        s.color AS subject_color,
+        u.full_name AS teacher_name
+      FROM courses c
+      JOIN subjects s ON s.id = c.subject_id
+      JOIN users u ON u.id = c.teacher_id
+      WHERE c.id = $1
+    `,
+      [courseRow.id]
+    );
+
+    return res.status(201).json({
+      success: true,
+      data: finalResult.rows[0],
+    });
+  } catch (error) {
+    console.error("Erreur createCourseForAdminHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la création du cours",
+    });
+  }
+}
+
+/**
+ * PATCH /api/admin/courses/:courseId
+ * Mise à jour d'un cours
+ */
+export async function updateCourseForAdminHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const courseId = req.params.courseId;
+    const { subject_id, teacher_id, default_room } = req.body;
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const courseCheck = await pool.query(
+      `SELECT id FROM courses WHERE id = $1 AND establishment_id = $2`,
+      [courseId, estId]
+    );
+    if (courseCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Cours introuvable pour cet établissement",
+      });
+    }
+
+    if (subject_id) {
+      const subjectCheck = await pool.query(
+        `SELECT id FROM subjects WHERE id = $1 AND establishment_id = $2`,
+        [subject_id, estId]
+      );
+      if (subjectCheck.rowCount === 0) {
+        return res.status(404).json({
+          success: false,
+          error: "Matière introuvable pour cet établissement",
+        });
+      }
+    }
+
+    if (teacher_id) {
+      const teacherCheck = await pool.query(
+        `SELECT id FROM users WHERE id = $1 AND establishment_id = $2 AND role = 'teacher'`,
+        [teacher_id, estId]
+      );
+      if (teacherCheck.rowCount === 0) {
+        return res.status(404).json({
+          success: false,
+          error: "Professeur introuvable pour cet établissement",
+        });
+      }
+    }
+
+    const updateResult = await pool.query(
+      `
+      UPDATE courses
+      SET
+        subject_id = COALESCE($1, subject_id),
+        teacher_id = COALESCE($2, teacher_id),
+        default_room = COALESCE($3, default_room)
+      WHERE id = $4
+        AND establishment_id = $5
+      RETURNING id, class_id, subject_id, teacher_id, default_room, establishment_id, created_at
+    `,
+      [
+        subject_id ?? null,
+        teacher_id ?? null,
+        default_room ?? null,
+        courseId,
+        estId,
+      ]
+    );
+
+    const courseRow = updateResult.rows[0];
+
+    const finalResult = await pool.query(
+      `
+      SELECT
+        c.id,
+        c.class_id,
+        c.subject_id,
+        c.teacher_id,
+        c.default_room,
+        s.name AS subject_name,
+        s.short_code AS subject_short_code,
+        s.color AS subject_color,
+        u.full_name AS teacher_name
+      FROM courses c
+      JOIN subjects s ON s.id = c.subject_id
+      JOIN users u ON u.id = c.teacher_id
+      WHERE c.id = $1
+    `,
+      [courseRow.id]
+    );
+
+    return res.json({
+      success: true,
+      data: finalResult.rows[0],
+    });
+  } catch (error) {
+    console.error("Erreur updateCourseForAdminHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la mise à jour du cours",
+    });
+  }
+}
+
