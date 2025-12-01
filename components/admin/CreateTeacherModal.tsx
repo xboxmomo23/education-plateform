@@ -10,12 +10,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { teachersApi, type AdminTeacher } from "@/lib/api/teachers";
+import { teachersApi } from "@/lib/api/teachers";
 
 interface CreateTeacherModalProps {
   open: boolean;
   onClose: () => void;
-  onCreated: (teacher: AdminTeacher) => void;
+  onCreated: () => void; // ✅ on ne passe plus l'objet prof
 }
 
 export function CreateTeacherModal({
@@ -60,13 +60,15 @@ export function CreateTeacherModal({
         office_room: form.office_room || undefined,
       });
 
-      if (!res.success || !res.data) {
-        setError("Erreur lors de la création du professeur");
+      if (!res.success) {
+        setError(res.message || "Erreur lors de la création du professeur");
         return;
       }
 
-      onCreated(res.data); // on met à jour la liste dans la page
-      onClose();
+      // On laisse la page recharger la liste propre
+      onCreated();
+
+      // reset du formulaire
       setForm({
         full_name: "",
         email: "",

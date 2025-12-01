@@ -41,6 +41,11 @@ export default function AdminTeachersPage() {
   }, []);
 
   const handleToggleActive = async (teacher: AdminTeacher) => {
+    if (!teacher.user_id) {
+      console.error("Teacher sans user_id, impossible de changer le statut", teacher);
+      return;
+    }
+
     try {
       await teachersApi.updateStatus(teacher.user_id, !teacher.active);
       setTeachers((prev) =>
@@ -58,10 +63,6 @@ export default function AdminTeachersPage() {
     setTeachers((prev) =>
       prev.map((t) => (t.user_id === updated.user_id ? updated : t))
     );
-  };
-
-  const handleTeacherCreated = (created: AdminTeacher) => {
-    setTeachers((prev) => [...prev, created]);
   };
 
   return (
@@ -110,7 +111,7 @@ export default function AdminTeachersPage() {
             </thead>
             <tbody>
               {teachers.map((t) => (
-                <tr key={t.user_id} className="border-b last:border-0">
+                <tr key={t.user_id || t.email} className="border-b last:border-0">
                   <td className="px-4 py-2">
                     <div className="font-medium">{t.full_name}</div>
                     {t.employee_no && (
@@ -154,6 +155,7 @@ export default function AdminTeachersPage() {
                       size="sm"
                       variant="outline"
                       onClick={() => setSelectedTeacher(t)}
+                      disabled={!t.user_id}
                     >
                       Modifier
                     </Button>
@@ -166,7 +168,7 @@ export default function AdminTeachersPage() {
       )}
 
       {/* Modale édition */}
-      {selectedTeacher && (
+      {selectedTeacher && selectedTeacher.user_id && (
         <EditTeacherModal
           teacher={selectedTeacher}
           onClose={() => setSelectedTeacher(null)}
@@ -174,11 +176,15 @@ export default function AdminTeachersPage() {
         />
       )}
 
-      {/* Modale création */}
+      {/* Modale création :
+          onCreated => on ferme + on recharge la liste propre depuis l'API */}
       <CreateTeacherModal
         open={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-        onCreated={handleTeacherCreated}
+        onCreated={() => {
+          setShowCreateModal(false);
+          load();
+        }}
       />
     </main>
   );

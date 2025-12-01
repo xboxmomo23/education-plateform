@@ -10,7 +10,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { teachersApi, type AdminTeacher } from "@/lib/api/teachers";
 
 interface EditTeacherModalProps {
@@ -25,8 +24,8 @@ export function EditTeacherModal({
   onSaved,
 }: EditTeacherModalProps) {
   const [form, setForm] = useState({
-    full_name: teacher.full_name,
-    email: teacher.email,
+    full_name: teacher.full_name || "",
+    email: teacher.email || "",
     employee_no: teacher.employee_no || "",
     hire_date: teacher.hire_date || "",
     specialization: teacher.specialization || "",
@@ -39,12 +38,17 @@ export function EditTeacherModal({
 
   const handleChange =
     (field: keyof typeof form) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    (e: React.ChangeEvent<HTMLInputElement>) => {
       setForm((prev) => ({ ...prev, [field]: e.target.value }));
     };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!teacher.user_id) {
+      setError("Professeur invalide (user_id manquant)");
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -110,7 +114,7 @@ export function EditTeacherModal({
               <Label>Date d&apos;embauche</Label>
               <Input
                 type="date"
-                value={form.hire_date || ""}
+                value={form.hire_date}
                 onChange={handleChange("hire_date")}
               />
             </div>
