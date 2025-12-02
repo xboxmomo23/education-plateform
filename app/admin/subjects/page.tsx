@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { subjectsApi, type Subject } from "@/lib/api/subjects";
 import { coursesApi, type AdminCourse } from "@/lib/api/courses";
 import { teachersApi, type AdminTeacher } from "@/lib/api/teachers";
+import { classesApi, type AdminClass } from "@/lib/api/classes"; // ✅ utilisation de l'API existante
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -14,13 +15,13 @@ import {
 } from "@/components/ui/tabs";
 import { SubjectModal } from "@/components/admin/SubjectModal";
 import { CourseModal } from "@/components/admin/CourseModal";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-
-interface AdminClass {
-  id: string;
-  code: string;
-  label: string;
-}
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
 
 export default function AdminSubjectsPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -39,7 +40,9 @@ export default function AdminSubjectsPage() {
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
 
   const [courseModalOpen, setCourseModalOpen] = useState(false);
-  const [selectedCourse, setSelectedCourse] = useState<AdminCourse | null>(null);
+  const [selectedCourse, setSelectedCourse] = useState<AdminCourse | null>(
+    null
+  );
 
   const [selectedClassId, setSelectedClassId] = useState<string>("");
 
@@ -69,15 +72,16 @@ export default function AdminSubjectsPage() {
     async function loadClassesAndTeachers() {
       try {
         setLoadingClasses(true);
-        // On suppose que tu as déjà /admin/classes et teachersApi.list()
+
+        // ✅ On utilise les API existantes (pas de fetch direct)
         const [classesRes, teachersRes] = await Promise.all([
-          fetch("/api/admin/classes").then((r) => r.json()),
+          classesApi.list(),
           teachersApi.list(),
         ]);
 
         if (classesRes.success) {
           setClasses(classesRes.data);
-          if (classesRes.data.length > 0) {
+          if (!selectedClassId && classesRes.data.length > 0) {
             setSelectedClassId(classesRes.data[0].id);
           }
         }
@@ -86,14 +90,14 @@ export default function AdminSubjectsPage() {
           setTeachers(teachersRes.data);
         }
       } catch (err) {
-        console.error(err);
+        console.error("Erreur chargement classes / professeurs:", err);
       } finally {
         setLoadingClasses(false);
       }
     }
 
     loadClassesAndTeachers();
-  }, []);
+  }, [selectedClassId]);
 
   // Chargement des cours pour la classe sélectionnée
   useEffect(() => {
@@ -110,9 +114,7 @@ export default function AdminSubjectsPage() {
         }
       } catch (err: any) {
         console.error(err);
-        setCoursesError(
-          err.message || "Erreur lors du chargement des cours"
-        );
+        setCoursesError(err.message || "Erreur lors du chargement des cours");
       } finally {
         setLoadingCourses(false);
       }
@@ -122,7 +124,9 @@ export default function AdminSubjectsPage() {
   }, [selectedClassId]);
 
   const selectedClassLabel =
-    classes.find((c) => c.id === selectedClassId)?.label || "Classe";
+    classes.find((c) => c.id === selectedClassId)?.label ||
+    classes.find((c) => c.id === selectedClassId)?.code ||
+    "Classe";
 
   const handleSubjectSaved = (subject: Subject) => {
     setSubjects((prev) => {
@@ -149,7 +153,8 @@ export default function AdminSubjectsPage() {
       <header className="mb-6">
         <h1 className="text-2xl font-bold">Matières & Cours</h1>
         <p className="text-sm text-muted-foreground">
-          Gérer les matières de l&apos;établissement et les affectations matière / professeur / classe.
+          Gérer les matières de l&apos;établissement et les affectations
+          matière / professeur / classe.
         </p>
       </header>
 
@@ -262,7 +267,7 @@ export default function AdminSubjectsPage() {
                 <SelectContent>
                   {classes.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
-                      {c.code} – {c.label}
+                      {c.code ?? c.label ?? "Classe"}
                     </SelectItem>
                   ))}
                 </SelectContent>

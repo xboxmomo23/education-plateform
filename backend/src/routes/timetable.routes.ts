@@ -30,6 +30,10 @@ import {
   deleteEntryHandler,
   createFromTemplateHandler,
   duplicateTimetableHandler,
+  //nouveaux systeme template cours pour staff
+  getSubjectsForStaffHandler,
+  getTeachersForStaffHandler,
+  createCourseForStaffHandler,
 } from '../controllers/timetable.controller';
 
 const router = Router();
@@ -383,6 +387,56 @@ router.post(
   validateRequest,
   checkConflictsHandler
 );
+
+
+
+
+
+
+/**
+ * GET /api/timetable/staff/subjects
+ * Matières visibles par un membre du staff
+ */
+router.get(
+  '/staff/subjects',
+  authenticate,
+  authorize('staff', 'admin'),
+  getSubjectsForStaffHandler
+);
+
+/**
+ * GET /api/timetable/staff/teachers
+ * Professeurs de l'établissement du staff
+ */
+router.get(
+  '/staff/teachers',
+  authenticate,
+  authorize('staff', 'admin'),
+  getTeachersForStaffHandler
+);
+
+/**
+ * POST /api/timetable/courses
+ * Création d'un cours (classe + matière + prof) par le staff
+ */
+router.post(
+  '/courses',
+  authenticate,
+  authorize('staff', 'admin'),
+  body('class_id').isUUID().withMessage('ID de classe invalide'),
+  body('subject_id').isUUID().withMessage('ID de matière invalide'),
+  body('teacher_id').isUUID().withMessage('ID de professeur invalide'),
+  body('default_room').optional().isString().withMessage('Salle invalide'),
+  validateRequest,
+  createCourseForStaffHandler
+);
+
+
+
+
+
+
+
 
 // =========================
 // ROUTES ENTRIES (Templates - Compatibilité)

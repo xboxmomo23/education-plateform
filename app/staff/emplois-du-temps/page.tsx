@@ -27,9 +27,9 @@ import {
 import { timetableApi } from "@/lib/api/timetable"
 import { timetableInstanceApi, type TimetableInstance } from "@/lib/api/timetable-instance"
 import { establishmentApi } from "@/lib/api/establishment"
-import { CreateTemplateModal } from "@/components/timetable/CreateTemplateModal"
 import { EditTemplateModal } from "@/components/timetable/EditTemplateModal"
 import { EditInstanceModal } from "@/components/timetable/EditInstanceModal"
+import { CreateTemplateModal } from "@/components/timetable/CreateTemplateModal"
 import { CopyWeekModal } from "@/components/timetable/CopyWeekModal"
 import { GenerateFromTemplateModal } from "@/components/timetable/GenerateFromTemplateModal"
 import { ModeIndicator } from "@/components/timetable/ModeIndicator"
@@ -143,17 +143,41 @@ export default function StaffEmploisDuTempsPage() {
   }
 
   const loadTemplates = useCallback(async () => {
-    if (!selectedClassId) return
+  if (!selectedClassId) return
 
-    try {
-      const response = await timetableApi.getTemplates(selectedClassId)
-      if (response.success) {
-        setTemplates(response.data)
-      }
-    } catch (error) {
-      console.error('❌ Erreur chargement templates:', error)
+  try {
+    // On utilise maintenant les COURS disponibles pour la classe
+    const response = await timetableApi.getAvailableCourses(selectedClassId)
+
+    if (response.success && Array.isArray(response.data)) {
+      // On récupère éventuellement le label/code de la classe courante
+      const currentClass = classes.find((c: any) => c.class_id === selectedClassId)
+
+      const mapped = response.data.map((course: any, index: number) => ({
+        // On "déguiser" chaque cours en CourseTemplate pour réutiliser le code existant
+        id: course.course_id,
+        course_id: course.course_id,
+        default_duration: 60, // durée par défaut (1h)
+        default_room: null,   // pour l'instant pas de salle par défaut côté cours
+        display_order: index,
+        subject_name: course.subject_name,
+        subject_code: course.subject_code,
+        subject_color: course.subject_color,
+        teacher_name: course.teacher_name,
+        class_label: currentClass?.class_label || currentClass?.code || "",
+        class_id: selectedClassId,
+      }))
+
+      setTemplates(mapped)
+    } else {
+      setTemplates([])
     }
-  }, [selectedClassId])
+  } catch (error) {
+    console.error("❌ Erreur chargement cours:", error)
+    setTemplates([])
+  }
+}, [selectedClassId, classes])
+
 
   // ==================== CHARGEMENT DONNÉES AVEC ANNULATION ====================
 
@@ -425,7 +449,7 @@ export default function StaffEmploisDuTempsPage() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-semibold flex items-center gap-2">
-                    📋 Mes Templates
+                    📚 Cours de la classe
                   </h3>
                 </div>
 
@@ -439,13 +463,7 @@ export default function StaffEmploisDuTempsPage() {
                   />
                 </div>
 
-                <Button
-                  variant="outline"
-                  className="w-full mb-4"
-                  onClick={() => setShowCreateTemplateModal(true)}
-                >
-                  + Créer un template
-                </Button>
+                
 
                 <div className="space-y-2 max-h-[600px] overflow-y-auto">
                   {templates.map((template) => (
@@ -468,45 +486,22 @@ export default function StaffEmploisDuTempsPage() {
                           </div>
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-xs">
-                              {template.default_duration}min
+                              {template.default_duration ? `${template.default_duration}min` : '60min'}
                             </span>
                             <span className="text-xs text-primary">
-                              🔴 {template.default_room || '305'}
+                              🔴 {template.default_room || '—'}
                             </span>
                           </div>
                         </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setEditingTemplate(template)
-                                setShowEditTemplateModal(true)
-                              }}
-                            >
-                              <Pencil className="h-4 w-4 mr-2" />
-                              Modifier
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleDeleteTemplate(template.id)
-                              }}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Supprimer
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+
+                        {/* Petit texte d'aide à droite à la place du menu */}
+                        <span className="text-[11px] text-muted-foreground ml-2">
+                          Cliquer pour utiliser
+                        </span>
                       </div>
                     </div>
                   ))}
+
                 </div>
               </CardContent>
             </Card>

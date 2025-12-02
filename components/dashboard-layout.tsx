@@ -21,6 +21,8 @@ import {
   AlertCircle,
 } from "lucide-react"
 import Link from "next/link"
+import { Layers } from "lucide-react";
+
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -106,6 +108,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
           { icon: ClipboardCheck, label: "Présences", href: "/staff/presences" },
           { icon: AlertCircle, label: "Absences", href: "/staff/absences" },
           { icon: Calendar, label: "Emplois du temps", href: "/staff/emplois-du-temps" },
+          { icon: Layers, label: "Cours", href: "/staff/cours" },
           { icon: FileText, label: "Devoirs", href: "/staff/devoirs" },
           { icon: BarChart, label: "Notes", href: "/staff/notes" },
           { icon: Users, label: "Gestion des utilisateurs", href: "/staff/gestion-utilisateurs" },

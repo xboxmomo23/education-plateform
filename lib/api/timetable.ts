@@ -119,6 +119,14 @@ export interface CreateFromTemplateData {
   notes?: string;
 }
 
+export interface CreateCourseData {
+  class_id: string;
+  subject_id: string;
+  teacher_id: string;
+  default_room?: string;
+}
+
+
 // =========================
 // API CLIENT
 // =========================
@@ -257,6 +265,27 @@ export const timetableApi = {
   async getStaffClasses() {
     return apiCall('/timetable/staff/classes');
   },
+
+
+
+    async getStaffSubjects() {
+    return apiCall('/timetable/staff/subjects');
+  },
+
+  async getStaffTeachers() {
+    return apiCall('/timetable/staff/teachers');
+  },
+
+  async createCourse(data: CreateCourseData) {
+    return apiCall('/timetable/courses', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+
+
+
 
   // ==================
   // TEMPLATES

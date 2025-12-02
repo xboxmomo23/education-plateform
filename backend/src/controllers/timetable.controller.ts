@@ -632,6 +632,198 @@ export async function getAvailableCoursesHandler(req: Request, res: Response) {
   }
 }
 
+
+
+
+// 🔹 Récupérer les matières visibles par un staff (en fonction de ses classes)
+export async function getSubjectsForStaffHandler(req: Request, res: Response) {
+  try {
+    // ⚠️ MODE DEBUG : on ignore l'établissement, on renvoie toutes les matières
+    const subjectsRes = await pool.query(
+      `
+      SELECT id, name, short_code, color, level, establishment_id
+      FROM subjects
+      ORDER BY name ASC
+      `
+    );
+
+    return res.json({
+      success: true,
+      data: subjectsRes.rows,
+    });
+  } catch (error) {
+    console.error("Erreur getSubjectsForStaff (DEBUG):", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la récupération des matières",
+    });
+  }
+}
+
+
+
+// 🔹 Récupérer les professeurs pour l'établissement du staff
+// 🔹 Récupérer les professeurs pour l'établissement du staff
+export async function getTeachersForStaffHandler(req: Request, res: Response) {
+  try {
+    // ⚠️ MODE DEBUG : on ignore l'établissement, on renvoie tous les profs
+    const teachersRes = await pool.query(
+      `
+      SELECT id, full_name, email, role, active, establishment_id
+      FROM users
+      WHERE role = 'teacher'
+      ORDER BY full_name ASC
+      `
+    );
+
+    return res.json({
+      success: true,
+      data: teachersRes.rows,
+    });
+  } catch (error) {
+    console.error("Erreur getTeachersForStaff (DEBUG):", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la récupération des professeurs",
+    });
+  }
+}
+
+
+
+
+// 🔹 Création d'un cours par le STAFF
+export async function createCourseForStaffHandler(req: Request, res: Response) {
+  try {
+    const { userId, role } = req.user!;
+    const { class_id, subject_id, teacher_id, default_room } = req.body;
+
+    if (role !== 'staff' && role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: "Accès réservé au staff / admin",
+      });
+    }
+
+    // Vérifier que le staff gère bien cette classe
+    const staffCheck = await pool.query(
+      `
+      SELECT 1
+      FROM class_staff
+      WHERE class_id = $1 AND user_id = $2
+      `,
+      [class_id, userId]
+    );
+
+    if (role === 'staff' && staffCheck.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        error: "Vous ne gérez pas cette classe",
+      });
+    }
+
+    // Récupérer infos de la classe (année + établissement)
+    const classRes = await pool.query(
+      `
+      SELECT academic_year, establishment_id, label, code
+      FROM classes
+      WHERE id = $1
+      `,
+      [class_id]
+    );
+
+    if (classRes.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Classe non trouvée",
+      });
+    }
+
+    const { academic_year, establishment_id, label, code } = classRes.rows[0];
+
+    // Vérifier que la matière appartient bien à l'établissement
+    const subjRes = await pool.query(
+      `SELECT id FROM subjects WHERE id = $1 AND establishment_id = $2`,
+      [subject_id, establishment_id]
+    );
+    if (subjRes.rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Matière invalide pour cet établissement",
+      });
+    }
+
+    // Vérifier que le prof appartient bien à l'établissement
+    const teacherRes = await pool.query(
+      `SELECT id FROM users WHERE id = $1 AND role = 'teacher' AND establishment_id = $2`,
+      [teacher_id, establishment_id]
+    );
+    if (teacherRes.rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Professeur invalide pour cet établissement",
+      });
+    }
+
+    // 🧱 Création du cours
+    const title = `${code ?? ''} ${label ?? ''}`.trim() || 'Cours';
+
+    const insertRes = await pool.query(
+      `
+      INSERT INTO courses (
+        subject_id,
+        class_id,
+        teacher_id,
+        academic_year,
+        title,
+        active,
+        establishment_id,
+        default_room
+      ) VALUES ($1,$2,$3,$4,$5,true,$6,$7)
+      RETURNING id
+      `,
+      [subject_id, class_id, teacher_id, academic_year, title, establishment_id, default_room || null]
+    );
+
+    const courseId = insertRes.rows[0].id;
+
+    // Retourner le cours dans le même format que getAvailableCoursesForClass
+    const fullRes = await pool.query(
+      `
+      SELECT 
+        c.id as course_id,
+        c.title,
+        sub.name as subject_name,
+        sub.code as subject_code,
+        sub.color as subject_color,
+        u.full_name as teacher_name,
+        u.id as teacher_id,
+        c.class_id
+      FROM courses c
+      JOIN subjects sub ON c.subject_id = sub.id
+      JOIN users u ON c.teacher_id = u.id
+      WHERE c.id = $1
+      `,
+      [courseId]
+    );
+
+    return res.status(201).json({
+      success: true,
+      data: fullRes.rows[0],
+    });
+  } catch (error) {
+    console.error("Erreur createCourseForStaff:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la création du cours",
+    });
+  }
+}
+
+
+
+
+
 /**
  * Vérifier les conflits
  */
