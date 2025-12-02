@@ -400,3 +400,58 @@ export async function getClassAttendanceStatsHandler(req: Request, res: Response
     });
   }
 }
+
+
+
+
+
+
+
+export async function updateRecordStatusHandler(req: Request, res: Response) {
+  try {
+    const { userId, role } = req.user!;
+    const { recordId } = req.params;
+    const { status } = req.body;
+
+    // Vérifier les permissions
+    if (role !== 'staff' && role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Seul le staff peut modifier les statuts',
+      });
+    }
+
+    const query = `
+      UPDATE attendance_records
+      SET 
+        status = $1,
+        updated_at = NOW(),
+        updated_by = $2
+      WHERE id = $3
+      RETURNING *
+    `;
+
+    const result = await pool.query(query, [status, userId, recordId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Enregistrement non trouvé',
+      });
+    }
+
+    console.log(`✅ Statut modifié: ${recordId} → ${status}`);
+
+    return res.json({
+      success: true,
+      message: 'Statut modifié',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erreur updateRecordStatusHandler:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la modification',
+    });
+  }
+}

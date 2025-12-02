@@ -74,6 +74,10 @@ export interface AttendanceRecord {
   status: AttendanceStatus;
   comment: string | null;
   late_minutes: number | null;
+  justified?: boolean;
+  justification?: string | null;
+  justified_at?: string | null;
+  justified_by?: string | null;
 }
 
 export interface AttendanceHistoryItem {
@@ -106,17 +110,69 @@ export interface SessionResponse {
 }
 
 // ============================================
+// NOUVEAUX TYPES (Pages élève + staff absences)
+// ============================================
+
+export interface AbsenceRecord {
+  id: string;
+  student_id: string;
+  student_name: string;
+  student_number: string | null;
+  class_id: string;
+  class_label: string;
+  subject_name: string;
+  subject_color: string;
+  session_date: string;
+  start_time: string;
+  end_time: string;
+  status: AttendanceStatus;
+  late_minutes: number | null;
+  comment: string | null;
+  justified: boolean;
+  justification: string | null;
+  justified_at: string | null;
+  school_year: string;
+}
+
+export interface ClassOption {
+  id: string;
+  label: string;
+}
+
+export interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface ClassAttendanceStats {
+  total_records: number;
+  present_count: number;
+  absent_count: number;
+  late_count: number;
+  excused_count: number;
+  not_justified_count: number;
+  attendance_rate: number;
+}
+
+export interface AbsencesFilters {
+  classId?: string;
+  status?: string;
+  schoolYear?: string;
+  startDate?: string;
+  endDate?: string;
+  justifiedOnly?: boolean;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+// ============================================
 // API CLIENT
 // ============================================
 
 export const attendanceApi = {
-
-
-
-  
-  
-
-
   // ============================================
   // SEMAINE PROFESSEUR
   // ============================================
@@ -263,6 +319,133 @@ export const attendanceApi = {
     const url = `/attendance/student/${studentId}/stats${queryString ? `?${queryString}` : ''}`;
 
     return apiCall<AttendanceStats>(url);
+  },
+
+  // ============================================
+  // ÉLÈVE CONNECTÉ (Page /student/assiduite)
+  // ============================================
+
+  /**
+   * Récupérer l'historique de l'élève connecté
+   * Route: GET /api/attendance/my-history
+   */
+  async getMyHistory(options?: {
+    startDate?: string;
+    endDate?: string;
+    limit?: number;
+  }) {
+    const params = new URLSearchParams();
+    if (options?.startDate) params.append('startDate', options.startDate);
+    if (options?.endDate) params.append('endDate', options.endDate);
+    if (options?.limit) params.append('limit', options.limit.toString());
+
+    const queryString = params.toString();
+    const url = `/attendance/my-history${queryString ? `?${queryString}` : ''}`;
+
+    return apiCall<{ history: AttendanceHistoryItem[]; stats: AttendanceStats }>(url);
+  },
+
+  // ============================================
+  // GESTION ABSENCES STAFF (Page /staff/absences)
+  // ============================================
+
+  /**
+   * Récupérer toutes les absences avec filtres
+   * Route: GET /api/attendance/absences
+   */
+  async getAllAbsences(filters?: AbsencesFilters) {
+    const params = new URLSearchParams();
+    
+    if (filters?.classId && filters.classId !== 'all') {
+      params.append('classId', filters.classId);
+    }
+    if (filters?.status && filters.status !== 'all') {
+      params.append('status', filters.status);
+    }
+    if (filters?.schoolYear) {
+      params.append('schoolYear', filters.schoolYear);
+    }
+    if (filters?.startDate) {
+      params.append('startDate', filters.startDate);
+    }
+    if (filters?.endDate) {
+      params.append('endDate', filters.endDate);
+    }
+    if (filters?.justifiedOnly) {
+      params.append('justifiedOnly', 'true');
+    }
+    if (filters?.search) {
+      params.append('search', filters.search);
+    }
+    if (filters?.page) {
+      params.append('page', filters.page.toString());
+    }
+    if (filters?.limit) {
+      params.append('limit', filters.limit.toString());
+    }
+
+    const queryString = params.toString();
+    const url = `/attendance/absences${queryString ? `?${queryString}` : ''}`;
+
+    return apiCall<{ absences: AbsenceRecord[]; pagination: Pagination }>(url);
+  },
+
+  /**
+   * Récupérer les classes accessibles (pour les filtres)
+   * Route: GET /api/attendance/classes
+   */
+  async getAccessibleClasses() {
+    return apiCall<ClassOption[]>('/attendance/classes');
+  },
+
+  /**
+   * Justifier une absence
+   * Route: PUT /api/attendance/absences/:recordId/justify
+   */
+  async justifyAbsence(
+    recordId: string,
+    justification: string,
+    documentUrl?: string
+  ) {
+    return apiCall<AttendanceRecord>(`/attendance/absences/${recordId}/justify`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        justification,
+        documentUrl,
+      }),
+    });
+  },
+
+  /**
+   * Récupérer les statistiques d'une classe
+   * Route: GET /api/attendance/stats/class/:classId
+   */
+  async getClassStats(
+    classId: string,
+    options?: {
+      startDate?: string;
+      endDate?: string;
+    }
+  ) {
+    const params = new URLSearchParams();
+    if (options?.startDate) params.append('startDate', options.startDate);
+    if (options?.endDate) params.append('endDate', options.endDate);
+
+    const queryString = params.toString();
+    const url = `/attendance/stats/class/${classId}${queryString ? `?${queryString}` : ''}`;
+
+    return apiCall<ClassAttendanceStats>(url);
+  },
+
+
+  async updateRecordStatus(
+    recordId: string,
+    status: AttendanceStatus
+  ) {
+    return apiCall<AttendanceRecord>(`/attendance/records/${recordId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    });
   },
 };
 

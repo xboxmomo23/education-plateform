@@ -18,6 +18,7 @@ import {
   getAccessibleClassesHandler,
   justifyAbsenceHandler,
   getClassAttendanceStatsHandler,
+  updateRecordStatusHandler
 } from '../controllers/attendance-extended.controller';
 
 const router = Router();
@@ -196,6 +197,16 @@ router.get(
   query('endDate').optional().matches(/^\d{4}-\d{2}-\d{2}$/),
   validateRequest,
   getClassAttendanceStatsHandler
+);
+
+router.put(
+  '/records/:recordId/status',
+  authenticate,
+  authorize('staff', 'admin'),
+  param('recordId').isUUID().withMessage('ID invalide'),
+  body('status').isIn(['present', 'absent', 'late', 'excused', 'excluded', 'remote']).withMessage('Statut invalide'),
+  validateRequest,
+  updateRecordStatusHandler
 );
 
 export default router;

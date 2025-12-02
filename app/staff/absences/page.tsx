@@ -16,12 +16,14 @@ import {
   ChevronDown,
   Loader2,
   Eye,
-  FileText
+  FileText,
+  RotateCcw
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -34,6 +36,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog"
 import {
   Popover,
@@ -41,50 +44,13 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { 
+  attendanceApi,
+  type AbsenceRecord,
+  type ClassOption,
+  type AttendanceStatus,
   getStatusLabel,
   getStatusColor,
-  type AttendanceStatus,
 } from "@/lib/api/attendance"
-
-// ============================================
-// TYPES
-// ============================================
-
-interface AbsenceRecord {
-  id: string
-  student_id: string
-  student_name: string
-  student_number: string | null
-  class_id: string
-  class_label: string
-  subject_name: string
-  subject_color: string
-  session_date: string
-  start_time: string
-  end_time: string
-  status: AttendanceStatus
-  late_minutes: number | null
-  comment: string | null
-  justified: boolean
-  justification: string | null
-  justified_at: string | null
-  school_year: string
-}
-
-interface ClassOption {
-  id: string
-  label: string
-}
-
-interface Filters {
-  search: string
-  classId: string
-  status: string
-  schoolYear: string
-  startDate: string
-  endDate: string
-  justifiedOnly: boolean
-}
 
 // ============================================
 // PAGE GESTION DES ABSENCES (STAFF)
@@ -97,9 +63,13 @@ export default function StaffAbsencesPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedAbsence, setSelectedAbsence] = useState<AbsenceRecord | null>(null)
+  const [justifyModalOpen, setJustifyModalOpen] = useState(false)
+  const [justifying, setJustifying] = useState(false)
+  const [changeStatusModalOpen, setChangeStatusModalOpen] = useState(false)
+  const [changingStatus, setChangingStatus] = useState(false)
   
   // Filtres
-  const [filters, setFilters] = useState<Filters>({
+  const [filters, setFilters] = useState({
     search: '',
     classId: 'all',
     status: 'all',
@@ -111,8 +81,7 @@ export default function StaffAbsencesPage() {
 
   // Pagination
   const [page, setPage] = useState(1)
-  const [hasMore, setHasMore] = useState(true)
-  const ITEMS_PER_PAGE = 50
+  const [totalPages, setTotalPages] = useState(1)
 
   // Charger les données
   const loadData = useCallback(async () => {
@@ -120,23 +89,25 @@ export default function StaffAbsencesPage() {
       setLoading(true)
       setError(null)
 
-      // Simuler un appel API - À remplacer par le vrai appel
-      // const response = await absencesApi.getAll(filters)
-      
-      // Pour l'instant, données mock
-      await new Promise(resolve => setTimeout(resolve, 500))
-      
-      // Classes mock
-      setClasses([
-        { id: '1', label: '6ème A' },
-        { id: '2', label: '6ème B' },
-        { id: '3', label: '5ème A' },
-        { id: '4', label: '4ème C' },
-      ])
+      // Charger les classes accessibles
+      const classesResponse = await attendanceApi.getAccessibleClasses()
+      if (classesResponse.success) {
+        setClasses(classesResponse.data)
+      }
 
-      // Absences mock
-      setAbsences(generateMockAbsences(30))
-      setHasMore(true)
+      // Charger les absences
+      const absencesResponse = await attendanceApi.getAllAbsences({
+        ...filters,
+        page,
+        limit: 50,
+      })
+
+      if (absencesResponse.success) {
+        setAbsences(absencesResponse.data.absences)
+        setTotalPages(absencesResponse.data.pagination.totalPages)
+      } else {
+        setError('Erreur lors du chargement des absences')
+      }
 
     } catch (err: any) {
       console.error('Erreur chargement absences:', err)
@@ -144,57 +115,119 @@ export default function StaffAbsencesPage() {
     } finally {
       setLoading(false)
     }
-  }, [filters])
+  }, [filters, page])
 
   useEffect(() => {
     loadData()
   }, [loadData])
 
-  // Filtrer les absences localement
-  const filteredAbsences = absences.filter(absence => {
-    // Recherche
-    if (filters.search) {
-      const searchLower = filters.search.toLowerCase()
-      const matchesSearch = 
-        absence.student_name.toLowerCase().includes(searchLower) ||
-        absence.student_number?.toLowerCase().includes(searchLower) ||
-        absence.class_label.toLowerCase().includes(searchLower) ||
-        absence.subject_name.toLowerCase().includes(searchLower)
-      
-      if (!matchesSearch) return false
-    }
-
-    // Classe
-    if (filters.classId !== 'all' && absence.class_id !== filters.classId) {
-      return false
-    }
-
-    // Statut
-    if (filters.status !== 'all' && absence.status !== filters.status) {
-      return false
-    }
-
-    // Justifié seulement
-    if (filters.justifiedOnly && !absence.justified) {
-      return false
-    }
-
-    return true
-  })
-
   // Stats
   const stats = {
-    total: filteredAbsences.length,
-    absent: filteredAbsences.filter(a => a.status === 'absent').length,
-    late: filteredAbsences.filter(a => a.status === 'late').length,
-    excused: filteredAbsences.filter(a => a.status === 'excused').length,
-    notJustified: filteredAbsences.filter(a => !a.justified && a.status === 'absent').length,
+    total: absences.length,
+    absent: absences.filter(a => a.status === 'absent').length,
+    late: absences.filter(a => a.status === 'late').length,
+    excused: absences.filter(a => a.status === 'excused').length,
+    notJustified: absences.filter(a => !a.justified && a.status === 'absent').length,
+  }
+
+  // Justifier une absence
+  const handleJustify = async (justification: string) => {
+    if (!selectedAbsence) return
+
+    setJustifying(true)
+    try {
+      const response = await attendanceApi.justifyAbsence(
+        selectedAbsence.id,
+        justification
+      )
+
+      if (response.success) {
+        setAbsences(prev => prev.map(a => 
+          a.id === selectedAbsence.id 
+            ? { ...a, justified: true, justification }
+            : a
+        ))
+        setJustifyModalOpen(false)
+        setSelectedAbsence(null)
+      }
+    } catch (err) {
+      console.error('Erreur justification:', err)
+    } finally {
+      setJustifying(false)
+    }
+  }
+
+  // Changer le statut (mettre présent = enlever l'absence)
+  const handleChangeStatus = async (newStatus: AttendanceStatus) => {
+    if (!selectedAbsence) return
+
+    setChangingStatus(true)
+    try {
+      const response = await attendanceApi.updateRecordStatus(
+        selectedAbsence.id,
+        newStatus
+      )
+
+      if (response.success) {
+        // Si on met "present", on retire de la liste des absences
+        if (newStatus === 'present') {
+          setAbsences(prev => prev.filter(a => a.id !== selectedAbsence.id))
+        } else {
+          // Sinon on met à jour le statut
+          setAbsences(prev => prev.map(a => 
+            a.id === selectedAbsence.id 
+              ? { ...a, status: newStatus }
+              : a
+          ))
+        }
+        setChangeStatusModalOpen(false)
+        setSelectedAbsence(null)
+      }
+    } catch (err) {
+      console.error('Erreur changement statut:', err)
+    } finally {
+      setChangingStatus(false)
+    }
   }
 
   // Export CSV
   const handleExport = () => {
-    // TODO: Implémenter l'export CSV
-    alert('Export CSV à implémenter')
+    const headers = ['Élève', 'Classe', 'Date', 'Horaire', 'Matière', 'Statut', 'Justifié', 'Justification']
+    const rows = absences.map(a => [
+      a.student_name,
+      a.class_label,
+      a.session_date,
+      `${a.start_time.slice(0, 5)}-${a.end_time.slice(0, 5)}`,
+      a.subject_name,
+      getStatusLabel(a.status),
+      a.justified ? 'Oui' : 'Non',
+      a.justification || '',
+    ])
+
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(cell => `"${cell}"`).join(','))
+      .join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `absences_${new Date().toISOString().split('T')[0]}.csv`
+    link.click()
+  }
+
+  // Reset filtres
+  const resetFilters = () => {
+    setFilters({
+      search: '',
+      classId: 'all',
+      status: 'all',
+      schoolYear: getCurrentSchoolYearValue(),
+      startDate: '',
+      endDate: '',
+      justifiedOnly: false,
+    })
+    setPage(1)
   }
 
   return (
@@ -368,15 +401,7 @@ export default function StaffAbsencesPage() {
                     <Button 
                       variant="ghost" 
                       size="sm"
-                      onClick={() => setFilters({
-                        search: '',
-                        classId: 'all',
-                        status: 'all',
-                        schoolYear: getCurrentSchoolYearValue(),
-                        startDate: '',
-                        endDate: '',
-                        justifiedOnly: false,
-                      })}
+                      onClick={resetFilters}
                     >
                       Réinitialiser les filtres
                     </Button>
@@ -400,7 +425,7 @@ export default function StaffAbsencesPage() {
                 <p className="text-red-600 mb-4">{error}</p>
                 <Button onClick={loadData}>Réessayer</Button>
               </div>
-            ) : filteredAbsences.length === 0 ? (
+            ) : absences.length === 0 ? (
               <div className="text-center py-12">
                 <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
                 <p className="text-gray-600">Aucune absence trouvée</p>
@@ -428,22 +453,55 @@ export default function StaffAbsencesPage() {
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                         Justifié
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-20">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-28">
                         Actions
                       </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredAbsences.map((absence, index) => (
+                    {absences.map((absence, index) => (
                       <AbsenceRow
                         key={absence.id}
                         absence={absence}
                         index={index}
-                        onClick={() => setSelectedAbsence(absence)}
+                        onView={() => setSelectedAbsence(absence)}
+                        onJustify={() => {
+                          setSelectedAbsence(absence)
+                          setJustifyModalOpen(true)
+                        }}
+                        onChangeStatus={() => {
+                          setSelectedAbsence(absence)
+                          setChangeStatusModalOpen(true)
+                        }}
                       />
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 p-4 border-t">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page === 1}
+                  onClick={() => setPage(p => p - 1)}
+                >
+                  Précédent
+                </Button>
+                <span className="text-sm text-gray-600">
+                  Page {page} sur {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page === totalPages}
+                  onClick={() => setPage(p => p + 1)}
+                >
+                  Suivant
+                </Button>
               </div>
             )}
           </CardContent>
@@ -452,7 +510,35 @@ export default function StaffAbsencesPage() {
         {/* Modal détails */}
         <AbsenceDetailsModal
           absence={selectedAbsence}
+          open={!!selectedAbsence && !justifyModalOpen && !changeStatusModalOpen}
           onClose={() => setSelectedAbsence(null)}
+          onJustify={() => setJustifyModalOpen(true)}
+          onChangeStatus={() => setChangeStatusModalOpen(true)}
+        />
+
+        {/* Modal justification */}
+        <JustifyModal
+          open={justifyModalOpen}
+          onClose={() => {
+            setJustifyModalOpen(false)
+            setSelectedAbsence(null)
+          }}
+          onConfirm={handleJustify}
+          loading={justifying}
+          studentName={selectedAbsence?.student_name || ''}
+        />
+
+        {/* Modal changement de statut */}
+        <ChangeStatusModal
+          open={changeStatusModalOpen}
+          onClose={() => {
+            setChangeStatusModalOpen(false)
+            setSelectedAbsence(null)
+          }}
+          onConfirm={handleChangeStatus}
+          loading={changingStatus}
+          studentName={selectedAbsence?.student_name || ''}
+          currentStatus={selectedAbsence?.status || 'absent'}
         />
       </div>
     </div>
@@ -498,11 +584,15 @@ function StatCard({
 function AbsenceRow({
   absence,
   index,
-  onClick,
+  onView,
+  onJustify,
+  onChangeStatus,
 }: {
   absence: AbsenceRecord
   index: number
-  onClick: () => void
+  onView: () => void
+  onJustify: () => void
+  onChangeStatus: () => void
 }) {
   const date = new Date(absence.session_date)
   const formattedDate = date.toLocaleDateString('fr-FR', {
@@ -514,10 +604,9 @@ function AbsenceRow({
   return (
     <tr 
       className={cn(
-        "border-b hover:bg-gray-50 cursor-pointer transition-colors",
+        "border-b hover:bg-gray-50 transition-colors",
         index % 2 === 0 ? "bg-white" : "bg-gray-50/50"
       )}
-      onClick={onClick}
     >
       <td className="px-4 py-3">
         <div>
@@ -566,9 +655,38 @@ function AbsenceRow({
         )}
       </td>
       <td className="px-4 py-3">
-        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-          <Eye className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-8 w-8 p-0"
+            onClick={onView}
+            title="Voir détails"
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
+          {!absence.justified && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="h-8 w-8 p-0 text-green-600 hover:text-green-700"
+              onClick={onJustify}
+              title="Justifier"
+            >
+              <ShieldCheck className="h-4 w-4" />
+            </Button>
+          )}
+          {/* Bouton pour modifier le statut */}
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700"
+            onClick={onChangeStatus}
+            title="Modifier le statut"
+          >
+            <RotateCcw className="h-4 w-4" />
+          </Button>
+        </div>
       </td>
     </tr>
   )
@@ -576,10 +694,16 @@ function AbsenceRow({
 
 function AbsenceDetailsModal({
   absence,
+  open,
   onClose,
+  onJustify,
+  onChangeStatus,
 }: {
   absence: AbsenceRecord | null
+  open: boolean
   onClose: () => void
+  onJustify: () => void
+  onChangeStatus: () => void
 }) {
   if (!absence) return null
 
@@ -592,7 +716,7 @@ function AbsenceDetailsModal({
   })
 
   return (
-    <Dialog open={!!absence} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Détails de l'absence</DialogTitle>
@@ -674,24 +798,196 @@ function AbsenceDetailsModal({
           {/* Commentaire */}
           {absence.comment && (
             <div className="border-t pt-4">
-              <p className="text-sm text-gray-500 mb-1">Commentaire</p>
+              <p className="text-sm text-gray-500 mb-1">Commentaire du professeur</p>
               <p className="text-gray-700">{absence.comment}</p>
             </div>
           )}
+        </div>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-4 border-t">
-            <Button variant="outline" onClick={onClose}>
-              Fermer
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button variant="outline" onClick={onClose}>
+            Fermer
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={onChangeStatus}
+            className="gap-2"
+          >
+            <RotateCcw className="h-4 w-4" />
+            Modifier statut
+          </Button>
+          {!absence.justified && (
+            <Button onClick={onJustify} className="gap-2">
+              <ShieldCheck className="h-4 w-4" />
+              Justifier
             </Button>
-            {!absence.justified && (
-              <Button className="gap-2">
-                <ShieldCheck className="h-4 w-4" />
-                Justifier
-              </Button>
-            )}
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function JustifyModal({
+  open,
+  onClose,
+  onConfirm,
+  loading,
+  studentName,
+}: {
+  open: boolean
+  onClose: () => void
+  onConfirm: (justification: string) => void
+  loading: boolean
+  studentName: string
+}) {
+  const [justification, setJustification] = useState('')
+
+  const handleSubmit = () => {
+    if (justification.trim()) {
+      onConfirm(justification)
+      setJustification('')
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Justifier l'absence</DialogTitle>
+        </DialogHeader>
+        
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Vous allez justifier l'absence de <strong>{studentName}</strong>.
+          </p>
+
+          <div>
+            <label className="text-sm font-medium mb-1 block">
+              Motif de la justification
+            </label>
+            <Textarea
+              placeholder="Ex: Certificat médical fourni, Convocation officielle..."
+              value={justification}
+              onChange={(e) => setJustification(e.target.value)}
+              rows={3}
+            />
           </div>
         </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={loading}>
+            Annuler
+          </Button>
+          <Button 
+            onClick={handleSubmit} 
+            disabled={!justification.trim() || loading}
+            className="gap-2"
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ShieldCheck className="h-4 w-4" />
+            )}
+            Confirmer
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ChangeStatusModal({
+  open,
+  onClose,
+  onConfirm,
+  loading,
+  studentName,
+  currentStatus,
+}: {
+  open: boolean
+  onClose: () => void
+  onConfirm: (status: AttendanceStatus) => void
+  loading: boolean
+  studentName: string
+  currentStatus: AttendanceStatus
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Modifier le statut</DialogTitle>
+        </DialogHeader>
+        
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Modifier le statut de <strong>{studentName}</strong>
+          </p>
+          
+          <div className="text-sm text-gray-500">
+            Statut actuel : <Badge variant="outline">{getStatusLabel(currentStatus)}</Badge>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            {/* Mettre Présent */}
+            <Button
+              variant="outline"
+              className="h-auto py-4 flex flex-col items-center gap-2 border-green-200 hover:bg-green-50"
+              onClick={() => onConfirm('present')}
+              disabled={loading || currentStatus === 'present'}
+            >
+              <CheckCircle className="h-6 w-6 text-green-600" />
+              <span className="text-green-700 font-medium">Mettre Présent</span>
+              <span className="text-xs text-gray-500">Enlever l'absence</span>
+            </Button>
+
+            {/* Mettre Excusé */}
+            <Button
+              variant="outline"
+              className="h-auto py-4 flex flex-col items-center gap-2 border-blue-200 hover:bg-blue-50"
+              onClick={() => onConfirm('excused')}
+              disabled={loading || currentStatus === 'excused'}
+            >
+              <ShieldCheck className="h-6 w-6 text-blue-600" />
+              <span className="text-blue-700 font-medium">Mettre Excusé</span>
+              <span className="text-xs text-gray-500">Justifier</span>
+            </Button>
+
+            {/* Mettre Absent */}
+            <Button
+              variant="outline"
+              className="h-auto py-4 flex flex-col items-center gap-2 border-red-200 hover:bg-red-50"
+              onClick={() => onConfirm('absent')}
+              disabled={loading || currentStatus === 'absent'}
+            >
+              <XCircle className="h-6 w-6 text-red-600" />
+              <span className="text-red-700 font-medium">Mettre Absent</span>
+            </Button>
+
+            {/* Mettre En retard */}
+            <Button
+              variant="outline"
+              className="h-auto py-4 flex flex-col items-center gap-2 border-orange-200 hover:bg-orange-50"
+              onClick={() => onConfirm('late')}
+              disabled={loading || currentStatus === 'late'}
+            >
+              <AlertCircle className="h-6 w-6 text-orange-600" />
+              <span className="text-orange-700 font-medium">Mettre En retard</span>
+            </Button>
+          </div>
+
+          {loading && (
+            <div className="flex items-center justify-center">
+              <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={loading}>
+            Annuler
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
@@ -711,7 +1007,6 @@ function getSchoolYearOptions(): Array<{ value: string; label: string }> {
   const currentYear = new Date().getFullYear()
   const years = []
   
-  // 5 dernières années scolaires
   for (let i = 0; i < 5; i++) {
     const startYear = currentYear - i
     years.push({
@@ -721,61 +1016,4 @@ function getSchoolYearOptions(): Array<{ value: string; label: string }> {
   }
   
   return years
-}
-
-// Données mock pour le développement
-function generateMockAbsences(count: number): AbsenceRecord[] {
-  const students = [
-    { id: '1', name: 'Dupont Marie', number: '2024-001', classId: '1', classLabel: '6ème A' },
-    { id: '2', name: 'Martin Lucas', number: '2024-002', classId: '1', classLabel: '6ème A' },
-    { id: '3', name: 'Bernard Emma', number: '2024-003', classId: '2', classLabel: '6ème B' },
-    { id: '4', name: 'Petit Thomas', number: '2024-004', classId: '3', classLabel: '5ème A' },
-    { id: '5', name: 'Robert Julie', number: '2024-005', classId: '4', classLabel: '4ème C' },
-  ]
-  
-  const subjects = [
-    { name: 'Mathématiques', color: '#3B82F6' },
-    { name: 'Français', color: '#EF4444' },
-    { name: 'Histoire-Géo', color: '#F59E0B' },
-    { name: 'Anglais', color: '#10B981' },
-    { name: 'Sciences', color: '#8B5CF6' },
-  ]
-  
-  const statuses: AttendanceStatus[] = ['absent', 'late', 'excused']
-  
-  const absences: AbsenceRecord[] = []
-  
-  for (let i = 0; i < count; i++) {
-    const student = students[Math.floor(Math.random() * students.length)]
-    const subject = subjects[Math.floor(Math.random() * subjects.length)]
-    const status = statuses[Math.floor(Math.random() * statuses.length)]
-    const date = new Date()
-    date.setDate(date.getDate() - Math.floor(Math.random() * 60))
-    
-    absences.push({
-      id: `absence-${i}`,
-      student_id: student.id,
-      student_name: student.name,
-      student_number: student.number,
-      class_id: student.classId,
-      class_label: student.classLabel,
-      subject_name: subject.name,
-      subject_color: subject.color,
-      session_date: date.toISOString().split('T')[0],
-      start_time: '08:00:00',
-      end_time: '09:30:00',
-      status,
-      late_minutes: status === 'late' ? Math.floor(Math.random() * 30) + 5 : null,
-      comment: Math.random() > 0.7 ? 'Commentaire du professeur' : null,
-      justified: Math.random() > 0.5,
-      justification: Math.random() > 0.5 ? 'Certificat médical' : null,
-      justified_at: Math.random() > 0.5 ? new Date().toISOString() : null,
-      school_year: '2024-2025',
-    })
-  }
-  
-  // Trier par date décroissante
-  return absences.sort((a, b) => 
-    new Date(b.session_date).getTime() - new Date(a.session_date).getTime()
-  )
 }

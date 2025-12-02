@@ -5,32 +5,27 @@ import { cn } from "@/lib/utils"
 import { 
   Calendar,
   Clock,
-  CheckCircle,
   XCircle,
   AlertCircle,
   ShieldCheck,
-  TrendingUp,
-  BookOpen,
   Loader2,
   Info
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
+import { Button } from "@/components/ui/button"
 import { 
   attendanceApi, 
   type AttendanceHistoryItem,
   type AttendanceStats,
   getStatusLabel,
-  getStatusColor,
 } from "@/lib/api/attendance"
-import { getWeekStart } from "@/lib/date"
 
 // ============================================
-// PAGE ASSIDUITÉ ÉLÈVE
+// PAGE ASSIDUITÉ ÉLÈVE (SIMPLIFIÉE)
 // ============================================
 
-export default function StudentAttendancePage() {
+export default function EleveAssiduitePage() {
   const [history, setHistory] = useState<AttendanceHistoryItem[]>([])
   const [stats, setStats] = useState<AttendanceStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -42,8 +37,6 @@ export default function StudentAttendancePage() {
       setLoading(true)
       setError(null)
 
-      // L'API utilise automatiquement l'utilisateur connecté
-      // On récupère uniquement l'année scolaire en cours
       const currentYear = getCurrentSchoolYear()
       
       const response = await attendanceApi.getMyHistory({
@@ -70,20 +63,17 @@ export default function StudentAttendancePage() {
     loadData()
   }, [loadData])
 
-  // Filtrer uniquement les absences/retards (pas les présences)
+  // Filtrer : uniquement absences et retards (PAS les présences)
   const absencesAndLates = history.filter(h => 
     h.status === 'absent' || h.status === 'late' || h.status === 'excused'
   )
-
-  // Grouper par mois
-  const groupedByMonth = groupByMonth(absencesAndLates)
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="flex items-center gap-3 text-gray-500">
           <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Chargement de votre assiduité...</span>
+          <span>Chargement...</span>
         </div>
       </div>
     )
@@ -95,12 +85,7 @@ export default function StudentAttendancePage() {
         <Card className="p-8 text-center max-w-md">
           <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <p className="text-red-600 mb-4">{error}</p>
-          <button 
-            onClick={loadData}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            Réessayer
-          </button>
+          <Button onClick={loadData}>Réessayer</Button>
         </Card>
       </div>
     )
@@ -108,161 +93,182 @@ export default function StudentAttendancePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto p-6">
+      <div className="max-w-2xl mx-auto p-6">
         {/* En-tête */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            📊 Mon assiduité
-          </h1>
-          <p className="text-gray-600">
-            Année scolaire {getCurrentSchoolYearLabel()}
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">Mon assiduité</h1>
+          <p className="text-gray-500 text-sm">
+            Année {getCurrentSchoolYearLabel()}
           </p>
         </div>
 
-        {/* Carte principale - Taux de présence */}
+        {/* Cercle de présence */}
         {stats && (
-          <Card className="mb-6 overflow-hidden">
-            <div className={cn(
-              "h-2",
-              stats.rate >= 95 ? "bg-green-500" :
-              stats.rate >= 85 ? "bg-orange-500" :
-              "bg-red-500"
-            )} />
+          <Card className="mb-6">
             <CardContent className="pt-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">Taux de présence</p>
-                  <p className={cn(
-                    "text-4xl font-bold",
-                    stats.rate >= 95 ? "text-green-600" :
-                    stats.rate >= 85 ? "text-orange-600" :
-                    "text-red-600"
-                  )}>
-                    {stats.rate}%
-                  </p>
+              <div className="flex items-center justify-center gap-8">
+                {/* Cercle */}
+                <AttendanceDonut stats={stats} />
+                
+                {/* Légende */}
+                <div className="space-y-3">
+                  <LegendItem 
+                    color="bg-green-500" 
+                    label="Présences" 
+                    value={stats.present} 
+                  />
+                  <LegendItem 
+                    color="bg-red-500" 
+                    label="Absences" 
+                    value={stats.absent} 
+                  />
+                  <LegendItem 
+                    color="bg-orange-500" 
+                    label="Retards" 
+                    value={stats.late} 
+                  />
+                  <LegendItem 
+                    color="bg-blue-500" 
+                    label="Excusés" 
+                    value={stats.excused} 
+                  />
                 </div>
-                <div className={cn(
-                  "p-4 rounded-full",
-                  stats.rate >= 95 ? "bg-green-100" :
-                  stats.rate >= 85 ? "bg-orange-100" :
-                  "bg-red-100"
-                )}>
-                  <TrendingUp className={cn(
-                    "h-8 w-8",
-                    stats.rate >= 95 ? "text-green-600" :
-                    stats.rate >= 85 ? "text-orange-600" :
-                    "text-red-600"
-                  )} />
-                </div>
-              </div>
-              
-              <Progress 
-                value={stats.rate} 
-                className="h-3 mb-4"
-              />
-
-              {/* Message encourageant ou d'alerte */}
-              <div className={cn(
-                "p-3 rounded-lg text-sm",
-                stats.rate >= 95 ? "bg-green-50 text-green-800" :
-                stats.rate >= 85 ? "bg-orange-50 text-orange-800" :
-                "bg-red-50 text-red-800"
-              )}>
-                {stats.rate >= 95 ? (
-                  <span>🎉 Excellent ! Continuez comme ça !</span>
-                ) : stats.rate >= 85 ? (
-                  <span>⚠️ Attention, votre taux de présence baisse. Essayez d'être plus régulier.</span>
-                ) : (
-                  <span>🚨 Votre assiduité nécessite une amélioration urgente.</span>
-                )}
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Stats détaillées */}
-        {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <StatCard
-              icon={<CheckCircle className="h-5 w-5" />}
-              label="Présences"
-              value={stats.present}
-              color="text-green-600"
-              bgColor="bg-green-50"
-            />
-            <StatCard
-              icon={<XCircle className="h-5 w-5" />}
-              label="Absences"
-              value={stats.absent}
-              color="text-red-600"
-              bgColor="bg-red-50"
-            />
-            <StatCard
-              icon={<AlertCircle className="h-5 w-5" />}
-              label="Retards"
-              value={stats.late}
-              color="text-orange-600"
-              bgColor="bg-orange-50"
-            />
-            <StatCard
-              icon={<ShieldCheck className="h-5 w-5" />}
-              label="Excusés"
-              value={stats.excused}
-              color="text-blue-600"
-              bgColor="bg-blue-50"
-            />
-          </div>
-        )}
-
-        {/* Historique des absences/retards */}
+        {/* Liste des absences/retards */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              Historique des absences et retards
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-medium flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              Mes absences et retards
             </CardTitle>
           </CardHeader>
           <CardContent>
             {absencesAndLates.length === 0 ? (
               <div className="text-center py-8">
-                <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-                <p className="text-gray-600 font-medium">
-                  Aucune absence ni retard cette année !
-                </p>
-                <p className="text-sm text-gray-500 mt-1">
-                  Continuez sur cette lancée 🎉
-                </p>
+                <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <ShieldCheck className="h-8 w-8 text-green-600" />
+                </div>
+                <p className="text-gray-600 font-medium">Aucune absence ni retard !</p>
+                <p className="text-sm text-gray-400 mt-1">Continuez comme ça 🎉</p>
               </div>
             ) : (
-              <div className="space-y-6">
-                {Object.entries(groupedByMonth).map(([month, items]) => (
-                  <div key={month}>
-                    <h3 className="text-sm font-semibold text-gray-500 uppercase mb-3">
-                      {month}
-                    </h3>
-                    <div className="space-y-2">
-                      {items.map((item) => (
-                        <AbsenceRow key={item.id} item={item} />
-                      ))}
-                    </div>
-                  </div>
+              <div className="space-y-3">
+                {absencesAndLates.map((item) => (
+                  <AbsenceItem key={item.id} item={item} />
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Info légale */}
-        <div className="mt-6 p-4 bg-blue-50 rounded-lg flex items-start gap-3">
-          <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-blue-800">
-            <p className="font-medium mb-1">Information</p>
-            <p>
-              En cas d'absence, pensez à fournir un justificatif à la vie scolaire 
-              dans les 48 heures. Les absences non justifiées peuvent impacter votre 
-              dossier scolaire.
-            </p>
-          </div>
+        {/* Info */}
+        <div className="mt-4 p-3 bg-blue-50 rounded-lg flex items-start gap-2 text-sm">
+          <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
+          <p className="text-blue-700">
+            En cas d'absence, fournissez un justificatif à la vie scolaire dans les 48h.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================
+// COMPOSANT CERCLE (DONUT CHART)
+// ============================================
+
+function AttendanceDonut({ stats }: { stats: AttendanceStats }) {
+  const total = stats.total || 1 // Éviter division par 0
+  
+  // Calculer les pourcentages
+  const presentPercent = (stats.present / total) * 100
+  const absentPercent = (stats.absent / total) * 100
+  const latePercent = (stats.late / total) * 100
+  const excusedPercent = (stats.excused / total) * 100
+
+  // Calculer les positions pour le cercle SVG
+  const radius = 60
+  const circumference = 2 * Math.PI * radius
+  
+  // Offsets cumulatifs pour positionner chaque segment
+  let offset = 0
+  
+  const segments = [
+    { percent: presentPercent, color: '#22c55e', label: 'Présent' },  // vert
+    { percent: absentPercent, color: '#ef4444', label: 'Absent' },    // rouge
+    { percent: latePercent, color: '#f97316', label: 'Retard' },      // orange
+    { percent: excusedPercent, color: '#3b82f6', label: 'Excusé' },   // bleu
+  ].filter(s => s.percent > 0)
+
+  // Si tout est présent, cercle entièrement vert
+  const isAllPresent = stats.absent === 0 && stats.late === 0 && stats.excused === 0
+
+  return (
+    <div className="relative">
+      <svg width="160" height="160" viewBox="0 0 160 160">
+        {/* Cercle de fond (gris clair) */}
+        <circle
+          cx="80"
+          cy="80"
+          r={radius}
+          fill="none"
+          stroke="#e5e7eb"
+          strokeWidth="20"
+        />
+        
+        {isAllPresent ? (
+          // Tout présent = cercle vert complet
+          <circle
+            cx="80"
+            cy="80"
+            r={radius}
+            fill="none"
+            stroke="#22c55e"
+            strokeWidth="20"
+            strokeLinecap="round"
+          />
+        ) : (
+          // Segments colorés
+          segments.map((segment, index) => {
+            const strokeDasharray = `${(segment.percent / 100) * circumference} ${circumference}`
+            const strokeDashoffset = -offset
+            offset += (segment.percent / 100) * circumference
+            
+            return (
+              <circle
+                key={index}
+                cx="80"
+                cy="80"
+                r={radius}
+                fill="none"
+                stroke={segment.color}
+                strokeWidth="20"
+                strokeDasharray={strokeDasharray}
+                strokeDashoffset={strokeDashoffset}
+                transform="rotate(-90 80 80)"
+                style={{ transition: 'stroke-dasharray 0.5s ease' }}
+              />
+            )
+          })
+        )}
+      </svg>
+      
+      {/* Texte au centre */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="text-center">
+          <span className={cn(
+            "text-2xl font-bold",
+            stats.rate >= 90 ? "text-green-600" :
+            stats.rate >= 75 ? "text-orange-600" :
+            "text-red-600"
+          )}>
+            {stats.rate}%
+          </span>
+          <p className="text-xs text-gray-500">présence</p>
         </div>
       </div>
     </div>
@@ -273,83 +279,103 @@ export default function StudentAttendancePage() {
 // COMPOSANTS
 // ============================================
 
-function StatCard({
-  icon,
-  label,
-  value,
-  color,
-  bgColor,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: number
+function LegendItem({ 
+  color, 
+  label, 
+  value 
+}: { 
   color: string
-  bgColor: string
+  label: string
+  value: number 
 }) {
   return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          <div className={cn("p-2 rounded-lg", bgColor, color)}>
-            {icon}
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-gray-900">{value}</p>
-            <p className="text-sm text-gray-500">{label}</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="flex items-center gap-2">
+      <div className={cn("w-3 h-3 rounded-full", color)} />
+      <span className="text-sm text-gray-600">{label}</span>
+      <span className="text-sm font-semibold text-gray-900">{value}</span>
+    </div>
   )
 }
 
-function AbsenceRow({ item }: { item: AttendanceHistoryItem }) {
+function AbsenceItem({ item }: { item: AttendanceHistoryItem }) {
   const date = new Date(item.session_date)
   const formattedDate = date.toLocaleDateString('fr-FR', {
-    weekday: 'long',
+    weekday: 'short',
     day: 'numeric',
-    month: 'long',
+    month: 'short',
   })
 
+  // Déterminer si c'est justifié (excused = justifié)
+  const isJustified = item.status === 'excused'
+  
+  // Couleurs selon le statut
+  const statusConfig = {
+    absent: { 
+      bg: 'bg-red-50', 
+      border: 'border-red-200', 
+      text: 'text-red-700',
+      label: 'Absent'
+    },
+    late: { 
+      bg: 'bg-orange-50', 
+      border: 'border-orange-200', 
+      text: 'text-orange-700',
+      label: 'Retard'
+    },
+    excused: { 
+      bg: 'bg-blue-50', 
+      border: 'border-blue-200', 
+      text: 'text-blue-700',
+      label: 'Excusé'
+    },
+  }
+
+  const config = statusConfig[item.status as keyof typeof statusConfig] || statusConfig.absent
+
   return (
-    <div className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
-      {/* Indicateur couleur matière */}
-      <div 
-        className="w-1 h-12 rounded-full flex-shrink-0"
-        style={{ backgroundColor: item.subject_color }}
-      />
-      
-      {/* Infos */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="font-medium text-gray-900">
+    <div className={cn(
+      "p-3 rounded-lg border flex items-center justify-between",
+      config.bg,
+      config.border
+    )}>
+      <div className="flex items-center gap-3">
+        {/* Indicateur couleur matière */}
+        <div 
+          className="w-1 h-10 rounded-full"
+          style={{ backgroundColor: item.subject_color }}
+        />
+        
+        <div>
+          <p className="font-medium text-gray-900 text-sm">
             {item.subject_name}
-          </span>
-          <Badge 
-            variant="outline" 
-            className={cn("text-xs", getStatusColor(item.status))}
-          >
-            {getStatusLabel(item.status)}
-          </Badge>
-        </div>
-        <div className="flex items-center gap-3 text-sm text-gray-500">
-          <span className="flex items-center gap-1">
-            <Calendar className="h-3.5 w-3.5" />
-            {formattedDate}
-          </span>
-          <span className="flex items-center gap-1">
-            <Clock className="h-3.5 w-3.5" />
-            {item.start_time.slice(0, 5)} - {item.end_time.slice(0, 5)}
-          </span>
+          </p>
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <span>{formattedDate}</span>
+            <span>•</span>
+            <span>{item.start_time.slice(0, 5)}</span>
+          </div>
         </div>
       </div>
 
-      {/* Minutes de retard si applicable */}
-      {item.status === 'late' && item.late_minutes && (
-        <div className="text-orange-600 text-sm font-medium">
-          +{item.late_minutes} min
-        </div>
-      )}
+      <div className="flex items-center gap-2">
+        {/* Minutes de retard */}
+        {item.status === 'late' && item.late_minutes && (
+          <span className="text-xs text-orange-600 font-medium">
+            +{item.late_minutes}min
+          </span>
+        )}
+        
+        {/* Badge statut */}
+        <Badge 
+          variant="outline" 
+          className={cn("text-xs", config.text, config.border, config.bg)}
+        >
+          {config.label}
+          {isJustified && (
+            <ShieldCheck className="h-3 w-3 ml-1" />
+          )}
+        </Badge>
+      </div>
     </div>
   )
 }
@@ -358,16 +384,11 @@ function AbsenceRow({ item }: { item: AttendanceHistoryItem }) {
 // HELPERS
 // ============================================
 
-/**
- * Obtenir les dates de l'année scolaire en cours
- * Année scolaire : septembre année N → juillet année N+1
- */
 function getCurrentSchoolYear(): { start: string; end: string } {
   const now = new Date()
   const currentYear = now.getFullYear()
-  const currentMonth = now.getMonth() // 0 = janvier, 8 = septembre
+  const currentMonth = now.getMonth()
   
-  // Si on est entre janvier et août, l'année scolaire a commencé l'année précédente
   const startYear = currentMonth >= 8 ? currentYear : currentYear - 1
   const endYear = startYear + 1
   
@@ -377,33 +398,8 @@ function getCurrentSchoolYear(): { start: string; end: string } {
   }
 }
 
-/**
- * Obtenir le label de l'année scolaire
- */
 function getCurrentSchoolYearLabel(): string {
   const { start } = getCurrentSchoolYear()
   const startYear = parseInt(start.slice(0, 4))
   return `${startYear}-${startYear + 1}`
-}
-
-/**
- * Grouper les items par mois
- */
-function groupByMonth(items: AttendanceHistoryItem[]): Record<string, AttendanceHistoryItem[]> {
-  const grouped: Record<string, AttendanceHistoryItem[]> = {}
-  
-  for (const item of items) {
-    const date = new Date(item.session_date)
-    const monthKey = date.toLocaleDateString('fr-FR', { 
-      month: 'long', 
-      year: 'numeric' 
-    })
-    
-    if (!grouped[monthKey]) {
-      grouped[monthKey] = []
-    }
-    grouped[monthKey].push(item)
-  }
-  
-  return grouped
 }
