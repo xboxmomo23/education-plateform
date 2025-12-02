@@ -634,6 +634,157 @@ export async function getAvailableCoursesHandler(req: Request, res: Response) {
 
 
 
+/**
+ * Mettre à jour un cours (staff)
+ */
+export async function updateCourseForStaffHandler(req: Request, res: Response) {
+  try {
+    const { courseId } = req.params;
+    const { class_id, subject_id, teacher_id, default_room } = req.body;
+    const { establishmentId } = req.user!;
+
+    // 1. Vérifier que le cours existe et appartient à la classe
+    const courseResult = await pool.query(
+      `
+      SELECT 
+        id,
+        class_id,
+        establishment_id
+      FROM courses
+      WHERE id = $1
+      `,
+      [courseId]
+    );
+
+    if (courseResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Cours non trouvé",
+      });
+    }
+
+    const course = courseResult.rows[0];
+
+    // 2. Vérifier que c'est bien une classe gérée par cet établissement
+    if (
+      establishmentId &&
+      course.establishment_id &&
+      course.establishment_id !== establishmentId
+    ) {
+      return res.status(403).json({
+        success: false,
+        error: "Cours invalide pour cet établissement",
+      });
+    }
+
+    // 3. Mise à jour simple du cours (on fait confiance aux IDs reçus)
+    await pool.query(
+      `
+      UPDATE courses
+      SET 
+        class_id = $1,
+        subject_id = $2,
+        teacher_id = $3,
+        establishment_id = COALESCE(establishment_id, $4)
+      WHERE id = $5
+      `,
+      [class_id, subject_id, teacher_id, establishmentId, courseId]
+    );
+
+    // 4. Mettre à jour la salle par défaut du template associé si fournie
+    if (typeof default_room !== "undefined") {
+      await pool.query(
+        `
+        UPDATE course_templates
+        SET default_room = $1
+        WHERE course_id = $2
+        `,
+        [default_room || null, courseId]
+      );
+    }
+
+    // 5. Renvoyer la liste à jour des cours de la classe
+    const courses = await TimetableModel.getAvailableCoursesForClass(class_id);
+
+    return res.json({
+      success: true,
+      data: courses,
+    });
+  } catch (error) {
+    console.error("Erreur updateCourseForStaffHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la mise à jour du cours",
+    });
+  }
+}
+
+
+/**
+ * Désactiver un cours (staff)
+ * -> on fait un "soft delete" en mettant active = false
+ */
+export async function deleteCourseForStaffHandler(req: Request, res: Response) {
+  try {
+    const { courseId } = req.params;
+    const { establishmentId } = req.user!;
+
+    // 1. Vérifier que le cours existe
+    const courseResult = await pool.query(
+      `
+      SELECT 
+        id,
+        class_id,
+        establishment_id
+      FROM courses
+      WHERE id = $1
+      `,
+      [courseId]
+    );
+
+    if (courseResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Cours non trouvé',
+      });
+    }
+
+    const course = courseResult.rows[0];
+
+    // 2. Vérifier l’appartenance à l’établissement
+    if (course.establishment_id && establishmentId && course.establishment_id !== establishmentId) {
+      return res.status(403).json({
+        success: false,
+        error: "Cours invalide pour cet établissement",
+      });
+    }
+
+    // 3. Soft delete : on passe active = false
+    await pool.query(
+      `
+      UPDATE courses
+      SET active = false
+      WHERE id = $1
+      `,
+      [courseId]
+    );
+
+    return res.json({
+      success: true,
+      message: 'Cours désactivé avec succès',
+    });
+  } catch (error) {
+    console.error('Erreur deleteCourseForStaffHandler:', error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la suppression du cours",
+    });
+  }
+}
+
+
+
+
 
 // 🔹 Récupérer les matières visibles par un staff (en fonction de ses classes)
 export async function getSubjectsForStaffHandler(req: Request, res: Response) {

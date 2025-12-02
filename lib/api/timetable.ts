@@ -127,6 +127,7 @@ export interface CreateCourseData {
 }
 
 
+
 // =========================
 // API CLIENT
 // =========================
@@ -283,7 +284,20 @@ export const timetableApi = {
     });
   },
 
+  
 
+   async updateCourse(courseId: string, data: CreateCourseData) {
+    return apiCall(`/timetable/courses/${courseId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteCourse(courseId: string) {
+    return apiCall(`/timetable/courses/${courseId}`, {
+      method: "DELETE",
+    });
+  },
 
 
 

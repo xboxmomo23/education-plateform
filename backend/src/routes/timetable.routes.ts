@@ -30,10 +30,13 @@ import {
   deleteEntryHandler,
   createFromTemplateHandler,
   duplicateTimetableHandler,
-  //nouveaux systeme template cours pour staff
+  //handler staff et utils
   getSubjectsForStaffHandler,
   getTeachersForStaffHandler,
   createCourseForStaffHandler,
+  // 🆕 handlers cours staff
+  updateCourseForStaffHandler,
+  deleteCourseForStaffHandler,
 } from '../controllers/timetable.controller';
 
 const router = Router();
@@ -388,6 +391,35 @@ router.post(
   checkConflictsHandler
 );
 
+
+/**
+ * PUT /api/timetable/courses/:courseId
+ * Mettre à jour un cours (staff)
+ */
+router.put(
+  '/courses/:courseId',
+  authenticate,
+  authorize('staff', 'admin'),
+  param('courseId').isUUID().withMessage('ID de cours invalide'),
+  body('class_id').isUUID().withMessage('ID de classe invalide'),
+  body('subject_id').isUUID().withMessage('ID de matière invalide'),
+  body('teacher_id').isUUID().withMessage('ID de professeur invalide'),
+  validateRequest,
+  updateCourseForStaffHandler
+);
+
+/**
+ * DELETE /api/timetable/courses/:courseId
+ * Désactiver un cours (staff)
+ */
+router.delete(
+  '/courses/:courseId',
+  authenticate,
+  authorize('staff', 'admin'),
+  param('courseId').isUUID().withMessage('ID de cours invalide'),
+  validateRequest,
+  deleteCourseForStaffHandler
+);
 
 
 
