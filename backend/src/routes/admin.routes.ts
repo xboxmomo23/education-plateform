@@ -21,6 +21,11 @@ import {
   getClassCoursesForAdminHandler,
   createCourseForAdminHandler,
   updateCourseForAdminHandler,
+  // Staffs
+  getAdminStaffHandler,
+  createStaffForAdminHandler,
+  updateStaffForAdminHandler,
+  updateStaffStatusHandler,
 } from "../controllers/admin.controller";
 
 
@@ -112,6 +117,75 @@ router.patch(
   validateRequest,
   updateStudentStatusHandler
 );
+
+
+
+
+
+/**
+ * GET /api/admin/staff
+ */
+router.get(
+  "/staff",
+  authenticate,
+  authorize("admin"),
+  getAdminStaffHandler
+);
+
+/**
+ * POST /api/admin/staff
+ */
+router.post(
+  "/staff",
+  authenticate,
+  authorize("admin"),
+  [
+    body("full_name")
+      .notEmpty()
+      .withMessage("Le nom complet est requis"),
+    body("email")
+      .isEmail()
+      .withMessage("Email invalide"),
+    body("password")
+      .isLength({ min: 6 })
+      .withMessage("Le mot de passe doit contenir au moins 6 caractères"),
+  ],
+  validateRequest,
+  createStaffForAdminHandler
+);
+
+/**
+ * PATCH /api/admin/staff/:staffId
+ */
+router.patch(
+  "/staff/:staffId",
+  authenticate,
+  authorize("admin"),
+  [
+    body("full_name").optional().isString(),
+    body("email").optional().isEmail().withMessage("Email invalide"),
+  ],
+  validateRequest,
+  updateStaffForAdminHandler
+);
+
+/**
+ * PATCH /api/admin/staff/:staffId/status
+ */
+router.patch(
+  "/staff/:staffId/status",
+  authenticate,
+  authorize("admin"),
+  [
+    body("active")
+      .isBoolean()
+      .withMessage("Le champ 'active' doit être un booléen"),
+  ],
+  validateRequest,
+  updateStaffStatusHandler
+);
+
+
 
 
 

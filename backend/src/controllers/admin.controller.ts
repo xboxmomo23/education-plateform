@@ -533,6 +533,281 @@ export async function updateStudentStatusHandler(req: Request, res: Response) {
 }
 
 
+
+
+
+
+
+/**
+ * GET /api/admin/staff
+ * Liste des comptes staff pour l'établissement de l'admin
+ */
+export async function getAdminStaffHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        u.id AS staff_id,
+        u.full_name,
+        u.email,
+        u.active,
+        u.created_at
+      FROM users u
+      WHERE u.role = 'staff'
+        AND u.establishment_id = $1
+      ORDER BY u.full_name ASC
+      `,
+      [estId]
+    );
+
+    return res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error("Erreur getAdminStaffHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors du chargement des comptes staff",
+    });
+  }
+}
+
+/**
+ * POST /api/admin/staff
+ * Création d'un compte staff (user + établissement)
+ */
+export async function createStaffForAdminHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const { full_name, email, password } = req.body as {
+      full_name: string;
+      email: string;
+      password: string;
+    };
+
+    if (!full_name || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        error: "Nom complet, email et mot de passe sont requis",
+      });
+    }
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    // Vérifier email déjà utilisé
+    const existing = await pool.query(
+      `
+      SELECT id FROM users
+      WHERE email = $1
+      `,
+      [email]
+    );
+
+    if (existing.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        error: "Un utilisateur avec cet email existe déjà",
+      });
+    }
+
+    // Créer l'utilisateur staff
+    const newUser = await createUser({
+      email,
+      password,
+      role: "staff",
+      full_name,
+      establishmentId: estId,
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        staff_id: newUser.id,
+        full_name: newUser.full_name,
+        email: newUser.email,
+        active: newUser.active,
+        created_at: newUser.created_at,
+      },
+    });
+  } catch (error: any) {
+    console.error("Erreur createStaffForAdminHandler:", error);
+
+    if (error.code === "23505") {
+      return res.status(409).json({
+        success: false,
+        error: "Un utilisateur avec cet email existe déjà",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la création du staff",
+    });
+  }
+}
+
+/**
+ * PATCH /api/admin/staff/:staffId
+ * Modifier les infos de base (nom, email)
+ */
+export async function updateStaffForAdminHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const { staffId } = req.params;
+    const { full_name, email } = req.body as {
+      full_name?: string;
+      email?: string;
+    };
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    // Vérifier que le staff existe dans cet établissement
+    const existing = await pool.query(
+      `
+      SELECT id, email
+      FROM users
+      WHERE id = $1
+        AND role = 'staff'
+        AND establishment_id = $2
+      `,
+      [staffId, estId]
+    );
+
+    if (existing.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Compte staff introuvable pour cet établissement",
+      });
+    }
+
+    const current = existing.rows[0];
+
+    // Vérifier conflit email si changement
+    if (email && email !== current.email) {
+      const emailCheck = await pool.query(
+        `
+        SELECT id FROM users
+        WHERE email = $1
+          AND id <> $2
+        `,
+        [email, staffId]
+      );
+
+      if (emailCheck.rows.length > 0) {
+        return res.status(409).json({
+          success: false,
+          error: "Un utilisateur avec cet email existe déjà",
+        });
+      }
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE users
+      SET
+        full_name = COALESCE($1, full_name),
+        email = COALESCE($2, email)
+      WHERE id = $3
+        AND role = 'staff'
+        AND establishment_id = $4
+      RETURNING id AS staff_id, full_name, email, active, created_at
+      `,
+      [full_name ?? null, email ?? null, staffId, estId]
+    );
+
+    return res.json({
+      success: true,
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error("Erreur updateStaffForAdminHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la mise à jour du compte staff",
+    });
+  }
+}
+
+/**
+ * PATCH /api/admin/staff/:staffId/status
+ * Activer / désactiver un compte staff
+ */
+export async function updateStaffStatusHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const staffId = req.params.staffId;
+    const { active } = req.body as { active: boolean };
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE users
+      SET active = $1
+      WHERE id = $2
+        AND role = 'staff'
+        AND establishment_id = $3
+      `,
+      [active, staffId, estId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Compte staff introuvable pour cet établissement",
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Statut du staff mis à jour",
+    });
+  } catch (error) {
+    console.error("Erreur updateStaffStatusHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la mise à jour du statut du staff",
+    });
+  }
+}
+
+
+
+
+
+
+
+
+
 /**
  * GET /api/admin/teachers
  * Liste des professeurs de l'établissement de l'admin
