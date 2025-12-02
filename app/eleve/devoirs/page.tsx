@@ -1,616 +1,361 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { DashboardLayout } from "@/components/dashboard-layout"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import React, { useState, useEffect, useMemo } from "react"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-
-import { EditNoteModal } from "@/components/notes/EditNoteModal"
-import { NotesSummaryCard } from "@/components/notes/NotesSummaryCard"
-import { SubjectSummTable } from "@/components/notes/SubjectSummTable"
-import { SubjectNotesAccordion } from "@/components/notes/SubjectNotesAccordion"
-import { StatsPanel } from "@/components/notes/StatsPanel"
-import {
+import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { 
+  FileText, 
+  Calendar, 
+  Clock, 
+  ExternalLink, 
+  Award,
   AlertCircle,
-  Users,
-  Clock,
-  RefreshCw,
+  CheckCircle2,
+  CalendarDays,
   Filter,
-  Calendar,
-  BookOpen,
+  BookOpen
 } from "lucide-react"
-import { gradesApi } from "@/lib/api/grade"
-import { getUserSession } from "@/lib/auth"
+import { 
+  assignmentsApi, 
+  Assignment,
+  isAssignmentOverdue,
+  isAssignmentDueToday,
+  isAssignmentDueThisWeek,
+  isAssignmentDueThisMonth,
+  formatDueDate,
+  formatDueDateShort
+} from "@/lib/api/assignments"
 
-// ============================================
-// TYPES
-// ============================================
+type FilterPeriod = 'all' | 'week' | 'month';
 
-type Child = {
-  id: string
-  fullName: string
-  email: string
-  className: string
-  studentNo?: string
-}
-
-type Grade = {
-  id: string
-  evaluationId: string
-  evaluationTitle: string
-  evaluationType: string
-  subjectName: string
-  subjectCode: string
-  className?: string
-  value: number | null
-  absent: boolean
-  coefficient: number
-  maxScale: number
-  normalizedValue: number | null
-  evalDate: string
-  comment?: string
-  createdAt: string
-  createdBy?: string
-  createdByRole?: string
-  classAverage?: number
-  classMin?: number
-  classMax?: number
-}
-
-// Type pour les composants existants
-type SubjectNotes = {
-  subjectId: string
-  subjectName: string
-  subjectCoeffTotal: number
-  subjectAvgStudent: number
-  subjectAvgClass?: number
-  subjectMin?: number
-  subjectMax?: number
-  appreciation?: string
-  evaluations: {
-    evaluationId: string
-    title: string
-    date: string
-    coefficient: number
-    gradeStudent: number
-    avgClass?: number
-    min?: number
-    max?: number
-    appreciation?: string
-  }[]
-}
-
-// ============================================
-// HELPER: Conversion sécurisée en nombre
-// ============================================
-
-function toNumber(value: any, defaultValue: number = 0): number {
-  if (typeof value === 'number') return value
-  if (value === null || value === undefined) return defaultValue
-  const parsed = parseFloat(String(value))
-  return isNaN(parsed) ? defaultValue : parsed
-}
-
-// ============================================
-// HELPER: Transformation des données backend
-// ============================================
-
-function transformBackendData(backendGrades: any[]): Grade[] {
-  return backendGrades.map((g) => ({
-    id: g.id,
-    evaluationId: g.evaluation_id || g.evaluationId,
-    evaluationTitle: g.evaluation_title || g.evaluationTitle || "Sans titre",
-    evaluationType: g.evaluation_type || g.evaluationType || "Contrôle",
-    subjectName: g.subject_name || g.subjectName || "Matière inconnue",
-    subjectCode: g.subject_code || g.subjectCode || "",
-    className: g.class_name || g.className,
-    value: toNumber(g.value),
-    absent: g.absent === true || g.absent === "true",
-    coefficient: toNumber(g.coefficient, 1),
-    maxScale: toNumber(g.max_scale || g.maxScale, 20),
-    normalizedValue: toNumber(g.normalized_value || g.normalizedValue),
-    evalDate: g.eval_date || g.evalDate || new Date().toISOString(),
-    comment: g.comment || undefined,
-    createdAt: g.created_at || g.createdAt || new Date().toISOString(),
-    createdBy: g.created_by || g.createdBy,
-    createdByRole: g.created_by_role || g.createdByRole,
-    classAverage: g.class_average !== undefined ? toNumber(g.class_average) : undefined,
-    classMin: g.class_min !== undefined ? toNumber(g.class_min) : undefined,
-    classMax: g.class_max !== undefined ? toNumber(g.class_max) : undefined,
-  }))
-}
-
-// ============================================
-// HELPER: Transformer les notes en SubjectNotes[]
-// ============================================
-
-function transformToSubjectNotes(grades: Grade[]): SubjectNotes[] {
-  // Grouper par matière
-  const gradesBySubject = grades.reduce((acc, grade) => {
-    const subject = grade.subjectName || "Autre"
-    if (!acc[subject]) {
-      acc[subject] = []
-    }
-    acc[subject].push(grade)
-    return acc
-  }, {} as { [key: string]: Grade[] })
-
-  // Transformer en SubjectNotes[]
-  return Object.entries(gradesBySubject).map(([subjectName, subjectGrades]) => {
-    const validGrades = subjectGrades.filter(g => !g.absent && g.normalizedValue !== null)
-    
-    // Calculer moyenne de l'élève
-    let totalPoints = 0
-    let totalCoeff = 0
-    validGrades.forEach(g => {
-      totalPoints += toNumber(g.normalizedValue) * toNumber(g.coefficient, 1)
-      totalCoeff += toNumber(g.coefficient, 1)
-    })
-    const subjectAvgStudent = totalCoeff > 0 ? totalPoints / totalCoeff : 0
-
-    // Calculer moyenne de classe
-    const gradesWithClassAvg = validGrades.filter(g => g.classAverage !== undefined)
-    const subjectAvgClass = gradesWithClassAvg.length > 0
-      ? gradesWithClassAvg.reduce((sum, g) => sum + toNumber(g.classAverage || 0), 0) / gradesWithClassAvg.length
-      : undefined
-
-    // Min et Max de la classe
-    const classAverages = validGrades
-      .filter(g => g.classAverage !== undefined)
-      .map(g => toNumber(g.classAverage || 0))
-    const subjectMin = classAverages.length > 0 ? Math.min(...classAverages) : undefined
-    const subjectMax = classAverages.length > 0 ? Math.max(...classAverages) : undefined
-
-    // Transformer les évaluations
-    const evaluations = subjectGrades.map(g => ({
-      evaluationId: g.evaluationId,
-      title: g.evaluationTitle,
-      date: g.evalDate,
-      coefficient: g.coefficient,
-      gradeStudent: toNumber(g.normalizedValue),
-      avgClass: g.classAverage,
-      min: g.classMin,
-      max: g.classMax,
-      appreciation: g.comment,
-    }))
-
-    return {
-      subjectId: subjectName.toLowerCase().replace(/\s+/g, '-'),
-      subjectName,
-      subjectCoeffTotal: totalCoeff,
-      subjectAvgStudent,
-      subjectAvgClass,
-      subjectMin,
-      subjectMax,
-      appreciation: undefined,
-      evaluations,
-    }
-  })
-}
-
-// ============================================
-// COMPOSANT PRINCIPAL
-// ============================================
-
-export default function ResponsableNotesPage() {
-  const [children, setChildren] = useState<Child[]>([])
-  const [selectedChildId, setSelectedChildId] = useState<string | null>(null)
-  const [grades, setGrades] = useState<Grade[]>([])
-  const [subjects, setSubjects] = useState<SubjectNotes[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+export default function StudentAssignmentsPage() {
+  // États
+  const [assignments, setAssignments] = useState<Assignment[]>([])
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  
-  // Modal d'édition
-  const [editingGradeId, setEditingGradeId] = useState<string | null>(null)
 
   // Filtres
-  const [filterPeriod, setFilterPeriod] = useState<string>("all")
-  const [filterSubject, setFilterSubject] = useState<string>("all")
-  const [showFilters, setShowFilters] = useState(false)
+  const [periodFilter, setPeriodFilter] = useState<FilterPeriod>('all')
+  const [subjectFilter, setSubjectFilter] = useState<string>('all')
 
-  const user = getUserSession()
-
-  // ============================================
-  // CHARGEMENT DES DONNÉES
-  // ============================================
-
+  // Charger les devoirs au montage
   useEffect(() => {
-    loadChildren()
+    loadAssignments()
   }, [])
 
-  useEffect(() => {
-    if (selectedChildId) {
-      loadGrades(selectedChildId)
-    }
-  }, [selectedChildId, filterPeriod, filterSubject])
-
-  const loadChildren = async () => {
+  const loadAssignments = async () => {
     try {
-      setIsLoading(true)
+      setLoading(true)
       setError(null)
 
-      const response = await gradesApi.getChildrenGrades()
-
-      if (response.success && response.data) {
-        const childrenMap = new Map<string, Child>()
-        
-        response.data.forEach((item: any) => {
-          if (item.student && !childrenMap.has(item.student.id)) {
-            childrenMap.set(item.student.id, {
-              id: item.student.id,
-              fullName: item.student.name || "Élève",
-              email: item.student.email || "",
-              className: item.grades[0]?.className || "Classe inconnue",
-              studentNo: item.student.studentNo || "",
-            })
-          }
-        })
-
-        const childrenList = Array.from(childrenMap.values())
-        setChildren(childrenList)
-        
-        if (childrenList.length > 0) {
-          setSelectedChildId(childrenList[0].id)
-        }
-      } else {
-        setError(response.error || "Impossible de charger les enfants")
-      }
-    } catch (err) {
-      console.error("Error loading children:", err)
-      setError("Erreur lors du chargement des enfants")
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const loadGrades = async (studentId: string) => {
-    try {
-      setIsLoading(true)
-      setError(null)
-
-      const filters: any = {}
+      const response = await assignmentsApi.getStudentAssignments()
       
-      // Filtre par période
-      if (filterPeriod !== "all") {
-        const now = new Date()
-        if (filterPeriod === "week") {
-          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-          filters.startDate = weekAgo.toISOString()
-        } else if (filterPeriod === "month") {
-          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-          filters.startDate = monthAgo.toISOString()
-        }
+      if (response.success) {
+        setAssignments(response.data)
+      } else {
+        setError('Erreur lors du chargement des devoirs')
       }
-
-      const response = await gradesApi.getStudentGrades(studentId, filters)
-
-      if (!response.success) {
-        setError(response.error || "Erreur lors du chargement des notes")
-        return
-      }
-
-      let gradesData = transformBackendData(response.data?.grades || [])
-
-      // Filtre par matière
-      if (filterSubject !== "all") {
-        gradesData = gradesData.filter((g: Grade) => g.subjectName === filterSubject)
-      }
-
-      setGrades(gradesData)
-
-      // Transformer en SubjectNotes[]
-      const subjectsData = transformToSubjectNotes(gradesData)
-      setSubjects(subjectsData)
-
-    } catch (err) {
-      console.error("Error loading grades:", err)
-      setError("Impossible de charger les notes")
+    } catch (err: any) {
+      console.error('Erreur chargement devoirs:', err)
+      setError(err.message || 'Erreur lors du chargement')
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
-  // ============================================
-  // STATISTIQUES
-  // ============================================
-
-  const calculateGeneralAverage = (): number => {
-    if (subjects.length === 0) return 0
-    
-    let totalPoints = 0
-    let totalCoeff = 0
-    
-    subjects.forEach(subject => {
-      totalPoints += subject.subjectAvgStudent * subject.subjectCoeffTotal
-      totalCoeff += subject.subjectCoeffTotal
+  // Extraire les matières uniques pour le filtre
+  const subjects = useMemo(() => {
+    const uniqueSubjects = new Map<string, { name: string; color: string }>()
+    assignments.forEach(a => {
+      if (a.subject_name && !uniqueSubjects.has(a.subject_name)) {
+        uniqueSubjects.set(a.subject_name, {
+          name: a.subject_name,
+          color: a.subject_color || '#666'
+        })
+      }
     })
-    
-    return totalCoeff > 0 ? totalPoints / totalCoeff : 0
-  }
+    return Array.from(uniqueSubjects.values())
+  }, [assignments])
 
-  const generalAverage = calculateGeneralAverage()
-  const totalSubjects = subjects.length
-  const totalEvaluations = subjects.reduce((sum, s) => sum + s.evaluations.length, 0)
-  const selectedChild = children.find((c) => c.id === selectedChildId)
-  const availableSubjects = Array.from(new Set(grades.map(g => g.subjectName)))
+  // Filtrer les devoirs
+  const filteredAssignments = useMemo(() => {
+    let filtered = [...assignments]
 
-  // ============================================
-  // HANDLERS
-  // ============================================
-
-  const handleRefresh = () => {
-    if (selectedChildId) {
-      loadGrades(selectedChildId)
+    // Filtre par matière
+    if (subjectFilter && subjectFilter !== 'all') {
+      filtered = filtered.filter(a => a.subject_name === subjectFilter)
     }
-  }
 
-  const handleEditNote = (gradeId: string) => {
-    setEditingGradeId(gradeId)
-  }
-
-  const handleCloseEditModal = () => {
-    setEditingGradeId(null)
-  }
-
-  const handleEditSuccess = () => {
-    if (selectedChildId) {
-      loadGrades(selectedChildId)
+    // Filtre par période
+    if (periodFilter === 'week') {
+      filtered = filtered.filter(a => isAssignmentDueThisWeek(a) || isAssignmentOverdue(a))
+    } else if (periodFilter === 'month') {
+      filtered = filtered.filter(a => isAssignmentDueThisMonth(a) || isAssignmentOverdue(a))
     }
-  }
 
-  // ============================================
-  // LOADING STATE
-  // ============================================
+    return filtered
+  }, [assignments, subjectFilter, periodFilter])
 
-  if (isLoading && children.length === 0) {
-    return (
-      <DashboardLayout requiredRole="student">
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center space-y-4">
-            <div className="animate-spin rounded-full h-16 w-16 border-4 border-primary border-t-transparent mx-auto" />
-            <p className="text-muted-foreground font-medium">Chargement des données...</p>
-          </div>
-        </div>
-      </DashboardLayout>
-    )
-  }
+  // Grouper les devoirs par section
+  const overdueAssignments = filteredAssignments.filter(isAssignmentOverdue)
+  const todayAssignments = filteredAssignments.filter(a => !isAssignmentOverdue(a) && isAssignmentDueToday(a))
+  const upcomingAssignments = filteredAssignments.filter(a => !isAssignmentOverdue(a) && !isAssignmentDueToday(a))
 
-  // ============================================
-  // ERROR STATE
-  // ============================================
-
-  if (error && children.length === 0) {
-    return (
-      <DashboardLayout requiredRole="student">
-        <Card className="max-w-md mx-auto mt-8 border-red-200 bg-red-50/50">
-          <CardContent className="pt-6">
-            <div className="flex flex-col items-center text-center space-y-4">
-              <AlertCircle className="h-12 w-12 text-red-600" />
-              <div>
-                <h3 className="text-lg font-semibold">Erreur</h3>
-                <p className="text-sm text-muted-foreground mt-2">{error}</p>
-              </div>
-              <Button onClick={loadChildren} className="w-full">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Réessayer
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </DashboardLayout>
-    )
-  }
-
-  // ============================================
-  // EMPTY STATE
-  // ============================================
-
-  if (children.length === 0) {
-    return (
-      <DashboardLayout requiredRole="student">
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Aucun enfant associé</h3>
-            <p className="text-sm text-muted-foreground">
-              Aucun élève n'est actuellement lié à votre compte responsable.
-            </p>
-          </CardContent>
-        </Card>
-      </DashboardLayout>
-    )
-  }
-
-  // ============================================
-  // MAIN RENDER
-  // ============================================
+  // Informations sur la classe (depuis le premier devoir)
+  const classLabel = assignments[0]?.class_label || 'Ma classe'
 
   return (
-    <DashboardLayout requiredRole="student">
-      <div className="space-y-6 pb-8">
-        {/* ========================================== */}
-        {/* HEADER */}
-        {/* ========================================== */}
-        <div className="border-b pb-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-4xl font-bold text-slate-900">Notes de mes enfants</h1>
-              <p className="text-muted-foreground mt-2 text-lg">
-                Suivi et gestion des résultats scolaires
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                onClick={() => setShowFilters(!showFilters)}
-                variant="outline"
-                size="sm"
-              >
-                <Filter className="h-4 w-4 mr-2" />
-                Filtres
-              </Button>
-              <Button onClick={handleRefresh} variant="outline" size="sm">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Actualiser
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* ========================================== */}
-        {/* SÉLECTEUR D'ENFANT */}
-        {/* ========================================== */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Sélectionner un enfant
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <select
-              className="w-full max-w-2xl rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={selectedChildId || ""}
-              onChange={(e) => setSelectedChildId(e.target.value)}
-            >
-              {children.map((child) => (
-                <option key={child.id} value={child.id}>
-                  {child.fullName} - {child.className}
-                </option>
-              ))}
-            </select>
-          </CardContent>
-        </Card>
-
-        {/* ========================================== */}
-        {/* FILTRES */}
-        {/* ========================================== */}
-        {showFilters && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Filter className="h-5 w-5" />
-                Filtres
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-4">
-                <div className="flex-1 min-w-[200px]">
-                  <label className="text-sm font-medium mb-2 block">
-                    <Calendar className="h-4 w-4 inline mr-1" />
-                    Période
-                  </label>
-                  <select
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={filterPeriod}
-                    onChange={(e) => setFilterPeriod(e.target.value)}
-                  >
-                    <option value="all">Toutes les périodes</option>
-                    <option value="week">7 derniers jours</option>
-                    <option value="month">30 derniers jours</option>
-                  </select>
-                </div>
-
-                <div className="flex-1 min-w-[200px]">
-                  <label className="text-sm font-medium mb-2 block">
-                    <BookOpen className="h-4 w-4 inline mr-1" />
-                    Matière
-                  </label>
-                  <select
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={filterSubject}
-                    onChange={(e) => setFilterSubject(e.target.value)}
-                  >
-                    <option value="all">Toutes les matières</option>
-                    {availableSubjects.map((subject) => (
-                      <option key={subject} value={subject}>
-                        {subject}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* ========================================== */}
-        {/* AVERTISSEMENT PERMISSIONS */}
-        {/* ========================================== */}
-        <Card className="border-blue-200 bg-blue-50/50">
-          <CardContent className="pt-6 flex items-start gap-3">
-            <Clock className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-            <div className="text-sm">
-              <p className="font-medium text-blue-900 mb-1">Permissions de modification</p>
-              <p className="text-blue-700">
-                Vous pouvez modifier ou supprimer les notes pendant <strong>30 jours</strong> après
-                leur création. Au-delà, seul un administrateur peut intervenir.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* ========================================== */}
-        {/* STATISTIQUES - Composants existants */}
-        {/* ========================================== */}
-        {grades.length > 0 ? (
-          <div className="grid gap-6 lg:grid-cols-3">
-            {/* Colonne principale (2/3) */}
-            <div className="lg:col-span-2 space-y-6">
-              {/* Carte résumé */}
-              <NotesSummaryCard
-                generalAverage={generalAverage}
-                totalSubjects={totalSubjects}
-                totalEvaluations={totalEvaluations}
-              />
-
-              {/* Tableau par matière */}
-              <SubjectSummTable subjects={subjects} />
-
-              {/* Accordéon des notes détaillées */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Notes détaillées</CardTitle>
-                  <CardDescription>
-                    Cliquez sur une matière pour voir toutes les évaluations
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <SubjectNotesAccordion subjects={subjects} />
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Panel latéral (1/3) */}
-            <div>
-              <StatsPanel
-                generalAverage={generalAverage}
-                subjects={subjects}
-              />
-            </div>
-          </div>
-        ) : (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">
-                {selectedChild?.fullName} n'a pas encore de notes
-              </p>
-            </CardContent>
-          </Card>
-        )}
+    <div className="container mx-auto p-6 max-w-4xl">
+      {/* En-tête */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <BookOpen className="h-6 w-6" />
+          Mes devoirs
+        </h1>
+        <p className="text-muted-foreground mt-1">
+          {classLabel} — Année scolaire 2024-2025
+        </p>
       </div>
 
-      {/* ========================================== */}
-      {/* MODAL D'ÉDITION */}
-      {/* ========================================== */}
-      {editingGradeId && (
-        <EditNoteModal
-          noteId={editingGradeId}
-          onClose={handleCloseEditModal}
-          onSuccess={handleEditSuccess}
-        />
+      {/* Filtres */}
+      <Card className="mb-6">
+        <CardContent className="p-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-gray-500" />
+              <span className="text-sm font-medium">Filtrer :</span>
+            </div>
+
+            {/* Filtre période */}
+            <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as FilterPeriod)}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="Période" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous les devoirs</SelectItem>
+                <SelectItem value="week">Cette semaine</SelectItem>
+                <SelectItem value="month">Ce mois</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Filtre matière */}
+            <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Matière" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes les matières</SelectItem>
+                {subjects.map((subject) => (
+                  <SelectItem key={subject.name} value={subject.name}>
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-3 h-3 rounded flex-shrink-0"
+                        style={{ backgroundColor: subject.color }}
+                      />
+                      {subject.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Compteur */}
+            <div className="ml-auto text-sm text-muted-foreground">
+              {filteredAssignments.length} devoir{filteredAssignments.length > 1 ? 's' : ''}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Contenu principal */}
+      {loading ? (
+        <div className="text-center py-12 text-muted-foreground">
+          Chargement des devoirs...
+        </div>
+      ) : error ? (
+        <div className="text-center py-12">
+          <AlertCircle className="h-12 w-12 mx-auto text-red-500 mb-4" />
+          <p className="text-red-600">{error}</p>
+          <Button variant="outline" onClick={loadAssignments} className="mt-4">
+            Réessayer
+          </Button>
+        </div>
+      ) : filteredAssignments.length === 0 ? (
+        <div className="text-center py-12">
+          <CheckCircle2 className="h-12 w-12 mx-auto text-green-500 mb-4" />
+          <p className="text-muted-foreground">Aucun devoir à afficher</p>
+          <p className="text-sm text-gray-400 mt-2">
+            {periodFilter !== 'all' || subjectFilter !== 'all' 
+              ? 'Essayez de modifier les filtres'
+              : 'Vous êtes à jour !'}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {/* Section : En retard */}
+          {overdueAssignments.length > 0 && (
+            <AssignmentSection
+              title="En retard"
+              icon={<AlertCircle className="h-5 w-5 text-red-600" />}
+              assignments={overdueAssignments}
+              variant="overdue"
+            />
+          )}
+
+          {/* Section : Aujourd'hui */}
+          {todayAssignments.length > 0 && (
+            <AssignmentSection
+              title="Aujourd'hui"
+              icon={<Clock className="h-5 w-5 text-orange-600" />}
+              assignments={todayAssignments}
+              variant="today"
+            />
+          )}
+
+          {/* Section : À venir */}
+          {upcomingAssignments.length > 0 && (
+            <AssignmentSection
+              title="À venir"
+              icon={<CalendarDays className="h-5 w-5 text-blue-600" />}
+              assignments={upcomingAssignments}
+              variant="upcoming"
+            />
+          )}
+        </div>
       )}
-    </DashboardLayout>
+    </div>
+  )
+}
+
+// =========================
+// Composant AssignmentSection
+// =========================
+
+interface AssignmentSectionProps {
+  title: string;
+  icon: React.ReactNode;
+  assignments: Assignment[];
+  variant: 'overdue' | 'today' | 'upcoming';
+}
+
+function AssignmentSection({ title, icon, assignments, variant }: AssignmentSectionProps) {
+  const borderColor = {
+    overdue: 'border-red-200',
+    today: 'border-orange-200',
+    upcoming: 'border-blue-200'
+  }[variant]
+
+  return (
+    <div>
+      <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        {icon}
+        {title}
+        <Badge variant="secondary" className="ml-2">
+          {assignments.length}
+        </Badge>
+      </h2>
+      <div className="space-y-3">
+        {assignments.map((assignment) => (
+          <StudentAssignmentCard
+            key={assignment.id}
+            assignment={assignment}
+            borderColor={borderColor}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// =========================
+// Composant StudentAssignmentCard
+// =========================
+
+interface StudentAssignmentCardProps {
+  assignment: Assignment;
+  borderColor: string;
+}
+
+function StudentAssignmentCard({ assignment, borderColor }: StudentAssignmentCardProps) {
+  const [expanded, setExpanded] = useState(false)
+  const isOverdue = isAssignmentOverdue(assignment)
+
+  return (
+    <Card className={`${borderColor} transition-all hover:shadow-md ${isOverdue ? 'bg-red-50/50' : ''}`}>
+      <CardContent className="p-4">
+        {/* Ligne principale */}
+        <div className="flex items-start gap-4">
+          {/* Badge matière */}
+          <div
+            className="w-2 h-full min-h-[60px] rounded-full flex-shrink-0"
+            style={{ backgroundColor: assignment.subject_color || '#666' }}
+          />
+
+          {/* Contenu */}
+          <div className="flex-1 min-w-0">
+            {/* En-tête */}
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <div>
+                <span className="text-sm font-medium text-gray-600">
+                  {assignment.subject_name}
+                </span>
+                <h3 className="font-semibold text-lg">
+                  {assignment.title}
+                </h3>
+              </div>
+
+              {/* Points */}
+              {assignment.max_points && (
+                <Badge variant="outline" className="flex-shrink-0">
+                  <Award className="h-3 w-3 mr-1" />
+                  {assignment.max_points} pts
+                </Badge>
+              )}
+            </div>
+
+            {/* Date limite */}
+            <div className={`flex items-center gap-2 text-sm mb-2 ${isOverdue ? 'text-red-600 font-medium' : 'text-gray-600'}`}>
+              <Calendar className="h-4 w-4" />
+              <span>
+                {isOverdue ? 'Était à rendre le ' : 'À rendre pour le '}
+                {formatDueDateShort(assignment.due_at)}
+              </span>
+            </div>
+
+            {/* Description (expandable) */}
+            {assignment.description && (
+              <div className="mt-3">
+                <p className={`text-sm text-gray-700 ${expanded ? '' : 'line-clamp-2'}`}>
+                  {assignment.description}
+                </p>
+                {assignment.description.length > 150 && (
+                  <button
+                    onClick={() => setExpanded(!expanded)}
+                    className="text-sm text-blue-600 hover:underline mt-1"
+                  >
+                    {expanded ? 'Voir moins' : 'Voir plus'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Lien ressource */}
+            {assignment.resource_url && (
+              <a
+                href={assignment.resource_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline mt-3 bg-blue-50 px-3 py-1.5 rounded-lg"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Ouvrir la ressource
+              </a>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }

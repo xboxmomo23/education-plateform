@@ -86,7 +86,6 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
       case "student":
         return [
           { icon: BookOpen, label: "Tableau de bord", href: "/dashboard-eleve" },
-          { icon: BookOpen, label: "Mes cours", href: "/eleve/cours" },
           { icon: FileText, label: "Devoirs", href: "/eleve/devoirs" },
           { icon: Calendar, label: "Emploi du temps", href: "/eleve/emplois-du-temps" },
           { icon: ClipboardCheck, label: "Assiduité", href: "/eleve/assiduite" },
@@ -105,11 +104,9 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
       case "staff":
         return [
           { icon: BookOpen, label: "Tableau de bord", href: "/dashboard-staff" },
-          { icon: ClipboardCheck, label: "Présences", href: "/staff/presences" },
           { icon: AlertCircle, label: "Absences", href: "/staff/absences" },
           { icon: Calendar, label: "Emplois du temps", href: "/staff/emplois-du-temps" },
           { icon: Layers, label: "Cours", href: "/staff/cours" },
-          { icon: FileText, label: "Devoirs", href: "/staff/devoirs" },
           { icon: BarChart, label: "Notes", href: "/staff/notes" },
           { icon: Users, label: "Gestion des utilisateurs", href: "/staff/gestion-utilisateurs" },
           { icon: Settings, label: "Paramètres", href: "/staff/parametres" },

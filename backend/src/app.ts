@@ -12,6 +12,7 @@ import establishmentRoutes from './routes/establishment.routes';
 import attendanceRoutes from './routes/attendance.routes';
 import superAdminRoutes from './routes/super-admin.routes';
 import adminRoutes from './routes/admin.routes';
+import assignmentRoutes from './routes/assignment.routes';  // ✨ NOUVEAU
 
 
 
@@ -77,6 +78,9 @@ app.use('/api/establishment', establishmentRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/admin', adminRoutes);
+
+// ✨ NOUVEAU : Routes des devoirs
+app.use('/api/assignments', assignmentRoutes);
 
 
 
