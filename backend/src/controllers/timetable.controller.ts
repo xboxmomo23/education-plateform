@@ -725,12 +725,16 @@ export async function updateCourseForStaffHandler(req: Request, res: Response) {
  * -> on fait un "soft delete" en mettant active = false
  */
 export async function deleteCourseForStaffHandler(req: Request, res: Response) {
+  const client = await pool.connect();
+
   try {
     const { courseId } = req.params;
     const { establishmentId } = req.user!;
 
+    await client.query('BEGIN');
+
     // 1. Vérifier que le cours existe
-    const courseResult = await pool.query(
+    const courseResult = await client.query(
       `
       SELECT 
         id,
@@ -743,6 +747,7 @@ export async function deleteCourseForStaffHandler(req: Request, res: Response) {
     );
 
     if (courseResult.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({
         success: false,
         error: 'Cours non trouvé',
@@ -752,35 +757,71 @@ export async function deleteCourseForStaffHandler(req: Request, res: Response) {
     const course = courseResult.rows[0];
 
     // 2. Vérifier l’appartenance à l’établissement
-    if (course.establishment_id && establishmentId && course.establishment_id !== establishmentId) {
+    if (
+      course.establishment_id &&
+      establishmentId &&
+      course.establishment_id !== establishmentId
+    ) {
+      await client.query('ROLLBACK');
       return res.status(403).json({
         success: false,
-        error: "Cours invalide pour cet établissement",
+        error: 'Cours invalide pour cet établissement',
       });
     }
 
-    // 3. Soft delete : on passe active = false
-    await pool.query(
+    // 3.a Supprimer les instances liées au cours
+    await client.query(
       `
-      UPDATE courses
-      SET active = false
+      DELETE FROM timetable_instances
+      WHERE course_id = $1
+      `,
+      [courseId]
+    );
+
+    // 3.b Supprimer les templates liés au cours (si tu as cette table)
+    await client.query(
+      `
+      DELETE FROM course_templates
+      WHERE course_id = $1
+      `,
+      [courseId]
+    );
+
+    // 3.c Supprimer le cours lui-même
+    const deleteResult = await client.query(
+      `
+      DELETE FROM courses
       WHERE id = $1
       `,
       [courseId]
     );
 
+    if (deleteResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({
+        success: false,
+        error: 'Cours non trouvé ou déjà supprimé',
+      });
+    }
+
+    await client.query('COMMIT');
+
     return res.json({
       success: true,
-      message: 'Cours désactivé avec succès',
+      message: 'Cours supprimé avec succès',
     });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Erreur deleteCourseForStaffHandler:', error);
     return res.status(500).json({
       success: false,
-      error: "Erreur lors de la suppression du cours",
+      error: 'Erreur lors de la suppression du cours',
     });
+  } finally {
+    client.release();
   }
 }
+
 
 
 
