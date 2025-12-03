@@ -87,7 +87,8 @@ interface ClassCardProps {
 }
 
 function ClassCard({ classItem, onClick, showStats = true }: ClassCardProps) {
-  const hasIssues = classItem.absent_today > 0 || classItem.late_today > 0
+  const hasIssues = (classItem.absent_today || 0) > 0 || (classItem.late_today || 0) > 0
+  const label = classItem.label || 'Classe'
 
   const content = (
     <div 
@@ -101,13 +102,13 @@ function ClassCard({ classItem, onClick, showStats = true }: ClassCardProps) {
       {/* Avatar/Icône classe */}
       <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
         <span className="text-sm font-bold text-primary">
-          {classItem.label.slice(0, 2).toUpperCase()}
+          {label.slice(0, 2).toUpperCase()}
         </span>
       </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <h4 className="font-medium text-sm">{classItem.label}</h4>
+          <h4 className="font-medium text-sm">{label}</h4>
           {classItem.level && (
             <Badge variant="secondary" className="text-xs">
               {classItem.level}
@@ -117,7 +118,7 @@ function ClassCard({ classItem, onClick, showStats = true }: ClassCardProps) {
         <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
           <span className="flex items-center gap-1">
             <Users className="h-3 w-3" />
-            {classItem.student_count} élève{classItem.student_count > 1 ? 's' : ''}
+            {classItem.student_count || 0} élève{(classItem.student_count || 0) > 1 ? 's' : ''}
           </span>
         </div>
       </div>
@@ -125,13 +126,13 @@ function ClassCard({ classItem, onClick, showStats = true }: ClassCardProps) {
       {/* Stats du jour */}
       {showStats && (
         <div className="flex items-center gap-2 flex-shrink-0">
-          {classItem.absent_today > 0 && (
+          {(classItem.absent_today || 0) > 0 && (
             <Badge variant="destructive" className="text-xs">
               <UserX className="h-3 w-3 mr-1" />
               {classItem.absent_today}
             </Badge>
           )}
-          {classItem.late_today > 0 && (
+          {(classItem.late_today || 0) > 0 && (
             <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-xs">
               <Clock className="h-3 w-3 mr-1" />
               {classItem.late_today}
@@ -170,8 +171,8 @@ export function ClassesSummaryWidget({
   viewAllLink,
 }: ClassesSummaryWidgetProps) {
   const displayedClasses = classes.slice(0, maxItems)
-  const totalAbsent = classes.reduce((sum, c) => sum + c.absent_today, 0)
-  const totalLate = classes.reduce((sum, c) => sum + c.late_today, 0)
+  const totalAbsent = classes.reduce((sum, c) => sum + (c.absent_today || 0), 0)
+  const totalLate = classes.reduce((sum, c) => sum + (c.late_today || 0), 0)
 
   return (
     <div className="space-y-3">
@@ -196,34 +197,37 @@ export function ClassesSummaryWidget({
       {/* Liste compacte */}
       {displayedClasses.length > 0 && (
         <div className="space-y-1">
-          {displayedClasses.map((item) => (
-            <div 
-              key={item.id}
-              className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
-                  {item.label.slice(0, 2)}
+          {displayedClasses.map((item) => {
+            const label = item.label || 'Classe'
+            return (
+              <div 
+                key={item.id}
+                className="flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
+                    {label.slice(0, 2)}
+                  </div>
+                  <span className="text-sm font-medium">{label}</span>
                 </div>
-                <span className="text-sm font-medium">{item.label}</span>
+                <div className="flex items-center gap-1">
+                  {(item.absent_today || 0) > 0 && (
+                    <span className="text-xs text-red-600 font-medium">
+                      {item.absent_today} abs
+                    </span>
+                  )}
+                  {(item.late_today || 0) > 0 && (
+                    <span className="text-xs text-amber-600 font-medium">
+                      {item.late_today} ret
+                    </span>
+                  )}
+                  {(item.absent_today || 0) === 0 && (item.late_today || 0) === 0 && (
+                    <span className="text-xs text-green-600">✓</span>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-1">
-                {item.absent_today > 0 && (
-                  <span className="text-xs text-red-600 font-medium">
-                    {item.absent_today} abs
-                  </span>
-                )}
-                {item.late_today > 0 && (
-                  <span className="text-xs text-amber-600 font-medium">
-                    {item.late_today} ret
-                  </span>
-                )}
-                {item.absent_today === 0 && item.late_today === 0 && (
-                  <span className="text-xs text-green-600">✓</span>
-                )}
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

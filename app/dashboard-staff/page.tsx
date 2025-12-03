@@ -112,18 +112,19 @@ export default function StaffDashboardPage() {
       let classesData: ClassSummary[] = []
       try {
         const classesRes = await timetableApi.getStaffClasses()
-        if (classesRes.success && classesRes.data) {
+        if (classesRes.success && Array.isArray(classesRes.data)) {
           classesData = classesRes.data.map((c: any) => ({
-            id: c.id,
-            label: c.label,
-            level: c.level,
-            student_count: c.student_count || 0,
-            absent_today: 0, // TODO: calculer depuis l'API
-            late_today: 0,
+            id: c.id || c.class_id || String(Math.random()),
+            label: c.label || c.class_label || c.name || 'Classe inconnue',
+            level: c.level || c.class_level || '',
+            student_count: c.student_count || c.students_count || 0,
+            absent_today: c.absent_today || 0,
+            late_today: c.late_today || 0,
           }))
         }
       } catch (e) {
         console.error('Erreur classes:', e)
+        // On continue sans les classes
       }
       setClasses(classesData)
 
@@ -391,26 +392,30 @@ export default function StaffDashboardPage() {
                 {/* Résumé des classes */}
                 <div className="mt-4 pt-4 border-t">
                   <h4 className="text-sm font-medium mb-3">Résumé par classe</h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {classes.slice(0, 6).map((classItem) => (
-                      <div 
-                        key={classItem.id}
-                        className="p-2 rounded-lg bg-muted/50 text-center"
-                      >
-                        <p className="font-medium text-sm">{classItem.label}</p>
-                        <div className="flex items-center justify-center gap-2 mt-1 text-xs">
-                          <span className="text-muted-foreground">
-                            {classItem.student_count} élèves
-                          </span>
-                          {classItem.absent_today > 0 && (
-                            <Badge variant="destructive" className="text-xs">
-                              {classItem.absent_today} abs
-                            </Badge>
-                          )}
+                  {classes.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-2">Aucune classe assignée</p>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {classes.slice(0, 6).map((classItem) => (
+                        <div 
+                          key={classItem.id}
+                          className="p-2 rounded-lg bg-muted/50 text-center"
+                        >
+                          <p className="font-medium text-sm">{classItem.label || 'Classe'}</p>
+                          <div className="flex items-center justify-center gap-2 mt-1 text-xs">
+                            <span className="text-muted-foreground">
+                              {classItem.student_count || 0} élèves
+                            </span>
+                            {classItem.absent_today > 0 && (
+                              <Badge variant="destructive" className="text-xs">
+                                {classItem.absent_today} abs
+                              </Badge>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
