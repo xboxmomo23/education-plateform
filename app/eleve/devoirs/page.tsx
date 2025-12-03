@@ -1,5 +1,6 @@
 "use client"
 
+import { DashboardLayout } from "@/components/dashboard-layout"
 import React, { useState, useEffect, useMemo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -107,125 +108,127 @@ export default function StudentAssignmentsPage() {
   const classLabel = assignments[0]?.class_label || 'Ma classe'
 
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
-      {/* En-tête */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <BookOpen className="h-6 w-6" />
-          Mes devoirs
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          {classLabel} — Année scolaire 2024-2025
-        </p>
-      </div>
-
-      {/* Filtres */}
-      <Card className="mb-6">
-        <CardContent className="p-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-gray-500" />
-              <span className="text-sm font-medium">Filtrer :</span>
-            </div>
-
-            {/* Filtre période */}
-            <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as FilterPeriod)}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Période" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tous les devoirs</SelectItem>
-                <SelectItem value="week">Cette semaine</SelectItem>
-                <SelectItem value="month">Ce mois</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* Filtre matière */}
-            <Select value={subjectFilter} onValueChange={setSubjectFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Matière" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Toutes les matières</SelectItem>
-                {subjects.map((subject) => (
-                  <SelectItem key={subject.name} value={subject.name}>
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-3 h-3 rounded flex-shrink-0"
-                        style={{ backgroundColor: subject.color }}
-                      />
-                      {subject.name}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Compteur */}
-            <div className="ml-auto text-sm text-muted-foreground">
-              {filteredAssignments.length} devoir{filteredAssignments.length > 1 ? 's' : ''}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Contenu principal */}
-      {loading ? (
-        <div className="text-center py-12 text-muted-foreground">
-          Chargement des devoirs...
-        </div>
-      ) : error ? (
-        <div className="text-center py-12">
-          <AlertCircle className="h-12 w-12 mx-auto text-red-500 mb-4" />
-          <p className="text-red-600">{error}</p>
-          <Button variant="outline" onClick={loadAssignments} className="mt-4">
-            Réessayer
-          </Button>
-        </div>
-      ) : filteredAssignments.length === 0 ? (
-        <div className="text-center py-12">
-          <CheckCircle2 className="h-12 w-12 mx-auto text-green-500 mb-4" />
-          <p className="text-muted-foreground">Aucun devoir à afficher</p>
-          <p className="text-sm text-gray-400 mt-2">
-            {periodFilter !== 'all' || subjectFilter !== 'all' 
-              ? 'Essayez de modifier les filtres'
-              : 'Vous êtes à jour !'}
+    <DashboardLayout requiredRole="student">
+      <div className="container mx-auto p-6 max-w-4xl">
+        {/* En-tête */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <BookOpen className="h-6 w-6" />
+            Mes devoirs
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            {classLabel} — Année scolaire 2024-2025
           </p>
         </div>
-      ) : (
-        <div className="space-y-8">
-          {/* Section : En retard */}
-          {overdueAssignments.length > 0 && (
-            <AssignmentSection
-              title="En retard"
-              icon={<AlertCircle className="h-5 w-5 text-red-600" />}
-              assignments={overdueAssignments}
-              variant="overdue"
-            />
-          )}
 
-          {/* Section : Aujourd'hui */}
-          {todayAssignments.length > 0 && (
-            <AssignmentSection
-              title="Aujourd'hui"
-              icon={<Clock className="h-5 w-5 text-orange-600" />}
-              assignments={todayAssignments}
-              variant="today"
-            />
-          )}
+        {/* Filtres */}
+        <Card className="mb-6">
+          <CardContent className="p-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-gray-500" />
+                <span className="text-sm font-medium">Filtrer :</span>
+              </div>
 
-          {/* Section : À venir */}
-          {upcomingAssignments.length > 0 && (
-            <AssignmentSection
-              title="À venir"
-              icon={<CalendarDays className="h-5 w-5 text-blue-600" />}
-              assignments={upcomingAssignments}
-              variant="upcoming"
-            />
-          )}
-        </div>
-      )}
-    </div>
+              {/* Filtre période */}
+              <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as FilterPeriod)}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="Période" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les devoirs</SelectItem>
+                  <SelectItem value="week">Cette semaine</SelectItem>
+                  <SelectItem value="month">Ce mois</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Filtre matière */}
+              <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Matière" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Toutes les matières</SelectItem>
+                  {subjects.map((subject) => (
+                    <SelectItem key={subject.name} value={subject.name}>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-3 h-3 rounded flex-shrink-0"
+                          style={{ backgroundColor: subject.color }}
+                        />
+                        {subject.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Compteur */}
+              <div className="ml-auto text-sm text-muted-foreground">
+                {filteredAssignments.length} devoir{filteredAssignments.length > 1 ? 's' : ''}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Contenu principal */}
+        {loading ? (
+          <div className="text-center py-12 text-muted-foreground">
+            Chargement des devoirs...
+          </div>
+        ) : error ? (
+          <div className="text-center py-12">
+            <AlertCircle className="h-12 w-12 mx-auto text-red-500 mb-4" />
+            <p className="text-red-600">{error}</p>
+            <Button variant="outline" onClick={loadAssignments} className="mt-4">
+              Réessayer
+            </Button>
+          </div>
+        ) : filteredAssignments.length === 0 ? (
+          <div className="text-center py-12">
+            <CheckCircle2 className="h-12 w-12 mx-auto text-green-500 mb-4" />
+            <p className="text-muted-foreground">Aucun devoir à afficher</p>
+            <p className="text-sm text-gray-400 mt-2">
+              {periodFilter !== 'all' || subjectFilter !== 'all' 
+                ? 'Essayez de modifier les filtres'
+                : 'Vous êtes à jour !'}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-8">
+            {/* Section : En retard */}
+            {overdueAssignments.length > 0 && (
+              <AssignmentSection
+                title="En retard"
+                icon={<AlertCircle className="h-5 w-5 text-red-600" />}
+                assignments={overdueAssignments}
+                variant="overdue"
+              />
+            )}
+
+            {/* Section : Aujourd'hui */}
+            {todayAssignments.length > 0 && (
+              <AssignmentSection
+                title="Aujourd'hui"
+                icon={<Clock className="h-5 w-5 text-orange-600" />}
+                assignments={todayAssignments}
+                variant="today"
+              />
+            )}
+
+            {/* Section : À venir */}
+            {upcomingAssignments.length > 0 && (
+              <AssignmentSection
+                title="À venir"
+                icon={<CalendarDays className="h-5 w-5 text-blue-600" />}
+                assignments={upcomingAssignments}
+                variant="upcoming"
+              />
+            )}
+          </div>
+        )}
+      </div>
+    </DashboardLayout>
   )
 }
 

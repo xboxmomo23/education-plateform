@@ -3,6 +3,7 @@ import { body, param, query } from 'express-validator';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import { validateRequest } from '../middleware/validation.middleware';
 import {
+  getTeacherCoursesHandler,
   getTeacherAssignmentsHandler,
   createAssignmentHandler,
   updateAssignmentHandler,
@@ -16,6 +17,18 @@ const router = Router();
 // ============================================
 // ROUTES - ENSEIGNANTS (staff, admin, teacher)
 // ============================================
+
+/**
+ * GET /api/assignments/teacher/courses
+ * Récupérer les cours du professeur connecté
+ * (Pour la création de devoirs)
+ */
+router.get(
+  '/teacher/courses',
+  authenticate,
+  authorize('teacher', 'staff', 'admin'),
+  getTeacherCoursesHandler
+);
 
 /**
  * GET /api/assignments/teacher

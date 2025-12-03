@@ -8,18 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Calendar, FileText, Link as LinkIcon, Award } from "lucide-react"
-import { assignmentsApi, CreateAssignmentData } from "@/lib/api/assignments"
-import { timetableApi } from "@/lib/api/timetable"
-
-interface Course {
-  course_id: string;
-  subject_name: string;
-  subject_code: string;
-  subject_color: string;
-  teacher_name: string;
-  class_id: string;
-  class_label?: string;
-}
+import { assignmentsApi, CreateAssignmentData, TeacherCourse } from "@/lib/api/assignments"
 
 interface CreateAssignmentModalProps {
   onClose: () => void;
@@ -30,7 +19,7 @@ interface CreateAssignmentModalProps {
 export function CreateAssignmentModal({ onClose, onSuccess, preselectedCourseId }: CreateAssignmentModalProps) {
   const [loading, setLoading] = useState(false)
   const [loadingCourses, setLoadingCourses] = useState(true)
-  const [courses, setCourses] = useState<Course[]>([])
+  const [courses, setCourses] = useState<TeacherCourse[]>([])
   const [error, setError] = useState<string | null>(null)
 
   const [formData, setFormData] = useState<CreateAssignmentData>({
@@ -51,30 +40,11 @@ export function CreateAssignmentModal({ onClose, onSuccess, preselectedCourseId 
   const loadCourses = async () => {
     try {
       setLoadingCourses(true)
-      // Récupérer les classes gérées par le staff/enseignant
-      const classesResponse = await timetableApi.getStaffClasses()
+      // Récupérer les cours du professeur via la nouvelle API
+      const response = await assignmentsApi.getTeacherCourses()
       
-      if (classesResponse.success && Array.isArray(classesResponse.data)) {
-        // Pour chaque classe, récupérer les cours
-        const allCourses: Course[] = []
-        
-        for (const cls of classesResponse.data) {
-          try {
-            const coursesResponse = await timetableApi.getAvailableCourses(cls.id)
-            if (coursesResponse.success && Array.isArray(coursesResponse.data)) {
-              // Ajouter le label de classe aux cours
-              const coursesWithClass = coursesResponse.data.map((c: any) => ({
-                ...c,
-                class_label: cls.label,
-              }))
-              allCourses.push(...coursesWithClass)
-            }
-          } catch (err) {
-            console.warn(`Erreur chargement cours pour classe ${cls.id}:`, err)
-          }
-        }
-        
-        setCourses(allCourses)
+      if (response.success && Array.isArray(response.data)) {
+        setCourses(response.data)
       }
     } catch (error) {
       console.error('❌ Erreur chargement cours:', error)

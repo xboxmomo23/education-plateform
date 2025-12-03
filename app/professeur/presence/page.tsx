@@ -1,5 +1,6 @@
 "use client"
 
+import { DashboardLayout } from "@/components/dashboard-layout"
 import React, { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -208,106 +209,109 @@ export default function ProfesseurPresencePage() {
   const todayDayOfWeek = today.getDay() === 0 ? 1 : today.getDay() + 1 // Ajuster pour notre format
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto p-6">
-        {/* En-tête */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            📋 Faire l'appel
-          </h1>
-          <p className="text-gray-600">
-            Sélectionnez un cours pour marquer les présences
-          </p>
-        </div>
-
-        {/* Navigation semaine */}
-        <Card className="mb-6">
-          <CardContent className="py-4">
-            <div className="flex items-center justify-between">
-              <Button variant="outline" size="sm" onClick={goToPreviousWeek}>
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                Semaine précédente
-              </Button>
-              
-              <div className="text-center">
-                <p className="font-semibold text-gray-900">
-                  {formatWeekLabel(weekStart)}
-                </p>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={goToCurrentWeek}
-                  className="text-xs text-blue-600"
-                >
-                  Revenir à cette semaine
-                </Button>
-              </div>
-              
-              <Button variant="outline" size="sm" onClick={goToNextWeek}>
-                Semaine suivante
-                <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Contenu */}
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+    <DashboardLayout requiredRole="teacher">
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-6xl mx-auto p-6">
+          {/* En-tête */}
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">
+              📋 Faire l'appel
+            </h1>
+            <p className="text-gray-600">
+              Sélectionnez un cours pour marquer les présences
+            </p>
           </div>
-        ) : error ? (
-          <Card className="p-8 text-center">
-            <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-            <p className="text-red-600 mb-4">{error}</p>
-            <Button onClick={loadCourses}>Réessayer</Button>
-          </Card>
-        ) : courses.length === 0 ? (
-          <Card className="p-8 text-center">
-            <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">Aucun cours cette semaine</p>
-          </Card>
-        ) : (
-          <div className="space-y-6">
-            {coursesByDay.map(day => day.courses.length > 0 && (
-              <div key={day.value}>
-                <div className="flex items-center gap-2 mb-3">
-                  <h2 className="text-lg font-semibold text-gray-900">
-                    {day.label}
-                  </h2>
-                  {day.value === todayDayOfWeek && (
-                    <Badge className="bg-blue-100 text-blue-800">Aujourd'hui</Badge>
-                  )}
+
+          {/* Navigation semaine */}
+          <Card className="mb-6">
+            <CardContent className="py-4">
+              <div className="flex items-center justify-between">
+                <Button variant="outline" size="sm" onClick={goToPreviousWeek}>
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Semaine précédente
+                </Button>
+                
+                <div className="text-center">
+                  <p className="font-semibold text-gray-900">
+                    {formatWeekLabel(weekStart)}
+                  </p>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={goToCurrentWeek}
+                    className="text-xs text-blue-600"
+                  >
+                    Revenir à cette semaine
+                  </Button>
                 </div>
                 
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {day.courses.map(course => (
-                    <CourseCard
-                      key={course.instance_id}
-                      course={course}
-                      onClick={() => openAttendanceModal(course)}
-                    />
-                  ))}
-                </div>
+                <Button variant="outline" size="sm" onClick={goToNextWeek}>
+                  Semaine suivante
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
               </div>
-            ))}
-          </div>
-        )}
+            </CardContent>
+          </Card>
 
-        {/* Modal d'appel */}
-        <AttendanceModal
-          open={!!selectedCourse}
-          onClose={closeModal}
-          course={selectedCourse}
-          session={session}
-          students={students}
-          loading={loadingSession}
-          savingStudent={savingStudent}
-          onMarkStudent={markStudent}
-          onMarkAllPresent={markAllPresent}
-        />
+          {/* Contenu */}
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+            </div>
+          ) : error ? (
+            <Card className="p-8 text-center">
+              <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+              <p className="text-red-600 mb-4">{error}</p>
+              <Button onClick={loadCourses}>Réessayer</Button>
+            </Card>
+          ) : courses.length === 0 ? (
+            <Card className="p-8 text-center">
+              <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600">Aucun cours cette semaine</p>
+            </Card>
+          ) : (
+            <div className="space-y-6">
+              {coursesByDay.map(day => day.courses.length > 0 && (
+                <div key={day.value}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <h2 className="text-lg font-semibold text-gray-900">
+                      {day.label}
+                    </h2>
+                    {day.value === todayDayOfWeek && (
+                      <Badge className="bg-blue-100 text-blue-800">Aujourd'hui</Badge>
+                    )}
+                  </div>
+                  
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {day.courses.map(course => (
+                      <CourseCard
+                        key={course.instance_id}
+                        course={course}
+                        onClick={() => openAttendanceModal(course)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Modal d'appel */}
+          <AttendanceModal
+            open={!!selectedCourse}
+            onClose={closeModal}
+            course={selectedCourse}
+            session={session}
+            students={students}
+            loading={loadingSession}
+            savingStudent={savingStudent}
+            onMarkStudent={markStudent}
+            onMarkAllPresent={markAllPresent}
+          />
+        </div>
       </div>
-    </div>
+    </DashboardLayout>
+
   )
 }
 

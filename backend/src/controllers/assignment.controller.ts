@@ -1,9 +1,63 @@
 import { Request, Response } from 'express';
+import pool from '../config/database';
 import { AssignmentModel, AssignmentFilters, AssignmentStatus } from '../models/assignment.model';
 
 // ============================================
 // HANDLERS - ENSEIGNANTS (TEACHERS/STAFF)
 // ============================================
+
+/**
+ * GET /api/assignments/teacher/courses
+ * Récupérer les cours du professeur connecté
+ * (Pour pouvoir créer des devoirs)
+ */
+export async function getTeacherCoursesHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+
+    console.log('📚 Récupération cours prof - User:', userId);
+
+    // Récupérer tous les cours où le prof est assigné
+    const query = `
+      SELECT 
+        c.id as course_id,
+        c.title,
+        c.class_id,
+        c.subject_id,
+        c.teacher_id,
+        c.establishment_id,
+        s.name as subject_name,
+        s.code as subject_code,
+        s.color as subject_color,
+        cl.label as class_label,
+        cl.code as class_code,
+        cl.level as class_level,
+        u.full_name as teacher_name
+      FROM courses c
+      JOIN subjects s ON c.subject_id = s.id
+      JOIN classes cl ON c.class_id = cl.id
+      JOIN users u ON c.teacher_id = u.id
+      WHERE c.teacher_id = $1
+        AND c.active = true
+      ORDER BY cl.level, cl.label, s.name
+    `;
+
+    const result = await pool.query(query, [userId]);
+
+    console.log(`✅ ${result.rows.length} cours trouvés pour le professeur`);
+
+    return res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error('❌ Erreur getTeacherCoursesHandler:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la récupération des cours',
+    });
+  }
+}
 
 /**
  * GET /api/assignments/teacher

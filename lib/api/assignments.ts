@@ -88,6 +88,25 @@ export interface StudentAssignmentFilters {
   toDueAt?: string;
 }
 
+/**
+ * Cours du professeur (pour création de devoirs)
+ */
+export interface TeacherCourse {
+  course_id: string;
+  title: string | null;
+  class_id: string;
+  subject_id: string;
+  teacher_id: string;
+  establishment_id: string;
+  subject_name: string;
+  subject_code: string;
+  subject_color: string;
+  class_label: string;
+  class_code: string;
+  class_level: string;
+  teacher_name: string;
+}
+
 // =========================
 // API CLIENT
 // =========================
@@ -96,6 +115,14 @@ export const assignmentsApi = {
   // ==================
   // ENSEIGNANTS
   // ==================
+
+  /**
+   * Récupérer les cours du professeur connecté
+   * (pour la création de devoirs)
+   */
+  async getTeacherCourses(): Promise<{ success: boolean; data: TeacherCourse[] }> {
+    return apiCall<TeacherCourse[]>('/assignments/teacher/courses');
+  },
 
   /**
    * Récupérer les devoirs de l'enseignant connecté

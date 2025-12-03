@@ -1,5 +1,6 @@
 "use client"
 
+import { DashboardLayout } from "@/components/dashboard-layout"
 import React, { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -27,9 +28,10 @@ import {
   TeacherAssignmentFilters,
   isAssignmentOverdue,
   formatDueDateShort,
+  TeacherCourse,
   getStatusLabel
 } from "@/lib/api/assignments"
-import { timetableApi } from "@/lib/api/timetable"
+//import { timetableApi } from "@/lib/api/timetable"
 import { CreateAssignmentModal } from "@/components/assignments/CreateAssignmentModal"
 import { EditAssignmentModal } from "@/components/assignments/EditAssignmentModal"
 
@@ -69,9 +71,19 @@ export default function TeacherAssignmentsPage() {
 
   const loadClasses = async () => {
     try {
-      const response = await timetableApi.getStaffClasses()
+      const response = await assignmentsApi.getTeacherCourses()
       if (response.success && Array.isArray(response.data)) {
-        setClasses(response.data)
+        const uniqueClasses = new Map<string, ClassInfo>()
+        response.data.forEach((course: TeacherCourse) => {
+          if (!uniqueClasses.has(course.class_id)) {
+            uniqueClasses.set(course.class_id, {
+              id: course.class_id,
+              label: course.class_label,
+              code: course.class_code
+            })
+          }
+        })
+        setClasses(Array.from(uniqueClasses.values()))
       }
     } catch (err) {
       console.error('Erreur chargement classes:', err)
@@ -164,212 +176,214 @@ export default function TeacherAssignmentsPage() {
   const upcomingPublished = publishedAssignments.filter(a => !isAssignmentOverdue(a))
 
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
-      {/* En-tête */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <FileText className="h-6 w-6" />
-            Mes devoirs
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Gérez les devoirs et exercices pour vos classes
-          </p>
-        </div>
-        <Button onClick={() => setShowCreateModal(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Nouveau devoir
-        </Button>
-      </div>
-
-      {/* Filtres */}
-      <Card className="mb-6">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Filter className="h-4 w-4" />
-            Filtres
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {/* Classe */}
-            <div>
-              <label className="text-sm font-medium mb-1 block">Classe</label>
-              <Select value={selectedClassId} onValueChange={setSelectedClassId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Toutes les classes" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Toutes les classes</SelectItem>
-                  {classes.map((cls) => (
-                    <SelectItem key={cls.id} value={cls.id}>
-                      {cls.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Statut */}
-            <div>
-              <label className="text-sm font-medium mb-1 block">Statut</label>
-              <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Tous" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tous</SelectItem>
-                  <SelectItem value="draft">Brouillons</SelectItem>
-                  <SelectItem value="published">Publiés</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Date début */}
-            <div>
-              <label className="text-sm font-medium mb-1 block">Du</label>
-              <Input
-                type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-              />
-            </div>
-
-            {/* Date fin */}
-            <div>
-              <label className="text-sm font-medium mb-1 block">Au</label>
-              <Input
-                type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-              />
-            </div>
-
-            {/* Actions filtres */}
-            <div className="flex items-end gap-2">
-              <Button onClick={applyFilters} className="flex-1">
-                Appliquer
-              </Button>
-              <Button variant="outline" onClick={resetFilters}>
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-            </div>
+    <DashboardLayout requiredRole="teacher">
+      <div className="container mx-auto p-6 max-w-7xl">
+        {/* En-tête */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <FileText className="h-6 w-6" />
+              Mes devoirs
+            </h1>
+            <p className="text-muted-foreground mt-1">
+              Gérez les devoirs et exercices pour vos classes
+            </p>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Contenu principal */}
-      {loading ? (
-        <div className="text-center py-12 text-muted-foreground">
-          Chargement des devoirs...
-        </div>
-      ) : error ? (
-        <div className="text-center py-12">
-          <AlertCircle className="h-12 w-12 mx-auto text-red-500 mb-4" />
-          <p className="text-red-600">{error}</p>
-          <Button variant="outline" onClick={loadAssignments} className="mt-4">
-            Réessayer
-          </Button>
-        </div>
-      ) : assignments.length === 0 ? (
-        <div className="text-center py-12">
-          <FileText className="h-12 w-12 mx-auto text-gray-300 mb-4" />
-          <p className="text-muted-foreground">Aucun devoir trouvé</p>
-          <Button onClick={() => setShowCreateModal(true)} className="mt-4">
+          <Button onClick={() => setShowCreateModal(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            Créer mon premier devoir
+            Nouveau devoir
           </Button>
         </div>
-      ) : (
-        <div className="space-y-6">
-          {/* Brouillons */}
-          {draftAssignments.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <EyeOff className="h-5 w-5 text-yellow-600" />
-                Brouillons ({draftAssignments.length})
-              </h2>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {draftAssignments.map((assignment) => (
-                  <AssignmentCard
-                    key={assignment.id}
-                    assignment={assignment}
-                    onEdit={() => setEditingAssignment(assignment)}
-                    onPublish={() => handlePublish(assignment)}
-                    onArchive={() => handleArchive(assignment)}
-                  />
-                ))}
+
+        {/* Filtres */}
+        <Card className="mb-6">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Filter className="h-4 w-4" />
+              Filtres
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              {/* Classe */}
+              <div>
+                <label className="text-sm font-medium mb-1 block">Classe</label>
+                <Select value={selectedClassId} onValueChange={setSelectedClassId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Toutes les classes" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Toutes les classes</SelectItem>
+                    {classes.map((cls) => (
+                      <SelectItem key={cls.id} value={cls.id}>
+                        {cls.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Statut */}
+              <div>
+                <label className="text-sm font-medium mb-1 block">Statut</label>
+                <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Tous" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous</SelectItem>
+                    <SelectItem value="draft">Brouillons</SelectItem>
+                    <SelectItem value="published">Publiés</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Date début */}
+              <div>
+                <label className="text-sm font-medium mb-1 block">Du</label>
+                <Input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                />
+              </div>
+
+              {/* Date fin */}
+              <div>
+                <label className="text-sm font-medium mb-1 block">Au</label>
+                <Input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                />
+              </div>
+
+              {/* Actions filtres */}
+              <div className="flex items-end gap-2">
+                <Button onClick={applyFilters} className="flex-1">
+                  Appliquer
+                </Button>
+                <Button variant="outline" onClick={resetFilters}>
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
               </div>
             </div>
-          )}
+          </CardContent>
+        </Card>
 
-          {/* Publiés - À venir */}
-          {upcomingPublished.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <Eye className="h-5 w-5 text-green-600" />
-                Publiés - À venir ({upcomingPublished.length})
-              </h2>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {upcomingPublished.map((assignment) => (
-                  <AssignmentCard
-                    key={assignment.id}
-                    assignment={assignment}
-                    onEdit={() => setEditingAssignment(assignment)}
-                    onUnpublish={() => handleUnpublish(assignment)}
-                    onArchive={() => handleArchive(assignment)}
-                  />
-                ))}
+        {/* Contenu principal */}
+        {loading ? (
+          <div className="text-center py-12 text-muted-foreground">
+            Chargement des devoirs...
+          </div>
+        ) : error ? (
+          <div className="text-center py-12">
+            <AlertCircle className="h-12 w-12 mx-auto text-red-500 mb-4" />
+            <p className="text-red-600">{error}</p>
+            <Button variant="outline" onClick={loadAssignments} className="mt-4">
+              Réessayer
+            </Button>
+          </div>
+        ) : assignments.length === 0 ? (
+          <div className="text-center py-12">
+            <FileText className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+            <p className="text-muted-foreground">Aucun devoir trouvé</p>
+            <Button onClick={() => setShowCreateModal(true)} className="mt-4">
+              <Plus className="h-4 w-4 mr-2" />
+              Créer mon premier devoir
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Brouillons */}
+            {draftAssignments.length > 0 && (
+              <div>
+                <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                  <EyeOff className="h-5 w-5 text-yellow-600" />
+                  Brouillons ({draftAssignments.length})
+                </h2>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {draftAssignments.map((assignment) => (
+                    <AssignmentCard
+                      key={assignment.id}
+                      assignment={assignment}
+                      onEdit={() => setEditingAssignment(assignment)}
+                      onPublish={() => handlePublish(assignment)}
+                      onArchive={() => handleArchive(assignment)}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Publiés - En retard */}
-          {overduePublished.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <Clock className="h-5 w-5 text-red-600" />
-                Date limite passée ({overduePublished.length})
-              </h2>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {overduePublished.map((assignment) => (
-                  <AssignmentCard
-                    key={assignment.id}
-                    assignment={assignment}
-                    onEdit={() => setEditingAssignment(assignment)}
-                    onUnpublish={() => handleUnpublish(assignment)}
-                    onArchive={() => handleArchive(assignment)}
-                    isOverdue
-                  />
-                ))}
+            {/* Publiés - À venir */}
+            {upcomingPublished.length > 0 && (
+              <div>
+                <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                  <Eye className="h-5 w-5 text-green-600" />
+                  Publiés - À venir ({upcomingPublished.length})
+                </h2>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {upcomingPublished.map((assignment) => (
+                    <AssignmentCard
+                      key={assignment.id}
+                      assignment={assignment}
+                      onEdit={() => setEditingAssignment(assignment)}
+                      onUnpublish={() => handleUnpublish(assignment)}
+                      onArchive={() => handleArchive(assignment)}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
 
-      {/* Modals */}
-      {showCreateModal && (
-        <CreateAssignmentModal
-          onClose={() => setShowCreateModal(false)}
-          onSuccess={() => {
-            setShowCreateModal(false)
-            loadAssignments()
-          }}
-        />
-      )}
+            {/* Publiés - En retard */}
+            {overduePublished.length > 0 && (
+              <div>
+                <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-red-600" />
+                  Date limite passée ({overduePublished.length})
+                </h2>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {overduePublished.map((assignment) => (
+                    <AssignmentCard
+                      key={assignment.id}
+                      assignment={assignment}
+                      onEdit={() => setEditingAssignment(assignment)}
+                      onUnpublish={() => handleUnpublish(assignment)}
+                      onArchive={() => handleArchive(assignment)}
+                      isOverdue
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
-      {editingAssignment && (
-        <EditAssignmentModal
-          assignment={editingAssignment}
-          onClose={() => setEditingAssignment(null)}
-          onSuccess={() => {
-            setEditingAssignment(null)
-            loadAssignments()
-          }}
-        />
-      )}
-    </div>
+        {/* Modals */}
+        {showCreateModal && (
+          <CreateAssignmentModal
+            onClose={() => setShowCreateModal(false)}
+            onSuccess={() => {
+              setShowCreateModal(false)
+              loadAssignments()
+            }}
+          />
+        )}
+
+        {editingAssignment && (
+          <EditAssignmentModal
+            assignment={editingAssignment}
+            onClose={() => setEditingAssignment(null)}
+            onSuccess={() => {
+              setEditingAssignment(null)
+              loadAssignments()
+            }}
+          />
+        )}
+      </div>
+    </DashboardLayout>
   )
 }
 

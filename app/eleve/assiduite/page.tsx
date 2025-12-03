@@ -1,5 +1,6 @@
 "use client"
 
+import { DashboardLayout } from "@/components/dashboard-layout"
 import React, { useState, useEffect, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { 
@@ -92,88 +93,90 @@ export default function EleveAssiduitePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-2xl mx-auto p-6">
-        {/* En-tête */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Mon assiduité</h1>
-          <p className="text-gray-500 text-sm">
-            Année {getCurrentSchoolYearLabel()}
-          </p>
-        </div>
+    <DashboardLayout requiredRole="student">
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-2xl mx-auto p-6">
+          {/* En-tête */}
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-gray-900">Mon assiduité</h1>
+            <p className="text-gray-500 text-sm">
+              Année {getCurrentSchoolYearLabel()}
+            </p>
+          </div>
 
-        {/* Cercle de présence */}
-        {stats && (
-          <Card className="mb-6">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-center gap-8">
-                {/* Cercle */}
-                <AttendanceDonut stats={stats} />
-                
-                {/* Légende */}
-                <div className="space-y-3">
-                  <LegendItem 
-                    color="bg-green-500" 
-                    label="Présences" 
-                    value={stats.present} 
-                  />
-                  <LegendItem 
-                    color="bg-red-500" 
-                    label="Absences" 
-                    value={stats.absent} 
-                  />
-                  <LegendItem 
-                    color="bg-orange-500" 
-                    label="Retards" 
-                    value={stats.late} 
-                  />
-                  <LegendItem 
-                    color="bg-blue-500" 
-                    label="Excusés" 
-                    value={stats.excused} 
-                  />
+          {/* Cercle de présence */}
+          {stats && (
+            <Card className="mb-6">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-center gap-8">
+                  {/* Cercle */}
+                  <AttendanceDonut stats={stats} />
+                  
+                  {/* Légende */}
+                  <div className="space-y-3">
+                    <LegendItem 
+                      color="bg-green-500" 
+                      label="Présences" 
+                      value={stats.present} 
+                    />
+                    <LegendItem 
+                      color="bg-red-500" 
+                      label="Absences" 
+                      value={stats.absent} 
+                    />
+                    <LegendItem 
+                      color="bg-orange-500" 
+                      label="Retards" 
+                      value={stats.late} 
+                    />
+                    <LegendItem 
+                      color="bg-blue-500" 
+                      label="Excusés" 
+                      value={stats.excused} 
+                    />
+                  </div>
                 </div>
-              </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Liste des absences/retards */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-medium flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                Mes absences et retards
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {absencesAndLates.length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <ShieldCheck className="h-8 w-8 text-green-600" />
+                  </div>
+                  <p className="text-gray-600 font-medium">Aucune absence ni retard !</p>
+                  <p className="text-sm text-gray-400 mt-1">Continuez comme ça 🎉</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {absencesAndLates.map((item) => (
+                    <AbsenceItem key={item.id} item={item} />
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
-        )}
 
-        {/* Liste des absences/retards */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-medium flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              Mes absences et retards
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {absencesAndLates.length === 0 ? (
-              <div className="text-center py-8">
-                <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <ShieldCheck className="h-8 w-8 text-green-600" />
-                </div>
-                <p className="text-gray-600 font-medium">Aucune absence ni retard !</p>
-                <p className="text-sm text-gray-400 mt-1">Continuez comme ça 🎉</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {absencesAndLates.map((item) => (
-                  <AbsenceItem key={item.id} item={item} />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Info */}
-        <div className="mt-4 p-3 bg-blue-50 rounded-lg flex items-start gap-2 text-sm">
-          <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
-          <p className="text-blue-700">
-            En cas d'absence, fournissez un justificatif à la vie scolaire dans les 48h.
-          </p>
+          {/* Info */}
+          <div className="mt-4 p-3 bg-blue-50 rounded-lg flex items-start gap-2 text-sm">
+            <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
+            <p className="text-blue-700">
+              En cas d'absence, fournissez un justificatif à la vie scolaire dans les 48h.
+            </p>
+          </div>
         </div>
       </div>
-    </div>
+    </DashboardLayout>
   )
 }
 

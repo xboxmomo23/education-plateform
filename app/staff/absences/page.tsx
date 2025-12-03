@@ -1,5 +1,6 @@
 "use client"
 
+import { DashboardLayout } from "@/components/dashboard-layout"
 import React, { useState, useEffect, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { 
@@ -231,317 +232,319 @@ export default function StaffAbsencesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto p-6">
-        {/* En-tête */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-1">
-              📋 Gestion des absences
-            </h1>
-            <p className="text-gray-600">
-              Consultez et gérez toutes les absences de l'établissement
-            </p>
-          </div>
-          <Button onClick={handleExport} variant="outline" className="gap-2">
-            <Download className="h-4 w-4" />
-            Exporter CSV
-          </Button>
-        </div>
-
-        {/* Stats rapides */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-          <StatCard
-            label="Total"
-            value={stats.total}
-            icon={<Users className="h-4 w-4" />}
-            color="text-gray-600"
-            bgColor="bg-gray-100"
-          />
-          <StatCard
-            label="Absences"
-            value={stats.absent}
-            icon={<XCircle className="h-4 w-4" />}
-            color="text-red-600"
-            bgColor="bg-red-50"
-          />
-          <StatCard
-            label="Retards"
-            value={stats.late}
-            icon={<AlertCircle className="h-4 w-4" />}
-            color="text-orange-600"
-            bgColor="bg-orange-50"
-          />
-          <StatCard
-            label="Excusés"
-            value={stats.excused}
-            icon={<ShieldCheck className="h-4 w-4" />}
-            color="text-blue-600"
-            bgColor="bg-blue-50"
-          />
-          <StatCard
-            label="Non justifiés"
-            value={stats.notJustified}
-            icon={<FileText className="h-4 w-4" />}
-            color="text-purple-600"
-            bgColor="bg-purple-50"
-            highlight={stats.notJustified > 0}
-          />
-        </div>
-
-        {/* Filtres */}
-        <Card className="mb-6">
-          <CardContent className="py-4">
-            <div className="flex flex-col md:flex-row gap-4">
-              {/* Recherche */}
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Rechercher un élève, une classe..."
-                  value={filters.search}
-                  onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                  className="pl-10"
-                />
-              </div>
-
-              {/* Filtre classe */}
-              <Select
-                value={filters.classId}
-                onValueChange={(value) => setFilters({ ...filters, classId: value })}
-              >
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Toutes les classes" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Toutes les classes</SelectItem>
-                  {classes.map((cls) => (
-                    <SelectItem key={cls.id} value={cls.id}>
-                      {cls.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {/* Filtre statut */}
-              <Select
-                value={filters.status}
-                onValueChange={(value) => setFilters({ ...filters, status: value })}
-              >
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="Tous statuts" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tous statuts</SelectItem>
-                  <SelectItem value="absent">Absents</SelectItem>
-                  <SelectItem value="late">Retards</SelectItem>
-                  <SelectItem value="excused">Excusés</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {/* Filtre année scolaire */}
-              <Select
-                value={filters.schoolYear}
-                onValueChange={(value) => setFilters({ ...filters, schoolYear: value })}
-              >
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="Année" />
-                </SelectTrigger>
-                <SelectContent>
-                  {getSchoolYearOptions().map((year) => (
-                    <SelectItem key={year.value} value={year.value}>
-                      {year.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {/* Plus de filtres */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="gap-2">
-                    <Filter className="h-4 w-4" />
-                    Plus
-                    <ChevronDown className="h-3 w-3" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80" align="end">
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-sm font-medium mb-1 block">
-                        Date de début
-                      </label>
-                      <Input
-                        type="date"
-                        value={filters.startDate}
-                        onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium mb-1 block">
-                        Date de fin
-                      </label>
-                      <Input
-                        type="date"
-                        value={filters.endDate}
-                        onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
-                      />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        id="justifiedOnly"
-                        checked={filters.justifiedOnly}
-                        onChange={(e) => setFilters({ ...filters, justifiedOnly: e.target.checked })}
-                        className="rounded"
-                      />
-                      <label htmlFor="justifiedOnly" className="text-sm">
-                        Absences justifiées uniquement
-                      </label>
-                    </div>
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={resetFilters}
-                    >
-                      Réinitialiser les filtres
-                    </Button>
-                  </div>
-                </PopoverContent>
-              </Popover>
+    <DashboardLayout requiredRole="staff">
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto p-6">
+          {/* En-tête */}
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-1">
+                📋 Gestion des absences
+              </h1>
+              <p className="text-gray-600">
+                Consultez et gérez toutes les absences de l'établissement
+              </p>
             </div>
-          </CardContent>
-        </Card>
+            <Button onClick={handleExport} variant="outline" className="gap-2">
+              <Download className="h-4 w-4" />
+              Exporter CSV
+            </Button>
+          </div>
 
-        {/* Tableau des absences */}
-        <Card>
-          <CardContent className="p-0">
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-              </div>
-            ) : error ? (
-              <div className="text-center py-12">
-                <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-                <p className="text-red-600 mb-4">{error}</p>
-                <Button onClick={loadData}>Réessayer</Button>
-              </div>
-            ) : absences.length === 0 ? (
-              <div className="text-center py-12">
-                <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-                <p className="text-gray-600">Aucune absence trouvée</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b bg-gray-50">
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Élève
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Classe
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Date
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Cours
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Statut
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Justifié
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-28">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {absences.map((absence, index) => (
-                      <AbsenceRow
-                        key={absence.id}
-                        absence={absence}
-                        index={index}
-                        onView={() => setSelectedAbsence(absence)}
-                        onJustify={() => {
-                          setSelectedAbsence(absence)
-                          setJustifyModalOpen(true)
-                        }}
-                        onChangeStatus={() => {
-                          setSelectedAbsence(absence)
-                          setChangeStatusModalOpen(true)
-                        }}
-                      />
+          {/* Stats rapides */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+            <StatCard
+              label="Total"
+              value={stats.total}
+              icon={<Users className="h-4 w-4" />}
+              color="text-gray-600"
+              bgColor="bg-gray-100"
+            />
+            <StatCard
+              label="Absences"
+              value={stats.absent}
+              icon={<XCircle className="h-4 w-4" />}
+              color="text-red-600"
+              bgColor="bg-red-50"
+            />
+            <StatCard
+              label="Retards"
+              value={stats.late}
+              icon={<AlertCircle className="h-4 w-4" />}
+              color="text-orange-600"
+              bgColor="bg-orange-50"
+            />
+            <StatCard
+              label="Excusés"
+              value={stats.excused}
+              icon={<ShieldCheck className="h-4 w-4" />}
+              color="text-blue-600"
+              bgColor="bg-blue-50"
+            />
+            <StatCard
+              label="Non justifiés"
+              value={stats.notJustified}
+              icon={<FileText className="h-4 w-4" />}
+              color="text-purple-600"
+              bgColor="bg-purple-50"
+              highlight={stats.notJustified > 0}
+            />
+          </div>
+
+          {/* Filtres */}
+          <Card className="mb-6">
+            <CardContent className="py-4">
+              <div className="flex flex-col md:flex-row gap-4">
+                {/* Recherche */}
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Rechercher un élève, une classe..."
+                    value={filters.search}
+                    onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                    className="pl-10"
+                  />
+                </div>
+
+                {/* Filtre classe */}
+                <Select
+                  value={filters.classId}
+                  onValueChange={(value) => setFilters({ ...filters, classId: value })}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Toutes les classes" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Toutes les classes</SelectItem>
+                    {classes.map((cls) => (
+                      <SelectItem key={cls.id} value={cls.id}>
+                        {cls.label}
+                      </SelectItem>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                  </SelectContent>
+                </Select>
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 p-4 border-t">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page === 1}
-                  onClick={() => setPage(p => p - 1)}
+                {/* Filtre statut */}
+                <Select
+                  value={filters.status}
+                  onValueChange={(value) => setFilters({ ...filters, status: value })}
                 >
-                  Précédent
-                </Button>
-                <span className="text-sm text-gray-600">
-                  Page {page} sur {totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page === totalPages}
-                  onClick={() => setPage(p => p + 1)}
+                  <SelectTrigger className="w-[150px]">
+                    <SelectValue placeholder="Tous statuts" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous statuts</SelectItem>
+                    <SelectItem value="absent">Absents</SelectItem>
+                    <SelectItem value="late">Retards</SelectItem>
+                    <SelectItem value="excused">Excusés</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {/* Filtre année scolaire */}
+                <Select
+                  value={filters.schoolYear}
+                  onValueChange={(value) => setFilters({ ...filters, schoolYear: value })}
                 >
-                  Suivant
-                </Button>
+                  <SelectTrigger className="w-[150px]">
+                    <SelectValue placeholder="Année" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getSchoolYearOptions().map((year) => (
+                      <SelectItem key={year.value} value={year.value}>
+                        {year.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* Plus de filtres */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="gap-2">
+                      <Filter className="h-4 w-4" />
+                      Plus
+                      <ChevronDown className="h-3 w-3" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80" align="end">
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">
+                          Date de début
+                        </label>
+                        <Input
+                          type="date"
+                          value={filters.startDate}
+                          onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">
+                          Date de fin
+                        </label>
+                        <Input
+                          type="date"
+                          value={filters.endDate}
+                          onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="justifiedOnly"
+                          checked={filters.justifiedOnly}
+                          onChange={(e) => setFilters({ ...filters, justifiedOnly: e.target.checked })}
+                          className="rounded"
+                        />
+                        <label htmlFor="justifiedOnly" className="text-sm">
+                          Absences justifiées uniquement
+                        </label>
+                      </div>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={resetFilters}
+                      >
+                        Réinitialiser les filtres
+                      </Button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {/* Modal détails */}
-        <AbsenceDetailsModal
-          absence={selectedAbsence}
-          open={!!selectedAbsence && !justifyModalOpen && !changeStatusModalOpen}
-          onClose={() => setSelectedAbsence(null)}
-          onJustify={() => setJustifyModalOpen(true)}
-          onChangeStatus={() => setChangeStatusModalOpen(true)}
-        />
+          {/* Tableau des absences */}
+          <Card>
+            <CardContent className="p-0">
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                </div>
+              ) : error ? (
+                <div className="text-center py-12">
+                  <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+                  <p className="text-red-600 mb-4">{error}</p>
+                  <Button onClick={loadData}>Réessayer</Button>
+                </div>
+              ) : absences.length === 0 ? (
+                <div className="text-center py-12">
+                  <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+                  <p className="text-gray-600">Aucune absence trouvée</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b bg-gray-50">
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Élève
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Classe
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Date
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Cours
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Statut
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Justifié
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-28">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {absences.map((absence, index) => (
+                        <AbsenceRow
+                          key={absence.id}
+                          absence={absence}
+                          index={index}
+                          onView={() => setSelectedAbsence(absence)}
+                          onJustify={() => {
+                            setSelectedAbsence(absence)
+                            setJustifyModalOpen(true)
+                          }}
+                          onChangeStatus={() => {
+                            setSelectedAbsence(absence)
+                            setChangeStatusModalOpen(true)
+                          }}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
-        {/* Modal justification */}
-        <JustifyModal
-          open={justifyModalOpen}
-          onClose={() => {
-            setJustifyModalOpen(false)
-            setSelectedAbsence(null)
-          }}
-          onConfirm={handleJustify}
-          loading={justifying}
-          studentName={selectedAbsence?.student_name || ''}
-        />
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 p-4 border-t">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page === 1}
+                    onClick={() => setPage(p => p - 1)}
+                  >
+                    Précédent
+                  </Button>
+                  <span className="text-sm text-gray-600">
+                    Page {page} sur {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page === totalPages}
+                    onClick={() => setPage(p => p + 1)}
+                  >
+                    Suivant
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-        {/* Modal changement de statut */}
-        <ChangeStatusModal
-          open={changeStatusModalOpen}
-          onClose={() => {
-            setChangeStatusModalOpen(false)
-            setSelectedAbsence(null)
-          }}
-          onConfirm={handleChangeStatus}
-          loading={changingStatus}
-          studentName={selectedAbsence?.student_name || ''}
-          currentStatus={selectedAbsence?.status || 'absent'}
-        />
+          {/* Modal détails */}
+          <AbsenceDetailsModal
+            absence={selectedAbsence}
+            open={!!selectedAbsence && !justifyModalOpen && !changeStatusModalOpen}
+            onClose={() => setSelectedAbsence(null)}
+            onJustify={() => setJustifyModalOpen(true)}
+            onChangeStatus={() => setChangeStatusModalOpen(true)}
+          />
+
+          {/* Modal justification */}
+          <JustifyModal
+            open={justifyModalOpen}
+            onClose={() => {
+              setJustifyModalOpen(false)
+              setSelectedAbsence(null)
+            }}
+            onConfirm={handleJustify}
+            loading={justifying}
+            studentName={selectedAbsence?.student_name || ''}
+          />
+
+          {/* Modal changement de statut */}
+          <ChangeStatusModal
+            open={changeStatusModalOpen}
+            onClose={() => {
+              setChangeStatusModalOpen(false)
+              setSelectedAbsence(null)
+            }}
+            onConfirm={handleChangeStatus}
+            loading={changingStatus}
+            studentName={selectedAbsence?.student_name || ''}
+            currentStatus={selectedAbsence?.status || 'absent'}
+          />
+        </div>
       </div>
-    </div>
+    </DashboardLayout>
   )
 }
 
