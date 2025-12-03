@@ -4,7 +4,9 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { getUserSession, clearUserSession, type User, type UserRole } from "@/lib/auth-new"
+import { messagesApi } from "@/lib/api/messages"
 import {
   BookOpen,
   Users,
@@ -19,9 +21,10 @@ import {
   ClipboardCheck,
   UserCog,
   AlertCircle,
+  Layers,
+  Mail,  // ✨ Import icône Mail
 } from "lucide-react"
 import Link from "next/link"
-import { Layers } from "lucide-react";
 
 
 interface DashboardLayoutProps {
@@ -34,6 +37,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
   const pathname = usePathname()
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [unreadCount, setUnreadCount] = useState(0)  // ✨ NOUVEAU: compteur messages non lus
 
   useEffect(() => {
     const currentUser = getUserSession()
@@ -68,6 +72,30 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
     setIsLoading(false)
   }, [router, requiredRole])
 
+  // ✨ NOUVEAU: Récupérer le nombre de messages non lus
+  useEffect(() => {
+    if (!user) return
+
+    const fetchUnreadCount = async () => {
+      try {
+        const res = await messagesApi.getUnreadCount()
+        if (res.success) {
+          setUnreadCount(res.data.count)
+        }
+      } catch (e) {
+        console.error("Erreur récupération unreadCount messages:", e)
+      }
+    }
+
+    // Fetch initial
+    fetchUnreadCount()
+
+    // Refresh périodique (toutes les 60 secondes)
+    const interval = setInterval(fetchUnreadCount, 60000)
+
+    return () => clearInterval(interval)
+  }, [user])
+
   const handleLogout = () => {
     clearUserSession()
     const loginPath =
@@ -81,6 +109,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
     router.push(`/login-${loginPath}`)
   }
 
+  // ✨ MODIFIÉ: getMenuItems avec Messages et badge
   const getMenuItems = () => {
     switch (requiredRole) {
       case "student":
@@ -90,6 +119,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
           { icon: Calendar, label: "Emploi du temps", href: "/eleve/emplois-du-temps" },
           { icon: ClipboardCheck, label: "Assiduité", href: "/eleve/assiduite" },
           { icon: BarChart, label: "Notes", href: "/eleve/notes" },
+          { icon: Mail, label: "Messages", href: "/eleve/messages", badge: unreadCount > 0 ? unreadCount : undefined },  // ✨ NOUVEAU
         ]
       case "teacher":
         return [
@@ -98,6 +128,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
           { icon: BarChart, label: "Notes", href: "/professeur/notes" },
           { icon: FileText, label: "Devoirs", href: "/professeur/devoirs" },
           { icon: Calendar, label: "Emploi du temps", href: "/professeur/emplois-du-temps" },
+          { icon: Mail, label: "Messages", href: "/professeur/messages", badge: unreadCount > 0 ? unreadCount : undefined },  // ✨ NOUVEAU
           { icon: BookOpen, label: "Mes classes", href: "#" },
           { icon: Users, label: "Élèves", href: "#" },
         ]
@@ -108,6 +139,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
           { icon: Calendar, label: "Emplois du temps", href: "/staff/emplois-du-temps" },
           { icon: Layers, label: "Cours", href: "/staff/cours" },
           { icon: BarChart, label: "Notes", href: "/staff/notes" },
+          { icon: Mail, label: "Messages", href: "/staff/messages", badge: unreadCount > 0 ? unreadCount : undefined },  // ✨ NOUVEAU
           { icon: Users, label: "Gestion des utilisateurs", href: "/staff/gestion-utilisateurs" },
           { icon: Settings, label: "Paramètres", href: "/staff/parametres" },
         ]
@@ -117,6 +149,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
           { icon: Users, label: "Utilisateurs", href: "#" },
           { icon: GraduationCap, label: "Professeurs", href: "#" },
           { icon: BookOpen, label: "Cours", href: "#" },
+          { icon: Mail, label: "Messages", href: "/admin/messages", badge: unreadCount > 0 ? unreadCount : undefined },  // ✨ NOUVEAU
           { icon: BarChart, label: "Statistiques", href: "#" },
           { icon: Settings, label: "Paramètres", href: "#" },
         ]
@@ -183,7 +216,18 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
                   }`}
                 >
                   <item.icon className="h-4 w-4" />
-                  {item.label}
+                  <span className="flex-1">{item.label}</span>
+                  {/* ✨ NOUVEAU: Badge pour les messages non lus */}
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <Badge 
+                      variant="destructive" 
+                      className={`ml-auto h-5 min-w-[20px] px-1.5 text-xs ${
+                        isActive ? 'bg-white text-primary' : ''
+                      }`}
+                    >
+                      {item.badge > 99 ? '99+' : item.badge}
+                    </Badge>
+                  )}
                 </Link>
               )
             })}
