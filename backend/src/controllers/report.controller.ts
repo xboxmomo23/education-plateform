@@ -1,7 +1,13 @@
 import { Request, Response } from 'express';
 import { pool } from '../config/database';
 import { findTermById } from '../models/term.model';
-import PDFDocument from 'pdfkit';
+import PDFDocument from 'pdfkit'; 
+
+// ============================================
+// NOTE: Pour la génération PDF native, installer :
+// npm install pdfkit @types/pdfkit
+// Puis décommenter les sections marquées [PDFKIT]
+// ============================================
 
 // =========================
 // Types
@@ -147,10 +153,14 @@ export async function getStudentGradesSummaryHandler(req: Request, res: Response
     let paramIndex = 3;
 
     // Filtre par période si spécifié
-    if (termId) {
-      gradesQuery += ` AND e.term_id = $${paramIndex}`;
-      params.push(termId);
-      paramIndex++;
+    // On filtre soit par term_id direct, soit par date si term_id est NULL
+    if (termId && termInfo) {
+      gradesQuery += ` AND (
+        e.term_id = $${paramIndex}
+        OR (e.term_id IS NULL AND e.eval_date >= $${paramIndex + 1} AND e.eval_date <= $${paramIndex + 2})
+      )`;
+      params.push(termId, termInfo.start_date, termInfo.end_date);
+      paramIndex += 3;
     }
 
     gradesQuery += ` ORDER BY s.name ASC, e.eval_date DESC`;
@@ -378,6 +388,7 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
     }
 
     // Récupérer les notes pour cette période
+    // Filtre par term_id direct OU par date si term_id est NULL
     const gradesQuery = `
       SELECT 
         g.normalized_value,
@@ -398,11 +409,14 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
       INNER JOIN courses c ON c.id = e.course_id
       INNER JOIN subjects s ON s.id = c.subject_id
       WHERE g.student_id = $1
-      AND e.term_id = $2
+      AND (
+        e.term_id = $2
+        OR (e.term_id IS NULL AND e.eval_date >= $3 AND e.eval_date <= $4)
+      )
       ORDER BY s.name
     `;
 
-    const gradesResult = await pool.query(gradesQuery, [studentId, termId]);
+    const gradesResult = await pool.query(gradesQuery, [studentId, termId, term.start_date, term.end_date]);
     const grades = gradesResult.rows;
 
     // Grouper par matière et calculer les moyennes
@@ -667,6 +681,7 @@ export async function getStudentReportDataHandler(req: Request, res: Response): 
     }
 
     // Récupérer les notes pour cette période
+    // Filtre par term_id direct OU par date si term_id est NULL
     const gradesQuery = `
       SELECT 
         g.normalized_value,
@@ -685,11 +700,14 @@ export async function getStudentReportDataHandler(req: Request, res: Response): 
       INNER JOIN courses c ON c.id = e.course_id
       INNER JOIN subjects s ON s.id = c.subject_id
       WHERE g.student_id = $1
-      AND e.term_id = $2
+      AND (
+        e.term_id = $2
+        OR (e.term_id IS NULL AND e.eval_date >= $3 AND e.eval_date <= $4)
+      )
       ORDER BY s.name
     `;
 
-    const gradesResult = await pool.query(gradesQuery, [studentId, termId]);
+    const gradesResult = await pool.query(gradesQuery, [studentId, termId, term.start_date, term.end_date]);
 
     // Calculer les moyennes par matière
     const subjectsMap = new Map<string, { totalCoef: number; weightedSum: number; classAvgs: number[] }>();

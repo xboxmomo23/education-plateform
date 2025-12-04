@@ -137,7 +137,8 @@ export default function StudentNotesPage() {
   const loadTerms = async () => {
     try {
       setIsLoadingTerms(true)
-      const currentYear = new Date().getFullYear()
+      const now = new Date()
+      const currentYear = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1
       
       const response = await termsApi.getTerms(currentYear)
       
@@ -194,11 +195,19 @@ export default function StudentNotesPage() {
   }
 
   const handleDownloadReport = async (termId: string) => {
-    if (!user?.id || !user?.token) return
+    if (!user?.id) return
+
+    // ✅ Récupérer le token depuis localStorage
+    const token = localStorage.getItem('auth_token')
+    
+    if (!token) {
+      alert("Session expirée. Veuillez vous reconnecter.")
+      return
+    }
 
     try {
       setDownloadingReport(termId)
-      await reportsApi.downloadReport(user.id, termId, user.token)
+      await reportsApi.downloadReport(user.id, termId, token)
     } catch (err) {
       console.error("Error downloading report:", err)
       alert("Erreur lors du téléchargement du bulletin")
@@ -206,7 +215,6 @@ export default function StudentNotesPage() {
       setDownloadingReport(null)
     }
   }
-
   const isTermPast = (term: Term) => {
     return new Date(term.endDate) < new Date()
   }

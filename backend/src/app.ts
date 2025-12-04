@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import { generalLimiter, helmetConfig } from './middleware/security.middleware';
 import authRoutes from './routes/auth.routes';
 import gradeRoutes from './routes/grade.routes';
+import termRoutes from './routes/term.routes';
+import studentRoutes from './routes/student.routes';
 import courseRoutes from './routes/course.routes';
 import timetableRoutes from './routes/timetable.routes';
 import timetableInstanceRoutes from './routes/timetable-instance.routes';
@@ -68,6 +70,8 @@ app.get('/health', (req: Request, res: Response) => {
 // Routes d'API
 app.use('/api/auth', authRoutes);
 app.use('/api/grades', gradeRoutes);
+app.use('/api/terms', termRoutes);
+app.use('/api/students', studentRoutes);
 app.use('/api/courses', courseRoutes);
 
 // Routes spécifiques AVANT les générales
@@ -85,6 +89,8 @@ app.use('/api/assignments', assignmentRoutes);
 
 // ✨ NOUVEAU : Routes de messagerie
 app.use('/api/messages', messageRoutes);
+
+
 
 
 
