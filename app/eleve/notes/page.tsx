@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { gradesApi } from "@/lib/api/grade"
 import { termsApi, reportsApi, type Term, type GradesSummary } from "@/lib/api/term"
+import { reportCardApi, type ReportCardStatus } from "@/lib/api/reportCard"
 import { getUserSession } from "@/lib/auth"
 
 // ✅ Import des composants
@@ -114,6 +115,7 @@ export default function StudentNotesPage() {
   const [isLoadingTerms, setIsLoadingTerms] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [downloadingReport, setDownloadingReport] = useState<string | null>(null)
+  const [reportCardStatuses, setReportCardStatuses] = useState<Record<string, ReportCardStatus>>({})
 
 
   // Calcul automatique de l'année académique
@@ -142,11 +144,13 @@ export default function StudentNotesPage() {
   }, [user?.id])
 
   // Charger les notes quand la période change
+  // Charger les notes et les statuts quand la période change
   useEffect(() => {
     if (user?.id && !isLoadingTerms) {
       loadNotes()
+      loadReportCardStatuses()
     }
-  }, [selectedTermId, user?.id, isLoadingTerms])
+  }, [selectedTermId, user?.id, isLoadingTerms, terms.length])
 
   const loadTerms = async () => {
     try {
@@ -221,10 +225,38 @@ export default function StudentNotesPage() {
 
 
 
+  const loadReportCardStatuses = async () => {
+    if (!user?.id || terms.length === 0) return
+
+    const statuses: Record<string, ReportCardStatus> = {}
+
+    for (const term of terms) {
+      try {
+        const response = await reportCardApi.getStatus(user.id, term.id)
+        if (response.success && response.data) {
+          statuses[term.id] = response.data
+        }
+      } catch (err) {
+        console.error(`Erreur chargement statut bulletin pour ${term.id}:`, err)
+      }
+    }
+
+    setReportCardStatuses(statuses)
+  }
+
+
+
   const handleDownloadReport = async (termId: string) => {
     if (!user?.id) return
 
-    // ✅ Récupérer le token depuis localStorage
+    // Vérifier si le bulletin est validé
+    const status = reportCardStatuses[termId]
+    if (!status?.validated) {
+      alert("Ce bulletin n'est pas encore disponible. Il sera accessible après validation par l'équipe pédagogique.")
+      return
+    }
+
+    // Récupérer le token depuis localStorage
     const token = localStorage.getItem('auth_token')
     
     if (!token) {
@@ -242,8 +274,22 @@ export default function StudentNotesPage() {
       setDownloadingReport(null)
     }
   }
-  const isTermPast = (term: Term) => {
-    return new Date(term.endDate) < new Date()
+
+
+
+  const canDownloadReport = (term: Term): { canDownload: boolean; reason: string } => {
+    const isPast = new Date(term.endDate) < new Date()
+    const status = reportCardStatuses[term.id]
+
+    if (!isPast) {
+      return { canDownload: false, reason: "À venir" }
+    }
+
+    if (!status?.validated) {
+      return { canDownload: false, reason: "En attente" }
+    }
+
+    return { canDownload: true, reason: "Télécharger" }
   }
 
   // ============================================
@@ -423,9 +469,7 @@ export default function StudentNotesPage() {
           <div className="space-y-6 lg:sticky lg:top-6 lg:self-start">
             <StatsPanel generalAverage={data.generalAverage} subjects={data.subjects} />
 
-            {/* ============================================ */}
             {/* BLOC BULLETINS */}
-            {/* ============================================ */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -443,8 +487,9 @@ export default function StudentNotesPage() {
                   </p>
                 ) : (
                   terms.map((term) => {
-                    const canDownload = isTermPast(term)
+                    const { canDownload, reason } = canDownloadReport(term)
                     const isDownloading = downloadingReport === term.id
+                    const status = reportCardStatuses[term.id]
 
                     return (
                       <div
@@ -452,7 +497,7 @@ export default function StudentNotesPage() {
                         className={`flex items-center justify-between p-3 rounded-lg border ${
                           canDownload 
                             ? 'bg-white hover:bg-slate-50' 
-                            : 'bg-slate-50 opacity-60'
+                            : 'bg-slate-50'
                         }`}
                       >
                         <div>
@@ -460,6 +505,12 @@ export default function StudentNotesPage() {
                           <p className="text-xs text-muted-foreground">
                             {new Date(term.startDate).toLocaleDateString('fr-FR')} - {new Date(term.endDate).toLocaleDateString('fr-FR')}
                           </p>
+                          {/* Afficher le statut */}
+                          {new Date(term.endDate) < new Date() && !status?.validated && (
+                            <p className="text-xs text-orange-600 mt-1">
+                              En cours de préparation
+                            </p>
+                          )}
                         </div>
                         <Button
                           size="sm"
@@ -473,7 +524,7 @@ export default function StudentNotesPage() {
                             <Download className="h-4 w-4" />
                           )}
                           <span className="ml-2 hidden sm:inline">
-                            {canDownload ? "Télécharger" : "À venir"}
+                            {reason}
                           </span>
                         </Button>
                       </div>
@@ -482,6 +533,8 @@ export default function StudentNotesPage() {
                 )}
               </CardContent>
             </Card>
+
+            
           </div>
         </div>
       </div>
