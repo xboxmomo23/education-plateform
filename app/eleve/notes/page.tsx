@@ -24,6 +24,11 @@ import { SubjectSummTable } from "@/components/notes/SubjectSummTable"
 import { SubjectNotesAccordion } from "@/components/notes/SubjectNotesAccordion"
 import { StatsPanel } from "@/components/notes/StatsPanel"
 
+const getCurrentAcademicYear = (): number => {
+  const now = new Date()
+  return now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1
+}
+
 // ============================================
 // TYPES
 // ============================================
@@ -110,6 +115,15 @@ export default function StudentNotesPage() {
   const [error, setError] = useState<string | null>(null)
   const [downloadingReport, setDownloadingReport] = useState<string | null>(null)
 
+
+  // Calcul automatique de l'année académique
+  // Règle : si on est en septembre ou après -> année en cours
+  // sinon -> année précédente (année de début de l'année scolaire)
+  const now = new Date()
+  const currentYear =
+    now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1
+
+
   // Guard pour éviter double fetch en React 18 StrictMode
   const hasFetchedRef = useRef(false)
 
@@ -137,14 +151,13 @@ export default function StudentNotesPage() {
   const loadTerms = async () => {
     try {
       setIsLoadingTerms(true)
-      const now = new Date()
-      const currentYear = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1
-      
-      const response = await termsApi.getTerms(currentYear)
-      
+
+      // On ne filtre plus par année ici → on récupère toutes les périodes
+      const response = await termsApi.getTerms()
+
       if (response.success && response.data) {
         setTerms(response.data)
-        
+
         // Sélectionner la période courante par défaut
         const currentTerm = response.data.find((t) => t.isCurrent)
         if (currentTerm) {
@@ -158,6 +171,7 @@ export default function StudentNotesPage() {
     }
   }
 
+
   const loadNotes = async () => {
     if (!user?.id) return
 
@@ -168,9 +182,20 @@ export default function StudentNotesPage() {
       console.log("[API] Loading grades summary for student:", user.id)
       console.log("[API] Selected term:", selectedTermId)
 
-      // Utiliser l'API de synthèse
+      // 🔹 Déterminer l'année académique à envoyer au backend
+      let academicYear: number
+
+      if (selectedTermId) {
+        const selectedTerm = terms.find((t) => t.id === selectedTermId)
+        // Si on a une période sélectionnée, on prend son academicYear
+        academicYear = selectedTerm?.academicYear ?? getCurrentAcademicYear()
+      } else {
+        // Année complète → année scolaire courante
+        academicYear = getCurrentAcademicYear()
+      }
+
       const response = await reportsApi.getMyGradesSummary(
-        new Date().getFullYear(),
+        academicYear,
         selectedTermId || undefined
       )
 
@@ -182,17 +207,19 @@ export default function StudentNotesPage() {
       }
 
       setSummaryData(response.data)
-      
+
       // Transformer les données pour les composants UI existants
       const transformedData = transformSummaryToUI(response.data)
       setData(transformedData)
     } catch (err) {
-      console.error("[API] Error loading notes:", err)
-      setError("Impossible de charger les notes")
+      console.error("[API] Error loading student notes:", err)
+      setError("Erreur lors du chargement des notes")
     } finally {
       setIsLoading(false)
     }
   }
+
+
 
   const handleDownloadReport = async (termId: string) => {
     if (!user?.id) return
