@@ -2,13 +2,23 @@
 
 import { useState, useEffect, useRef } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { AlertCircle, BookOpen } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { 
+  AlertCircle, 
+  BookOpen, 
+  Download, 
+  Calendar,
+  FileText,
+  RefreshCw,
+  ChevronDown
+} from "lucide-react"
 import { gradesApi } from "@/lib/api/grade"
+import { termsApi, reportsApi, type Term, type GradesSummary } from "@/lib/api/term"
 import { getUserSession } from "@/lib/auth"
 
-// ✅ Import des composants (noms corrigés)
+// ✅ Import des composants
 import { NotesSummaryCard } from "@/components/notes/NotesSummaryCard"
 import { SubjectSummTable } from "@/components/notes/SubjectSummTable"
 import { SubjectNotesAccordion } from "@/components/notes/SubjectNotesAccordion"
@@ -19,13 +29,13 @@ import { StatsPanel } from "@/components/notes/StatsPanel"
 // ============================================
 
 type Evaluation = {
-  gradeId: string              // ✅ AJOUTÉ - ID unique de la note
+  gradeId: string
   evaluationId: string
   title: string
   date: string
   coefficient: number
-  gradeStudent: number | null  // ✅ CORRIGÉ : Peut être null
-  absent: boolean  // ✅ AJOUTÉ
+  gradeStudent: number | null
+  absent: boolean
   avgClass?: number
   min?: number
   max?: number
@@ -50,180 +60,38 @@ type StudentNotesResponse = {
 }
 
 // ============================================
-// TYPES BACKEND (ce que ton API retourne)
+// TRANSFORMATION DES DONNÉES SUMMARY -> UI
 // ============================================
 
-interface BackendGrade {
-  id: string
-  evaluationId: string
-  evaluationTitle: string
-  evaluationType: string
-  subjectName: string
-  subjectCode: string
-  value: number | null
-  absent: boolean
-  coefficient: number
-  maxScale: number
-  normalizedValue: number | null
-  evalDate: string
-  comment?: string
-  classAverage?: number
-  classMin?: number
-  classMax?: number
-  // ✅ AJOUT : Support des snake_case aussi
-  class_average?: number
-  class_min?: number
-  class_max?: number
-}
-
-// ============================================
-// FONCTION DE NORMALISATION DES CHAMPS
-// ============================================
-
-/**
- * Normalise les champs backend (snake_case ou camelCase) vers camelCase
- */
-function normalizeBackendGrade(grade: any): BackendGrade {
-  return {
-    id: grade.id,
-    evaluationId: grade.evaluationId || grade.evaluation_id,
-    evaluationTitle: grade.evaluationTitle || grade.evaluation_title,
-    evaluationType: grade.evaluationType || grade.evaluation_type,
-    subjectName: grade.subjectName || grade.subject_name,
-    subjectCode: grade.subjectCode || grade.subject_code,
-    value: grade.value,
-    absent: grade.absent,
-    coefficient: grade.coefficient,
-    maxScale: grade.maxScale || grade.max_scale,
-    normalizedValue: grade.normalizedValue || grade.normalized_value,
-    evalDate: grade.evalDate || grade.eval_date,
-    comment: grade.comment,
-    // ✅ Support des deux formats pour les stats de classe
-    classAverage: grade.classAverage ?? grade.class_average ?? undefined,
-    classMin: grade.classMin ?? grade.class_min ?? undefined,
-    classMax: grade.classMax ?? grade.class_max ?? undefined,
-  }
-}
-
-// ============================================
-// FONCTION DE TRANSFORMATION DES DONNÉES
-// ============================================
-
-function transformBackendData(backendGrades: any[]): StudentNotesResponse {
-  // ✅ NOUVEAU : Normaliser tous les grades d'abord
-  const normalizedGrades = backendGrades.map(g => normalizeBackendGrade(g))
-  
-  // Grouper par matière
-  const gradesBySubject = normalizedGrades.reduce((acc, grade) => {
-    const subject = grade.subjectName || "Autre"
-    if (!acc[subject]) {
-      acc[subject] = []
-    }
-    acc[subject].push(grade)
-    return acc
-  }, {} as Record<string, BackendGrade[]>)
-
-  // Calculer les moyennes par matière
-  const subjects: SubjectNotes[] = Object.entries(gradesBySubject).map(
-    ([subjectName, grades]) => {
-      // ✅ Filtrer les absences et notes nulles SEULEMENT pour le calcul de la moyenne élève
-      const validGrades = grades.filter((g) => !g.absent && g.normalizedValue !== null)
-
-      let subjectAvgStudent = 0
-      let totalCoeff = 0
-
-      if (validGrades.length > 0) {
-        // Calculer la moyenne pondérée
-        let totalPoints = 0
-        validGrades.forEach((grade) => {
-          const normalized = Number(grade.normalizedValue) || 0
-          const coef = grade.coefficient || 1
-          totalPoints += normalized * coef
-          totalCoeff += coef
-        })
-        subjectAvgStudent = totalCoeff > 0 ? totalPoints / totalCoeff : 0
-      }
-
-      // ✅ NOUVEAU : Calculer le coefficient total de TOUTES les évaluations (même absents)
-      const totalCoeffAll = grades.reduce((sum, g) => sum + (g.coefficient || 1), 0)
-
-      // ✅ NOUVEAU : Calculer les stats de classe (moyenne de toutes les moyennes de classe)
-      const classAverages = grades
-        .filter(g => g.classAverage != null)
-        .map(g => Number(g.classAverage))
-      
-      console.log(`[Transform] ${subjectName} - classAverages:`, classAverages)
-      
-      const subjectAvgClass = classAverages.length > 0
-        ? classAverages.reduce((sum, avg) => sum + avg, 0) / classAverages.length
-        : undefined
-
-      // ✅ NOUVEAU : Calculer min/max de classe (prendre le min/max parmi toutes les évaluations)
-      const allClassMins = grades.filter(g => g.classMin != null).map(g => Number(g.classMin))
-      const allClassMaxs = grades.filter(g => g.classMax != null).map(g => Number(g.classMax))
-      const subjectClassMin = allClassMins.length > 0 ? Math.min(...allClassMins) : undefined
-      const subjectClassMax = allClassMaxs.length > 0 ? Math.max(...allClassMaxs) : undefined
-      
-      console.log(`[Transform] ${subjectName} - Stats:`, {
-        avgClass: subjectAvgClass,
-        min: subjectClassMin,
-        max: subjectClassMax,
-      })
-
-      // Calculer min/max de la matière pour l'élève (seulement notes valides)
-      const allStudentGrades = validGrades.map((g) => Number(g.normalizedValue) || 0)
-      const subjectMin = allStudentGrades.length > 0 ? Math.min(...allStudentGrades) : undefined
-      const subjectMax = allStudentGrades.length > 0 ? Math.max(...allStudentGrades) : undefined
-
-      // Transformer les évaluations en gardant le champ absent
-      const evaluations: Evaluation[] = grades.map((grade) => ({
-        gradeId: grade.id,  // ✅ AJOUTÉ - ID unique de la note
-        evaluationId: grade.evaluationId,
-        title: grade.evaluationTitle,
-        date: grade.evalDate,
-        coefficient: grade.coefficient,
-        gradeStudent: grade.normalizedValue,
-        absent: grade.absent,
-        avgClass: grade.classAverage,
-        min: grade.classMin,
-        max: grade.classMax,
-        appreciation: grade.comment,
-      }))
-      
-      console.log(`[Transform] ${subjectName} - Evaluations:`, evaluations.map(e => ({
+function transformSummaryToUI(summary: GradesSummary): StudentNotesResponse {
+  const subjects: SubjectNotes[] = summary.subjects.map((subject) => ({
+    subjectId: subject.subjectId,
+    subjectName: subject.subjectName,
+    subjectCoeffTotal: subject.coefTotal,
+    subjectAvgStudent: subject.studentAverage20,
+    subjectAvgClass: subject.classAverage20 ?? undefined,
+    subjectMin: subject.min ?? undefined,
+    subjectMax: subject.max ?? undefined,
+    appreciation: subject.appreciation,
+    evaluations: summary.evaluations
+      .filter((e) => e.subjectId === subject.subjectId)
+      .map((e) => ({
+        gradeId: e.evaluationId, // Utiliser evaluationId comme clé unique
+        evaluationId: e.evaluationId,
         title: e.title,
-        gradeId: e.gradeId,  // ✅ Log du gradeId
+        date: e.date,
+        coefficient: e.coefficient,
+        gradeStudent: e.normalizedValue,
         absent: e.absent,
-        avgClass: e.avgClass,
-        min: e.min,
-        max: e.max,
-      })))
-
-      return {
-        subjectId: grades[0].subjectCode || subjectName,
-        subjectName,
-        subjectCoeffTotal: totalCoeffAll,  // ✅ Tous les coefficients
-        subjectAvgStudent,
-        subjectAvgClass,  // ✅ Moyenne de classe
-        subjectMin: subjectClassMin,  // ✅ Min de CLASSE (pas élève)
-        subjectMax: subjectClassMax,  // ✅ Max de CLASSE (pas élève)
-        appreciation: undefined,
-        evaluations,
-      }
-    }
-  )
-
-  // Calculer la moyenne générale (moyenne de toutes les matières avec notes valides)
-  const validSubjects = subjects.filter((s) => 
-    s.subjectAvgStudent > 0 && s.evaluations.some(e => !e.absent)
-  )
-  const generalAverage =
-    validSubjects.length > 0
-      ? validSubjects.reduce((acc, s) => acc + s.subjectAvgStudent, 0) / validSubjects.length
-      : 0
+        avgClass: undefined, // Les stats par évaluation sont dans les subjects
+        min: undefined,
+        max: undefined,
+        appreciation: e.comment ?? undefined,
+      })),
+  }))
 
   return {
-    generalAverage,
+    generalAverage: summary.overallAverage,
     subjects,
   }
 }
@@ -234,23 +102,60 @@ function transformBackendData(backendGrades: any[]): StudentNotesResponse {
 
 export default function StudentNotesPage() {
   const [data, setData] = useState<StudentNotesResponse | null>(null)
+  const [summaryData, setSummaryData] = useState<GradesSummary | null>(null)
+  const [terms, setTerms] = useState<Term[]>([])
+  const [selectedTermId, setSelectedTermId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingTerms, setIsLoadingTerms] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [downloadingReport, setDownloadingReport] = useState<string | null>(null)
 
-  // ✅ AJOUT : Guard pour éviter double fetch en React 18 StrictMode
+  // Guard pour éviter double fetch en React 18 StrictMode
   const hasFetchedRef = useRef(false)
 
   const user = getUserSession()
 
+  // Charger les périodes au montage
   useEffect(() => {
     if (user?.id && !hasFetchedRef.current) {
       hasFetchedRef.current = true
-      loadNotes()
+      loadTerms()
     } else if (!user?.id) {
       setError("Utilisateur non connecté")
       setIsLoading(false)
+      setIsLoadingTerms(false)
     }
   }, [user?.id])
+
+  // Charger les notes quand la période change
+  useEffect(() => {
+    if (user?.id && !isLoadingTerms) {
+      loadNotes()
+    }
+  }, [selectedTermId, user?.id, isLoadingTerms])
+
+  const loadTerms = async () => {
+    try {
+      setIsLoadingTerms(true)
+      const currentYear = new Date().getFullYear()
+      
+      const response = await termsApi.getTerms(currentYear)
+      
+      if (response.success && response.data) {
+        setTerms(response.data)
+        
+        // Sélectionner la période courante par défaut
+        const currentTerm = response.data.find((t) => t.isCurrent)
+        if (currentTerm) {
+          setSelectedTermId(currentTerm.id)
+        }
+      }
+    } catch (err) {
+      console.error("[API] Error loading terms:", err)
+    } finally {
+      setIsLoadingTerms(false)
+    }
+  }
 
   const loadNotes = async () => {
     if (!user?.id) return
@@ -259,38 +164,26 @@ export default function StudentNotesPage() {
       setIsLoading(true)
       setError(null)
 
-      console.log("[API] Loading grades for student:", user.id)
+      console.log("[API] Loading grades summary for student:", user.id)
+      console.log("[API] Selected term:", selectedTermId)
 
-      // ✅ APPEL API RÉEL
-      const response = await gradesApi.getStudentGrades(user.id, {})
+      // Utiliser l'API de synthèse
+      const response = await reportsApi.getMyGradesSummary(
+        new Date().getFullYear(),
+        selectedTermId || undefined
+      )
 
-      console.log("[API] Response:", response)
+      console.log("[API] Summary response:", response)
 
-      if (!response.success) {
+      if (!response.success || !response.data) {
         setError(response.error || "Erreur lors du chargement des notes")
         return
       }
 
-      const backendGrades = response.data?.grades || []
-      console.log("[API] Backend grades (raw):", backendGrades.length, "grades")
-
-      // ✅ DÉDUPLICATION par ID de note
-      const uniqueGrades = Array.from(
-        new Map(backendGrades.map((grade: any) => [grade.id, grade])).values()
-      )
+      setSummaryData(response.data)
       
-      console.log("[API] After deduplication:", uniqueGrades.length, "unique grades")
-      
-      if (backendGrades.length !== uniqueGrades.length) {
-        console.warn(
-          `[API] ⚠️ Removed ${backendGrades.length - uniqueGrades.length} duplicate grades`
-        )
-      }
-
-      // ✅ TRANSFORMER les données backend vers le format UI
-      const transformedData = transformBackendData(uniqueGrades)
-      console.log("[API] Transformed data:", transformedData)
-
+      // Transformer les données pour les composants UI existants
+      const transformedData = transformSummaryToUI(response.data)
       setData(transformedData)
     } catch (err) {
       console.error("[API] Error loading notes:", err)
@@ -300,10 +193,28 @@ export default function StudentNotesPage() {
     }
   }
 
+  const handleDownloadReport = async (termId: string) => {
+    if (!user?.id || !user?.token) return
+
+    try {
+      setDownloadingReport(termId)
+      await reportsApi.downloadReport(user.id, termId, user.token)
+    } catch (err) {
+      console.error("Error downloading report:", err)
+      alert("Erreur lors du téléchargement du bulletin")
+    } finally {
+      setDownloadingReport(null)
+    }
+  }
+
+  const isTermPast = (term: Term) => {
+    return new Date(term.endDate) < new Date()
+  }
+
   // ============================================
   // LOADING STATE
   // ============================================
-  if (isLoading) {
+  if (isLoading || isLoadingTerms) {
     return (
       <DashboardLayout requiredRole="student">
         <div className="flex items-center justify-center min-h-[60vh]">
@@ -349,12 +260,27 @@ export default function StudentNotesPage() {
     return (
       <DashboardLayout requiredRole="student">
         <div className="space-y-6">
-          {/* Header */}
+          {/* Header avec sélecteur de période */}
           <div className="border-b pb-6">
-            <h1 className="text-4xl font-bold text-slate-900">Mes notes</h1>
-            <p className="text-muted-foreground mt-2 text-lg">
-              Consultez vos résultats, moyennes et appréciations.
-            </p>
+            <div className="flex items-start justify-between">
+              <div>
+                <h1 className="text-4xl font-bold text-slate-900">Mes notes</h1>
+                <p className="text-muted-foreground mt-2 text-lg">
+                  Consultez vos résultats, moyennes et appréciations.
+                </p>
+              </div>
+              {/* Sélecteur de période */}
+              <div className="flex items-center gap-3">
+                <PeriodSelector
+                  terms={terms}
+                  selectedTermId={selectedTermId}
+                  onSelect={setSelectedTermId}
+                />
+                <Button onClick={loadNotes} variant="outline" size="icon">
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
           </div>
 
           {/* Empty state */}
@@ -365,7 +291,9 @@ export default function StudentNotesPage() {
                 <div>
                   <h3 className="text-lg font-semibold text-slate-900">Aucune note disponible</h3>
                   <p className="text-sm text-muted-foreground mt-2">
-                    Vos notes apparaîtront ici dès qu'elles seront saisies par vos professeurs.
+                    {selectedTermId 
+                      ? "Aucune note pour cette période."
+                      : "Vos notes apparaîtront ici dès qu'elles seront saisies."}
                   </p>
                 </div>
                 <Button onClick={loadNotes} variant="outline">
@@ -388,20 +316,47 @@ export default function StudentNotesPage() {
     <DashboardLayout requiredRole="student">
       <div className="space-y-6 pb-8">
         {/* ============================================ */}
-        {/* HEADER */}
+        {/* HEADER avec sélecteur de période */}
         {/* ============================================ */}
         <div className="border-b pb-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-start justify-between">
             <div>
               <h1 className="text-4xl font-bold text-slate-900">Mes notes</h1>
               <p className="text-muted-foreground mt-2 text-lg">
                 Consultez vos résultats, moyennes et appréciations.
               </p>
             </div>
-            <Button onClick={loadNotes} variant="outline" size="sm">
-              Actualiser
-            </Button>
+            <div className="flex items-center gap-3">
+              {/* Sélecteur de période */}
+              <PeriodSelector
+                terms={terms}
+                selectedTermId={selectedTermId}
+                onSelect={setSelectedTermId}
+              />
+              <Button onClick={loadNotes} variant="outline" size="icon">
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
+
+          {/* Badge période sélectionnée */}
+          {summaryData?.term && (
+            <div className="mt-4 flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">
+                Période : <strong>{summaryData.term.name}</strong>
+                {" "}({new Date(summaryData.term.startDate).toLocaleDateString('fr-FR')} - {new Date(summaryData.term.endDate).toLocaleDateString('fr-FR')})
+              </span>
+            </div>
+          )}
+          {!selectedTermId && (
+            <div className="mt-4 flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">
+                Période : <strong>Année complète</strong>
+              </span>
+            </div>
+          )}
         </div>
 
         {/* ============================================ */}
@@ -429,12 +384,165 @@ export default function StudentNotesPage() {
             </div>
           </div>
 
-          {/* RIGHT COLUMN: Stats panel */}
-          <div className="lg:sticky lg:top-6 lg:self-start">
+          {/* RIGHT COLUMN: Stats panel + Bulletins */}
+          <div className="space-y-6 lg:sticky lg:top-6 lg:self-start">
             <StatsPanel generalAverage={data.generalAverage} subjects={data.subjects} />
+
+            {/* ============================================ */}
+            {/* BLOC BULLETINS */}
+            {/* ============================================ */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Bulletins
+                </CardTitle>
+                <CardDescription>
+                  Téléchargez vos bulletins de notes
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {terms.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Aucune période configurée
+                  </p>
+                ) : (
+                  terms.map((term) => {
+                    const canDownload = isTermPast(term)
+                    const isDownloading = downloadingReport === term.id
+
+                    return (
+                      <div
+                        key={term.id}
+                        className={`flex items-center justify-between p-3 rounded-lg border ${
+                          canDownload 
+                            ? 'bg-white hover:bg-slate-50' 
+                            : 'bg-slate-50 opacity-60'
+                        }`}
+                      >
+                        <div>
+                          <p className="font-medium text-sm">{term.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(term.startDate).toLocaleDateString('fr-FR')} - {new Date(term.endDate).toLocaleDateString('fr-FR')}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant={canDownload ? "default" : "ghost"}
+                          disabled={!canDownload || isDownloading}
+                          onClick={() => handleDownloadReport(term.id)}
+                        >
+                          {isDownloading ? (
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Download className="h-4 w-4" />
+                          )}
+                          <span className="ml-2 hidden sm:inline">
+                            {canDownload ? "Télécharger" : "À venir"}
+                          </span>
+                        </Button>
+                      </div>
+                    )
+                  })
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
     </DashboardLayout>
+  )
+}
+
+// ============================================
+// COMPOSANT SÉLECTEUR DE PÉRIODE
+// ============================================
+
+interface PeriodSelectorProps {
+  terms: Term[]
+  selectedTermId: string | null
+  onSelect: (termId: string | null) => void
+}
+
+function PeriodSelector({ terms, selectedTermId, onSelect }: PeriodSelectorProps) {
+  const [isOpen, setIsOpen] = useState(false)
+
+  const selectedTerm = terms.find((t) => t.id === selectedTermId)
+  const label = selectedTerm ? selectedTerm.name : "Année complète"
+
+  return (
+    <div className="relative">
+      <Button
+        variant="outline"
+        onClick={() => setIsOpen(!isOpen)}
+        className="min-w-[180px] justify-between"
+      >
+        <span className="flex items-center gap-2">
+          <Calendar className="h-4 w-4" />
+          {label}
+        </span>
+        <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </Button>
+
+      {isOpen && (
+        <>
+          {/* Overlay pour fermer le dropdown */}
+          <div
+            className="fixed inset-0 z-10"
+            onClick={() => setIsOpen(false)}
+          />
+
+          {/* Dropdown menu */}
+          <div className="absolute right-0 top-full mt-2 z-20 w-56 rounded-md border bg-white shadow-lg">
+            <div className="py-1">
+              {/* Option "Année complète" */}
+              <button
+                onClick={() => {
+                  onSelect(null)
+                  setIsOpen(false)
+                }}
+                className={`w-full px-4 py-2 text-left text-sm hover:bg-slate-100 ${
+                  selectedTermId === null ? 'bg-slate-50 font-medium' : ''
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  Année complète
+                </div>
+              </button>
+
+              {/* Séparateur */}
+              {terms.length > 0 && <div className="my-1 border-t" />}
+
+              {/* Liste des périodes */}
+              {terms.map((term) => (
+                <button
+                  key={term.id}
+                  onClick={() => {
+                    onSelect(term.id)
+                    setIsOpen(false)
+                  }}
+                  className={`w-full px-4 py-2 text-left text-sm hover:bg-slate-100 ${
+                    selectedTermId === term.id ? 'bg-slate-50 font-medium' : ''
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span>{term.name}</span>
+                    {term.isCurrent && (
+                      <Badge variant="secondary" className="text-xs">
+                        En cours
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {new Date(term.startDate).toLocaleDateString('fr-FR')} - {new Date(term.endDate).toLocaleDateString('fr-FR')}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   )
 }
