@@ -8,6 +8,7 @@ import gradeRoutes from './routes/grade.routes';
 import termRoutes from './routes/term.routes';
 import studentRoutes from './routes/student.routes';
 import courseRoutes from './routes/course.routes';
+import reportCardRoutes from './routes/reportCard.routes';
 import timetableRoutes from './routes/timetable.routes';
 import timetableInstanceRoutes from './routes/timetable-instance.routes';
 import establishmentRoutes from './routes/establishment.routes';
@@ -73,6 +74,7 @@ app.use('/api/grades', gradeRoutes);
 app.use('/api/terms', termRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/courses', courseRoutes);
+app.use('/api/report-cards', reportCardRoutes);
 
 // Routes spécifiques AVANT les générales
 app.use('/api/timetable/instances', timetableInstanceRoutes);  // ← Spécifique en premier

@@ -1,0 +1,294 @@
+import { pool } from '../config/database';
+
+// =========================
+// Types
+// =========================
+
+export interface ReportCard {
+  id: string;
+  studentId: string;
+  termId: string;
+  establishmentId: string;
+  councilAppreciation: string | null;
+  councilAppreciationBy: string | null;
+  councilAppreciationAt: Date | null;
+  validatedAt: Date | null;
+  validatedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SubjectAppreciation {
+  id: string;
+  studentId: string;
+  termId: string;
+  courseId: string;
+  teacherId: string;
+  appreciation: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// =========================
+// Report Cards
+// =========================
+
+export async function findReportCard(
+  studentId: string,
+  termId: string
+): Promise<ReportCard | null> {
+  const result = await pool.query(
+    `SELECT 
+      id,
+      student_id as "studentId",
+      term_id as "termId",
+      establishment_id as "establishmentId",
+      council_appreciation as "councilAppreciation",
+      council_appreciation_by as "councilAppreciationBy",
+      council_appreciation_at as "councilAppreciationAt",
+      validated_at as "validatedAt",
+      validated_by as "validatedBy",
+      created_at as "createdAt",
+      updated_at as "updatedAt"
+    FROM report_cards
+    WHERE student_id = $1 AND term_id = $2`,
+    [studentId, termId]
+  );
+
+  return result.rows[0] || null;
+}
+
+export async function createOrUpdateReportCard(
+  studentId: string,
+  termId: string,
+  establishmentId: string
+): Promise<ReportCard> {
+  const result = await pool.query(
+    `INSERT INTO report_cards (student_id, term_id, establishment_id)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (student_id, term_id) DO UPDATE SET updated_at = NOW()
+    RETURNING 
+      id,
+      student_id as "studentId",
+      term_id as "termId",
+      establishment_id as "establishmentId",
+      council_appreciation as "councilAppreciation",
+      council_appreciation_by as "councilAppreciationBy",
+      council_appreciation_at as "councilAppreciationAt",
+      validated_at as "validatedAt",
+      validated_by as "validatedBy",
+      created_at as "createdAt",
+      updated_at as "updatedAt"`,
+    [studentId, termId, establishmentId]
+  );
+
+  return result.rows[0];
+}
+
+export async function validateReportCard(
+  studentId: string,
+  termId: string,
+  validatedBy: string,
+  establishmentId: string
+): Promise<ReportCard> {
+  // Créer le report_card s'il n'existe pas, puis valider
+  const result = await pool.query(
+    `INSERT INTO report_cards (student_id, term_id, establishment_id, validated_at, validated_by)
+    VALUES ($1, $2, $3, NOW(), $4)
+    ON CONFLICT (student_id, term_id) DO UPDATE SET 
+      validated_at = NOW(),
+      validated_by = $4,
+      updated_at = NOW()
+    RETURNING 
+      id,
+      student_id as "studentId",
+      term_id as "termId",
+      establishment_id as "establishmentId",
+      council_appreciation as "councilAppreciation",
+      council_appreciation_by as "councilAppreciationBy",
+      council_appreciation_at as "councilAppreciationAt",
+      validated_at as "validatedAt",
+      validated_by as "validatedBy",
+      created_at as "createdAt",
+      updated_at as "updatedAt"`,
+    [studentId, termId, establishmentId, validatedBy]
+  );
+
+  return result.rows[0];
+}
+
+export async function unvalidateReportCard(
+  studentId: string,
+  termId: string
+): Promise<ReportCard | null> {
+  const result = await pool.query(
+    `UPDATE report_cards 
+    SET validated_at = NULL, validated_by = NULL, updated_at = NOW()
+    WHERE student_id = $1 AND term_id = $2
+    RETURNING 
+      id,
+      student_id as "studentId",
+      term_id as "termId",
+      establishment_id as "establishmentId",
+      council_appreciation as "councilAppreciation",
+      validated_at as "validatedAt",
+      validated_by as "validatedBy"`,
+    [studentId, termId]
+  );
+
+  return result.rows[0] || null;
+}
+
+export async function setCouncilAppreciation(
+  studentId: string,
+  termId: string,
+  appreciation: string,
+  appreciationBy: string,
+  establishmentId: string
+): Promise<ReportCard> {
+  const result = await pool.query(
+    `INSERT INTO report_cards (student_id, term_id, establishment_id, council_appreciation, council_appreciation_by, council_appreciation_at)
+    VALUES ($1, $2, $3, $4, $5, NOW())
+    ON CONFLICT (student_id, term_id) DO UPDATE SET 
+      council_appreciation = $4,
+      council_appreciation_by = $5,
+      council_appreciation_at = NOW(),
+      updated_at = NOW()
+    RETURNING 
+      id,
+      student_id as "studentId",
+      term_id as "termId",
+      establishment_id as "establishmentId",
+      council_appreciation as "councilAppreciation",
+      council_appreciation_by as "councilAppreciationBy",
+      council_appreciation_at as "councilAppreciationAt",
+      validated_at as "validatedAt",
+      validated_by as "validatedBy",
+      created_at as "createdAt",
+      updated_at as "updatedAt"`,
+    [studentId, termId, establishmentId, appreciation, appreciationBy]
+  );
+
+  return result.rows[0];
+}
+
+export async function getClassReportCards(
+  classId: string,
+  termId: string
+): Promise<any[]> {
+  const result = await pool.query(
+    `SELECT 
+      u.id as student_id,
+      u.full_name as student_name,
+      rc.id as report_card_id,
+      rc.council_appreciation,
+      rc.validated_at,
+      rc.validated_by,
+      validator.full_name as validated_by_name
+    FROM users u
+    INNER JOIN enrollments e ON e.student_id = u.id AND e.end_date IS NULL
+    LEFT JOIN report_cards rc ON rc.student_id = u.id AND rc.term_id = $2
+    LEFT JOIN users validator ON validator.id = rc.validated_by
+    WHERE e.class_id = $1
+    ORDER BY u.full_name`,
+    [classId, termId]
+  );
+
+  return result.rows;
+}
+
+// =========================
+// Subject Appreciations
+// =========================
+
+export async function findSubjectAppreciation(
+  studentId: string,
+  termId: string,
+  courseId: string
+): Promise<SubjectAppreciation | null> {
+  const result = await pool.query(
+    `SELECT 
+      id,
+      student_id as "studentId",
+      term_id as "termId",
+      course_id as "courseId",
+      teacher_id as "teacherId",
+      appreciation,
+      created_at as "createdAt",
+      updated_at as "updatedAt"
+    FROM subject_appreciations
+    WHERE student_id = $1 AND term_id = $2 AND course_id = $3`,
+    [studentId, termId, courseId]
+  );
+
+  return result.rows[0] || null;
+}
+
+export async function setSubjectAppreciation(
+  studentId: string,
+  termId: string,
+  courseId: string,
+  teacherId: string,
+  appreciation: string
+): Promise<SubjectAppreciation> {
+  const result = await pool.query(
+    `INSERT INTO subject_appreciations (student_id, term_id, course_id, teacher_id, appreciation)
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (student_id, term_id, course_id) DO UPDATE SET 
+      appreciation = $5,
+      teacher_id = $4,
+      updated_at = NOW()
+    RETURNING 
+      id,
+      student_id as "studentId",
+      term_id as "termId",
+      course_id as "courseId",
+      teacher_id as "teacherId",
+      appreciation,
+      created_at as "createdAt",
+      updated_at as "updatedAt"`,
+    [studentId, termId, courseId, teacherId, appreciation]
+  );
+
+  return result.rows[0];
+}
+
+export async function getStudentAppreciations(
+  studentId: string,
+  termId: string
+): Promise<any[]> {
+  const result = await pool.query(
+    `SELECT 
+      sa.id,
+      sa.appreciation,
+      sa.course_id as "courseId",
+      sa.teacher_id as "teacherId",
+      s.name as subject_name,
+      u.full_name as teacher_name,
+      sa.created_at as "createdAt",
+      sa.updated_at as "updatedAt"
+    FROM subject_appreciations sa
+    INNER JOIN courses c ON c.id = sa.course_id
+    INNER JOIN subjects s ON s.id = c.subject_id
+    INNER JOIN users u ON u.id = sa.teacher_id
+    WHERE sa.student_id = $1 AND sa.term_id = $2
+    ORDER BY s.name`,
+    [studentId, termId]
+  );
+
+  return result.rows;
+}
+
+export async function deleteSubjectAppreciation(
+  studentId: string,
+  termId: string,
+  courseId: string
+): Promise<boolean> {
+  const result = await pool.query(
+    `DELETE FROM subject_appreciations 
+    WHERE student_id = $1 AND term_id = $2 AND course_id = $3`,
+    [studentId, termId, courseId]
+  );
+
+  return (result.rowCount ?? 0) > 0;
+}
