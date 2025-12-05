@@ -87,13 +87,40 @@ export async function validateReportCardHandler(req: Request, res: Response): Pr
     const establishmentId = req.user.establishmentId || '18fdec95-29be-4d71-8669-21d67f3a4587';
 
     // Vérifier qu'il y a des notes pour cet élève dans cette période
+    // Récupérer les dates de la période
+    const termResult = await pool.query(
+      `SELECT start_date, end_date FROM terms WHERE id = $1`,
+      [termId]
+    );
+
+    if (termResult.rows.length === 0) {
+      res.status(404).json({ success: false, error: 'Période non trouvée' });
+      return;
+    }
+
+    const term = termResult.rows[0];
+
+    // Vérifier qu'il y a des notes pour cet élève dans cette période
+    // Inclut les évaluations avec term_id OU celles dans la plage de dates
     const gradesCheck = await pool.query(
       `SELECT COUNT(*) as count
       FROM grades g
       INNER JOIN evaluations e ON e.id = g.evaluation_id
-      WHERE g.student_id = $1 AND e.term_id = $2`,
-      [studentId, termId]
+      WHERE g.student_id = $1 
+      AND (
+        e.term_id = $2
+        OR (e.term_id IS NULL AND e.eval_date >= $3 AND e.eval_date <= $4)
+      )`,
+      [studentId, termId, term.start_date, term.end_date]
     );
+
+    if (parseInt(gradesCheck.rows[0].count) === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'Impossible de valider un bulletin sans notes',
+      });
+      return;
+    }
 
     if (parseInt(gradesCheck.rows[0].count) === 0) {
       res.status(400).json({
