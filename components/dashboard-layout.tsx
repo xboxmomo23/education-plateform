@@ -140,8 +140,8 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
           { icon: Layers, label: "Cours", href: "/staff/cours" },
           { icon: BarChart, label: "Notes", href: "/staff/notes" },
           { icon: Mail, label: "Messages", href: "/staff/messages", badge: unreadCount > 0 ? unreadCount : undefined },  // ✨ NOUVEAU
-          { icon: Users, label: "Gestion des utilisateurs", href: "/staff/gestion-utilisateurs" },
-          { icon: Users, label: "periodes", href: "/staff/periodes" },
+          { icon: Users, label: "Bulletins", href: "/staff/bulletins" },
+          { icon: Users, label: "Periodes", href: "/staff/periodes" },
           { icon: Settings, label: "Paramètres", href: "/staff/parametres" },
         ]
       case "admin":
