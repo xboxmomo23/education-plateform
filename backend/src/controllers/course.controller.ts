@@ -44,3 +44,40 @@ export async function getMyCoursesHandler(req: Request, res: Response): Promise<
     });
   }
 }
+
+
+
+// GET /api/courses/:courseId/students
+// Récupérer les élèves d'un cours
+export async function getCourseStudents(req: Request, res: Response): Promise<void> {
+  try {
+    const { courseId } = req.params;
+
+    // Récupérer les élèves inscrits dans la classe du cours
+    const result = await pool.query(
+      `SELECT DISTINCT 
+        u.id,
+        u.full_name,
+        u.email
+      FROM users u
+      INNER JOIN enrollments e ON e.student_id = u.id
+      INNER JOIN courses c ON c.class_id = e.class_id
+      WHERE c.id = $1
+        AND e.end_date IS NULL
+        AND u.role = 'student'
+      ORDER BY u.full_name`,
+      [courseId]
+    );
+
+    res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error('Erreur récupération élèves du cours:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la récupération des élèves',
+    });
+  }
+}

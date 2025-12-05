@@ -4,12 +4,15 @@ import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Plus, Edit2, Calendar, BookOpen } from "lucide-react"
+import { Plus, Edit2, Calendar, BookOpen, MessageSquare } from "lucide-react"
 import { useState, useEffect } from "react"
 import { CreateEvaluationModal } from "@/components/notes/CreateEvaluationModal"
 import { GradeEntryModal } from "@/components/notes/GradeEntryModal"
 import { gradesApi } from "@/lib/api/grade"
 import { coursesApi, type Course } from "@/lib/api/course"
+import { termsApi, type Term } from "@/lib/api/term"
+import { reportCardApi } from "@/lib/api/reportCard"
+import { AppreciationsModal } from "@/components/notes/AppreciationsModal"
 
 interface Evaluation {
   id: string
@@ -33,10 +36,15 @@ export default function ProfesseurNotesPage() {
   const [showCreateEvalModal, setShowCreateEvalModal] = useState(false)
   const [showGradeEntryModal, setShowGradeEntryModal] = useState(false)
   const [selectedEvaluation, setSelectedEvaluation] = useState<Evaluation | null>(null)
+  // Périodes et appréciations
+  const [terms, setTerms] = useState<Term[]>([])
+  const [selectedTermId, setSelectedTermId] = useState<string | null>(null)
+  const [showAppreciationsModal, setShowAppreciationsModal] = useState(false)
 
-  // Charger les cours au montage
+  // Charger les cours et périodes au montage
   useEffect(() => {
     loadCourses()
+    loadTerms()
   }, [])
 
   // Charger les évaluations quand le cours change
@@ -68,6 +76,24 @@ export default function ProfesseurNotesPage() {
       setError("Impossible de charger vos cours")
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const loadTerms = async () => {
+    try {
+      const response = await termsApi.getTerms()
+      if (response.success && response.data) {
+        setTerms(response.data)
+        // Sélectionner la période courante par défaut
+        const currentTerm = response.data.find((t) => t.isCurrent)
+        if (currentTerm) {
+          setSelectedTermId(currentTerm.id)
+        } else if (response.data.length > 0) {
+          setSelectedTermId(response.data[0].id)
+        }
+      }
+    } catch (err) {
+      console.error("Erreur chargement périodes:", err)
     }
   }
 
@@ -117,6 +143,15 @@ export default function ProfesseurNotesPage() {
 
   const handleGradesSaved = () => {
     loadEvaluations()
+  }
+
+
+  const handleOpenAppreciations = () => {
+    if (!selectedCourseId || !selectedTermId) {
+      alert("Veuillez sélectionner un cours et une période")
+      return
+    }
+    setShowAppreciationsModal(true)
   }
 
   const getTypeLabel = (type: string) => {
@@ -215,17 +250,49 @@ export default function ProfesseurNotesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <select
-              className="w-full max-w-2xl rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={selectedCourseId || ""}
-              onChange={(e) => setSelectedCourseId(e.target.value)}
-            >
-              {courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.subject_name} - {course.class_label} ({course.academic_year})
-                </option>
-              ))}
-            </select>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+              {/* Sélecteur de cours */}
+              <div className="flex-1">
+                <label className="text-sm font-medium mb-2 block">Cours</label>
+                <select
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={selectedCourseId || ""}
+                  onChange={(e) => setSelectedCourseId(e.target.value)}
+                >
+                  {courses.map((course) => (
+                    <option key={course.id} value={course.id}>
+                      {course.subject_name} - {course.class_label} ({course.academic_year})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Sélecteur de période */}
+              <div className="sm:w-48">
+                <label className="text-sm font-medium mb-2 block">Période</label>
+                <select
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={selectedTermId || ""}
+                  onChange={(e) => setSelectedTermId(e.target.value)}
+                >
+                  {terms.map((term) => (
+                    <option key={term.id} value={term.id}>
+                      {term.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Bouton Appréciations */}
+              <Button
+                variant="outline"
+                onClick={handleOpenAppreciations}
+                disabled={!selectedCourseId || !selectedTermId}
+              >
+                <MessageSquare className="mr-2 h-4 w-4" />
+                Appréciations
+              </Button>
+            </div>
             
             {selectedCourse && (
               <div className="mt-3 flex gap-2">
@@ -327,6 +394,19 @@ export default function ProfesseurNotesPage() {
             onSuccess={handleGradesSaved}
           />
         )}
+
+
+        {/* Modal d'appréciations */}
+        {showAppreciationsModal && selectedCourseId && selectedTermId && (
+          <AppreciationsModal
+            courseId={selectedCourseId}
+            termId={selectedTermId}
+            courseName={selectedCourse?.subject_name || ""}
+            className={selectedCourse?.class_label || ""}
+            onClose={() => setShowAppreciationsModal(false)}
+          />
+        )}
+
       </div>
     </DashboardLayout>
   )

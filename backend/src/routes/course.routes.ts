@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import { getMyCoursesHandler } from '../controllers/course.controller';
+import { getCourseStudents } from '../controllers/course.controller';
 
 const router = Router();
 
@@ -14,5 +15,7 @@ router.get(
   authorize('teacher', 'admin'),
   getMyCoursesHandler
 );
+
+router.get('/:courseId/students', authenticate, getCourseStudents);
 
 export default router;
