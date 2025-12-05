@@ -181,42 +181,47 @@ export const reportsApi = {
   /**
    * Télécharge le bulletin PDF directement
    */
-  downloadReport: async (studentId: string, termId: string, token: string) => {
-    const response = await fetch(
-      `/api/students/${studentId}/report?termId=${termId}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error('Erreur lors du téléchargement du bulletin');
+  /**
+ * Télécharge le bulletin PDF directement
+ */
+downloadReport: async (studentId: string, termId: string, token: string) => {
+  const response = await fetch(
+    `http://localhost:5000/api/students/${studentId}/report?termId=${termId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
     }
+  );
 
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    
-    // Extraire le nom du fichier depuis le header Content-Disposition
-    const contentDisposition = response.headers.get('Content-Disposition');
-    let filename = 'bulletin.pdf';
-    if (contentDisposition) {
-      const filenameMatch = contentDisposition.match(/filename="(.+)"/);
-      if (filenameMatch) {
-        filename = filenameMatch[1];
-      }
+  if (!response.ok) {
+    throw new Error('Erreur lors du téléchargement du bulletin');
+  }
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  
+  // Extraire le nom du fichier depuis le header Content-Disposition
+  const contentDisposition = response.headers.get('Content-Disposition');
+  let filename = 'bulletin.pdf';
+  if (contentDisposition) {
+    const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+    if (filenameMatch) {
+      filename = filenameMatch[1];
     }
+  }
 
-    // Créer un lien temporaire pour le téléchargement
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    // Nettoyer l'URL blob
-    window.URL.revokeObjectURL(url);
-  },
+  // Créer un lien temporaire pour le téléchargement
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  
+  // Nettoyer l'URL blob
+  window.URL.revokeObjectURL(url);
+},
+
+
 };

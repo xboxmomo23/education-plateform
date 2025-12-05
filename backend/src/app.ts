@@ -3,12 +3,14 @@ import cors from 'cors';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { generalLimiter, helmetConfig } from './middleware/security.middleware';
+import { authenticate } from './middleware/auth.middleware';
 import authRoutes from './routes/auth.routes';
 import gradeRoutes from './routes/grade.routes';
 import termRoutes from './routes/term.routes';
 import studentRoutes from './routes/student.routes';
 import courseRoutes from './routes/course.routes';
 import reportCardRoutes from './routes/reportCard.routes';
+import { getAllClasses } from './controllers/class.controller';
 import timetableRoutes from './routes/timetable.routes';
 import timetableInstanceRoutes from './routes/timetable-instance.routes';
 import establishmentRoutes from './routes/establishment.routes';
@@ -93,7 +95,8 @@ app.use('/api/assignments', assignmentRoutes);
 app.use('/api/messages', messageRoutes);
 
 
-
+// Route classes
+app.get('/api/classes', authenticate, getAllClasses);
 
 
 // Route 404
@@ -126,5 +129,6 @@ app.use((err: ErrorWithStatus, req: Request, res: Response, next: NextFunction) 
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 });
+
 
 export default app;
