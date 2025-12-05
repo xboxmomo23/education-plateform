@@ -387,6 +387,33 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
       return;
     }
 
+
+    // Récupérer les appréciations par matière (prof)
+    const subjectAppreciationsQuery = `
+      SELECT 
+        sa.appreciation,
+        c.id as course_id,
+        s.name as subject_name
+      FROM subject_appreciations sa
+      INNER JOIN courses c ON c.id = sa.course_id
+      INNER JOIN subjects s ON s.id = c.subject_id
+      WHERE sa.student_id = $1 AND sa.term_id = $2
+    `;
+    const subjectAppreciationsResult = await pool.query(subjectAppreciationsQuery, [studentId, termId]);
+    const subjectAppreciationsMap = new Map<string, string>();
+    subjectAppreciationsResult.rows.forEach((row) => {
+      subjectAppreciationsMap.set(row.subject_name, row.appreciation);
+    });
+
+    // Récupérer l'appréciation du conseil de classe
+    const reportCardQuery = `
+      SELECT council_appreciation
+      FROM report_cards
+      WHERE student_id = $1 AND term_id = $2
+    `;
+    const reportCardResult = await pool.query(reportCardQuery, [studentId, termId]);
+    const councilAppreciation = reportCardResult.rows[0]?.council_appreciation || null;
+
     // Récupérer les notes pour cette période
     // Filtre par term_id direct OU par date si term_id est NULL
     const gradesQuery = `
@@ -482,7 +509,7 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
         studentAverage: parseFloat(avg.toFixed(2)),
         classAverage: classAvg !== null ? parseFloat(classAvg.toFixed(2)) : null,
         coefficient: subject.totalCoef,
-        appreciation: generateAppreciation(avg),
+        appreciation: subjectAppreciationsMap.get(subject.name) || generateAppreciation(avg),
       });
     });
 
@@ -591,13 +618,14 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
     rowY += 20;
 
     doc.fontSize(11);
-    doc.text(`Appréciation générale : ${generateAppreciation(overallAverage)}`, 50, rowY);
+    // Utiliser l'appréciation du conseil si elle existe, sinon générer automatiquement
+    const finalAppreciation = councilAppreciation || generateAppreciation(overallAverage);
+    doc.text(`Appréciation générale : ${finalAppreciation}`, 50, rowY);    
     rowY += 30;
 
     // === SIGNATURES ===
     doc.font('Helvetica').fontSize(10);
     doc.text('Le Chef d\'Établissement', 50, rowY);
-    doc.text('Le Responsable Pédagogique', 300, rowY);
     rowY += 50;
 
     // Date et lieu
@@ -680,6 +708,34 @@ export async function getStudentReportDataHandler(req: Request, res: Response): 
       return;
     }
 
+
+
+    // Récupérer les appréciations par matière (prof)
+    const subjectAppreciationsQuery = `
+      SELECT 
+        sa.appreciation,
+        c.id as course_id,
+        s.name as subject_name
+      FROM subject_appreciations sa
+      INNER JOIN courses c ON c.id = sa.course_id
+      INNER JOIN subjects s ON s.id = c.subject_id
+      WHERE sa.student_id = $1 AND sa.term_id = $2
+    `;
+    const subjectAppreciationsResult = await pool.query(subjectAppreciationsQuery, [studentId, termId]);
+    const subjectAppreciationsMap = new Map<string, string>();
+    subjectAppreciationsResult.rows.forEach((row) => {
+      subjectAppreciationsMap.set(row.subject_name, row.appreciation);
+    });
+
+    // Récupérer l'appréciation du conseil de classe
+    const reportCardQuery = `
+      SELECT council_appreciation
+      FROM report_cards
+      WHERE student_id = $1 AND term_id = $2
+    `;
+    const reportCardResult = await pool.query(reportCardQuery, [studentId, termId]);
+    const councilAppreciation = reportCardResult.rows[0]?.council_appreciation || null;
+
     // Récupérer les notes pour cette période
     // Filtre par term_id direct OU par date si term_id est NULL
     const gradesQuery = `
@@ -752,11 +808,14 @@ export async function getStudentReportDataHandler(req: Request, res: Response): 
         count++;
       }
 
+      // Utiliser l'appréciation du prof si elle existe, sinon générer automatiquement
+      const profAppreciation = subjectAppreciationsMap.get(name);
+
       subjects.push({
         name,
         studentAverage: parseFloat(avg.toFixed(2)),
         classAverage: classAvg !== null ? parseFloat(classAvg.toFixed(2)) : null,
-        appreciation: generateAppreciation(avg),
+        appreciation: profAppreciation || generateAppreciation(avg),
       });
     });
 
@@ -780,7 +839,7 @@ export async function getStudentReportDataHandler(req: Request, res: Response): 
         },
         subjects,
         overallAverage: parseFloat(overallAverage.toFixed(2)),
-        overallAppreciation: generateAppreciation(overallAverage),
+        overallAppreciation: councilAppreciation || generateAppreciation(overallAverage),      
       },
     });
   } catch (error) {
