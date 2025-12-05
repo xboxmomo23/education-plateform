@@ -365,7 +365,7 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
 
     // Récupérer les infos de l'établissement
     const establishmentQuery = `
-      SELECT name, address, city, postal_code, email, phone
+      SELECT name, address, city, postal_code, email, phone, director_name, director_signature
       FROM establishments
       WHERE id = $1
     `;
@@ -627,6 +627,34 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
     doc.font('Helvetica').fontSize(10);
     doc.text('Le Chef d\'Établissement', 50, rowY);
     rowY += 50;
+
+    
+
+    // Ajouter l'image de signature si elle existe
+    if (establishment.director_signature) {
+      try {
+        // La signature est stockée en base64
+        const signatureBuffer = Buffer.from(establishment.director_signature.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+        doc.image(signatureBuffer, 50, rowY, { width: 100, height: 50 });
+        rowY += 55;
+      } catch (err) {
+        console.error('Erreur chargement signature:', err);
+        rowY += 10;
+      }
+    }
+
+    // Nom du directeur
+    if (establishment.director_name) {
+      doc.text(establishment.director_name, 50, rowY);
+      rowY += 20;
+    }
+
+    rowY += 20;
+
+    // Date de validation
+    doc.text(`Validé le ${new Date().toLocaleDateString('fr-FR')}`, 50, rowY);
+
+
 
     // Date et lieu
     doc.text(`Fait le ${new Date().toLocaleDateString('fr-FR')}`, 50, rowY);

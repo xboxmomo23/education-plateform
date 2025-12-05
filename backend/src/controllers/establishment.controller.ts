@@ -126,3 +126,87 @@ export async function updateTimetableConfigHandler(req: Request, res: Response) 
     });
   }
 }
+
+
+
+// PUT /api/establishment/director-signature
+// Met à jour la signature et le nom du directeur
+export async function updateDirectorSignature(req: Request, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: 'Non authentifié' });
+      return;
+    }
+
+    // Seul l'admin peut modifier
+    if (req.user.role !== 'admin') {
+      res.status(403).json({ success: false, error: 'Accès réservé aux administrateurs' });
+      return;
+    }
+
+    const { directorName, directorSignature } = req.body;
+    const establishmentId = req.user.establishmentId || '18fdec95-29be-4d71-8669-21d67f3a4587';
+
+    const result = await pool.query(
+      `UPDATE establishments 
+       SET director_name = $1, director_signature = $2, updated_at = NOW()
+       WHERE id = $3
+       RETURNING id, name, director_name`,
+      [directorName, directorSignature, establishmentId]
+    );
+
+    if (result.rows.length === 0) {
+      res.status(404).json({ success: false, error: 'Établissement non trouvé' });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: 'Signature du directeur mise à jour',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Erreur mise à jour signature directeur:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la mise à jour',
+    });
+  }
+}
+
+// GET /api/establishment/director-signature
+// Récupère la signature et le nom du directeur
+export async function getDirectorSignature(req: Request, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: 'Non authentifié' });
+      return;
+    }
+
+    const establishmentId = req.user.establishmentId || '18fdec95-29be-4d71-8669-21d67f3a4587';
+
+    const result = await pool.query(
+      `SELECT director_name, director_signature FROM establishments WHERE id = $1`,
+      [establishmentId]
+    );
+
+    if (result.rows.length === 0) {
+      res.status(404).json({ success: false, error: 'Établissement non trouvé' });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        directorName: result.rows[0].director_name,
+        directorSignature: result.rows[0].director_signature,
+      },
+    });
+  } catch (error) {
+    console.error('Erreur récupération signature directeur:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la récupération',
+    });
+  }
+}

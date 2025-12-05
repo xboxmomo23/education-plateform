@@ -182,9 +182,9 @@ export default function AdminDashboardPage() {
               href="/admin/subjects"
             />
             <QuickLink
-              title="Emploi du temps"
-              description="Configurer et ajuster l'emploi du temps de l'établissement."
-              href="/admin/timetable"
+              title="signature"
+              description="informations chef établissement"
+              href="/admin/signature"
             />
             <QuickLink
               title="Présence & absences"
