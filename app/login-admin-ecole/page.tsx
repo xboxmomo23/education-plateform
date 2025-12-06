@@ -8,6 +8,7 @@ export default function LoginAdminEcolePage() {
         title="Connexion Admin Établissement"
         description="Connectez-vous à l'espace administrateur de votre établissement"
         redirectPath="/admin"
+        firstLoginRedirectPath="/premiere-connexion"
       />
     </div>
   )

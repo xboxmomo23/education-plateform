@@ -44,12 +44,14 @@ export interface LoginResponse {
   success: boolean;
   token: string;
   refreshToken?: string;
+  requiresPasswordChange?: boolean;
   user: {
     id: string;
     email: string;
     role: UserRole;
     full_name: string;
     profile?: any;
+    must_change_password?: boolean;
   };
   error?: string;
   locked_until?: Date;
@@ -103,6 +105,7 @@ export interface User {
   email_verified: boolean;
   last_login?: Date;
   failed_login_attempts: number;
+  must_change_password: boolean;
   account_locked_until?: Date;
   password_changed_at?: Date;
   created_at: Date;

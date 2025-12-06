@@ -7,6 +7,7 @@ export default function LoginProfesseurPage() {
         title="Connexion Professeur"
         description="Connectez-vous à votre espace professeur"
         redirectPath="/dashboard-professeur"
+        firstLoginRedirectPath="/premiere-connexion"
       />
     </div>
   )

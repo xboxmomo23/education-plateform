@@ -15,9 +15,10 @@ interface LoginFormProps {
   title: string
   description: string
   redirectPath: string
+  firstLoginRedirectPath?: string
 }
 
-export function LoginFormUpdated({ role, title, description, redirectPath }: LoginFormProps) {
+export function LoginFormUpdated({ role, title, description, redirectPath, firstLoginRedirectPath = "/premiere-connexion" }: LoginFormProps) {
   const router = useRouter()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -39,7 +40,13 @@ export function LoginFormUpdated({ role, title, description, redirectPath }: Log
           return
         }
 
-        router.push(redirectPath)
+        setIsLoading(false)
+        if (result.requiresPasswordChange) {
+          router.push(firstLoginRedirectPath)
+        } else {
+          router.push(redirectPath)
+        }
+        return
       } else {
         setError(result.error || "Échec de la connexion")
         setIsLoading(false)
@@ -56,6 +63,7 @@ export function LoginFormUpdated({ role, title, description, redirectPath }: Log
       case "teacher": return "professeur"
       case "staff": return "staff"
       case "admin": return "administrateur"
+      default: return "utilisateur"
     }
   }
 
@@ -112,16 +120,6 @@ export function LoginFormUpdated({ role, title, description, redirectPath }: Log
               "Se connecter"
             )}
           </Button>
-
-          {process.env.NODE_ENV === "development" && (
-            <div className="mt-4 rounded-lg bg-muted p-3 text-xs">
-              <p className="font-semibold mb-1">Comptes de test :</p>
-              <p>• {role === "student" && "eleve@example.com / eleve123"}</p>
-              <p>• {role === "teacher" && "prof@example.com / prof123"}</p>
-              <p>• {role === "staff" && "staff1@test.com / 123456"}</p>
-              <p>• {role === "admin" && "admin@example.com / admin123"}</p>
-            </div>
-          )}
         </form>
       </CardContent>
     </Card>

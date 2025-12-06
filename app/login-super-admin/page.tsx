@@ -8,6 +8,7 @@ export default function LoginSuperAdminPage() {
         title="Connexion Super Admin"
         description="Connectez-vous à l'interface de gestion de la plateforme"
         redirectPath="/super-admin"
+        firstLoginRedirectPath="/premiere-connexion"
       />
     </div>
   )

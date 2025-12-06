@@ -7,6 +7,7 @@ import {
   refreshToken,
   getCurrentUser,
   register,
+  changePasswordHandler,
 } from '../controllers/auth.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import { validateRequest } from '../middleware/validation.middleware';
@@ -33,14 +34,14 @@ const registerValidation = [
     .withMessage('Email invalide')
     .normalizeEmail(),
   body('password')
-    .isLength({ min: 8 })
-    .withMessage('Le mot de passe doit contenir au moins 8 caractères')
+    .isLength({ min: 12 })
+    .withMessage('Le mot de passe doit contenir au moins 12 caractères')
     .matches(/[A-Z]/)
     .withMessage('Le mot de passe doit contenir au moins une majuscule')
-    .matches(/[a-z]/)
-    .withMessage('Le mot de passe doit contenir au moins une minuscule')
     .matches(/[0-9]/)
-    .withMessage('Le mot de passe doit contenir au moins un chiffre'),
+    .withMessage('Le mot de passe doit contenir au moins un chiffre')
+    .matches(/[^A-Za-z0-9]/)
+    .withMessage('Le mot de passe doit contenir au moins un caractère spécial'),
   body('full_name')
     .trim()
     .isLength({ min: 2 })
@@ -87,6 +88,12 @@ router.post('/logout', authenticate, logout);
  * Déconnecte l'utilisateur de tous les appareils
  */
 router.post('/logout-all', authenticate, logoutAll);
+
+/**
+ * POST /api/auth/change-password
+ * Met à jour le mot de passe de l'utilisateur
+ */
+router.post('/change-password', authenticate, changePasswordHandler);
 
 /**
  * GET /api/auth/me

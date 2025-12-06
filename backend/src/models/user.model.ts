@@ -30,23 +30,25 @@ export interface CreateUserData {
   role: UserRole;
   full_name: string;
   establishmentId?: string;  // Future: Obligatoire
+  mustChangePassword?: boolean;
 }
 
 export async function createUser(userData: CreateUserData): Promise<User> {
-  const { email, password, role, full_name, establishmentId } = userData;
+  const { email, password, role, full_name, establishmentId, mustChangePassword } = userData;
   
   const password_hash = await hashPassword(password);
+  const must_change_password = mustChangePassword ?? true;
   
   const query = `
     INSERT INTO users (
-      email, password_hash, role, full_name, email_verified
+      email, password_hash, role, full_name, email_verified, must_change_password
       ${establishmentId ? ', establishment_id' : ''}
     )
-    VALUES ($1, $2, $3, $4, $5 ${establishmentId ? ', $6' : ''})
+    VALUES ($1, $2, $3, $4, $5, $6 ${establishmentId ? ', $7' : ''})
     RETURNING *
   `;
   
-  const values = [email, password_hash, role, full_name, false];
+  const values = [email, password_hash, role, full_name, false, must_change_password];
   if (establishmentId) values.push(establishmentId);
   
   const result = await pool.query(query, values);
@@ -331,7 +333,10 @@ export async function updatePassword(userId: string, newPassword: string): Promi
   
   const query = `
     UPDATE users 
-    SET password_hash = $1, password_changed_at = NOW()
+    SET password_hash = $1, 
+        password_changed_at = NOW(),
+        must_change_password = FALSE,
+        failed_login_attempts = 0
     WHERE id = $2
   `;
   await pool.query(query, [password_hash, userId]);

@@ -8,6 +8,7 @@ export default function LoginElevePage() {
         title="Connexion Élève"
         description="Connectez-vous à votre espace élève"
         redirectPath="/dashboard-eleve"
+        firstLoginRedirectPath="/premiere-connexion"
       />
     </div>
   )

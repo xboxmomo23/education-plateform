@@ -7,6 +7,7 @@ export default function LoginResponsablePage() {
         title="Connexion staff"
         description="Connectez-vous à votre espace staff des classes"
         redirectPath="/dashboard-staff"
+        firstLoginRedirectPath="/premiere-connexion"
       />
     </div>
   )

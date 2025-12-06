@@ -1,4 +1,4 @@
-import { api, saveToken, clearToken, ApiResponse } from './api/client';
+import { api, saveToken, clearToken } from './api/client';
 import { API_ENDPOINTS } from './api/config';
 
 export type UserRole = "student" | "teacher" | "admin" | "staff" | "super_admin";
@@ -9,6 +9,7 @@ export interface User {
   role: UserRole;
   full_name: string;
   profile?: any;
+  must_change_password?: boolean;
 }
 
 export interface BackendLoginResponse {
@@ -16,12 +17,20 @@ export interface BackendLoginResponse {
   token: string;
   refreshToken?: string;
   user: User;
+  requiresPasswordChange?: boolean;
+}
+
+export interface AuthResult {
+  success: boolean;
+  user?: User;
+  requiresPasswordChange?: boolean;
+  error?: string;
 }
 
 export async function authenticateUser(
   email: string,
   password: string
-): Promise<{ success: boolean; user?: User; error?: string }> {
+): Promise<AuthResult> {
   try {
     const response = await api.post<BackendLoginResponse>(API_ENDPOINTS.auth.login, {
       email,
@@ -52,7 +61,12 @@ export async function authenticateUser(
       // Sauvegarder la session utilisateur
       setUserSession(user);
 
-      return { success: true, user };
+      const requiresPasswordChange =
+        (response as any).requiresPasswordChange ??
+        response.data?.requiresPasswordChange ??
+        false;
+
+      return { success: true, user, requiresPasswordChange: Boolean(requiresPasswordChange) };
     }
 
     return {
@@ -99,5 +113,46 @@ export async function clearUserSession(): Promise<void> {
       localStorage.removeItem('auth_token');
       localStorage.removeItem('refresh_token');
     }
+  }
+}
+
+interface ChangePasswordPayload {
+  newPassword: string;
+  currentPassword?: string;
+}
+
+export async function changePassword(payload: ChangePasswordPayload): Promise<AuthResult> {
+  try {
+    const response = await api.post<BackendLoginResponse>(API_ENDPOINTS.auth.changePassword, payload);
+
+    if (response.success) {
+      const token = (response as any).token || response.data?.token;
+      const refreshToken = (response as any).refreshToken || response.data?.refreshToken;
+      const user = (response as any).user || response.data?.user;
+
+      if (token) {
+        saveToken(token);
+      }
+
+      if (refreshToken) {
+        localStorage.setItem('refresh_token', refreshToken);
+      }
+
+      if (user) {
+        setUserSession(user);
+      }
+
+      return { success: true, user };
+    }
+
+    return {
+      success: false,
+      error: response.error || 'Impossible de changer le mot de passe',
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: 'Erreur de connexion au serveur',
+    };
   }
 }

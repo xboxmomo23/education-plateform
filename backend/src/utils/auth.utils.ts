@@ -117,20 +117,20 @@ export interface PasswordValidation {
 export function validatePassword(password: string): PasswordValidation {
   const errors: string[] = [];
 
-  if (password.length < 8) {
-    errors.push('Le mot de passe doit contenir au moins 8 caractères');
+  if (password.length < 12) {
+    errors.push('Le mot de passe doit contenir au moins 12 caractères');
   }
 
   if (!/[A-Z]/.test(password)) {
     errors.push('Le mot de passe doit contenir au moins une majuscule');
   }
 
-  if (!/[a-z]/.test(password)) {
-    errors.push('Le mot de passe doit contenir au moins une minuscule');
-  }
-
   if (!/[0-9]/.test(password)) {
     errors.push('Le mot de passe doit contenir au moins un chiffre');
+  }
+
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    errors.push('Le mot de passe doit contenir au moins un caractère spécial');
   }
 
   return {
@@ -176,4 +176,3 @@ export function extractTokenFromHeader(authHeader: string | undefined): string |
 
   return parts[1];
 }
-

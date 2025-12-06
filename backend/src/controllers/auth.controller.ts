@@ -10,6 +10,8 @@ import {
   createStudentProfile,
   createTeacherProfile,
   createStaffProfile,
+  updatePassword,
+  findUserById,
 } from '../models/user.model';
 import {
   createSession,
@@ -23,6 +25,7 @@ import {
   generateRefreshToken,
   verifyToken,
   extractTokenFromHeader,
+  validatePassword,
 } from '../utils/auth.utils';
 import { LoginResponse, RegisterRequest, UserRole } from '../types';
 
@@ -141,18 +144,23 @@ export async function login(req: Request, res: Response): Promise<void> {
     // Mettre à jour la dernière connexion
     await updateLastLogin(user.id);
 
+    const requiresPasswordChange = Boolean(user.must_change_password);
+    const sanitizedUser = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      full_name: user.full_name,
+      profile: profile || undefined,
+      must_change_password: user.must_change_password,
+    };
+
     // Réponse avec les données utilisateur (sans le password_hash)
     const response: LoginResponse = {
       success: true,
       token: accessToken,
       refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        full_name: user.full_name,
-        profile: profile || undefined,
-      },
+      requiresPasswordChange,
+      user: sanitizedUser,
     };
 
     res.status(200).json(response);
@@ -163,6 +171,116 @@ export async function login(req: Request, res: Response): Promise<void> {
       success: false,
       error: 'Erreur serveur lors de la connexion',
       debug: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+// =========================
+// CHANGE PASSWORD
+// =========================
+
+export async function changePasswordHandler(req: Request, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        error: 'Authentification requise',
+      });
+      return;
+    }
+
+    const { currentPassword, newPassword } = req.body || {};
+
+    if (!newPassword || typeof newPassword !== 'string') {
+      res.status(400).json({
+        success: false,
+        error: 'Le nouveau mot de passe est requis',
+      });
+      return;
+    }
+
+    const validation = validatePassword(newPassword);
+    if (!validation.isValid) {
+      res.status(400).json({
+        success: false,
+        error: validation.errors.join('. '),
+      });
+      return;
+    }
+
+    const user = await findUserById(req.user.userId);
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        error: 'Utilisateur introuvable',
+      });
+      return;
+    }
+
+    const isFirstLogin = user.must_change_password;
+
+    if (!isFirstLogin && (!currentPassword || typeof currentPassword !== 'string')) {
+      res.status(400).json({
+        success: false,
+        error: 'Le mot de passe actuel est requis',
+      });
+      return;
+    }
+
+    if (currentPassword) {
+      const passwordMatch = await comparePassword(currentPassword, user.password_hash);
+      if (!passwordMatch) {
+        res.status(401).json({
+          success: false,
+          error: 'Mot de passe actuel incorrect',
+        });
+        return;
+      }
+    }
+
+    await updatePassword(user.id, newPassword);
+
+    // Révoquer toutes les sessions existantes pour sécuriser le changement
+    await revokeAllUserSessions(user.id);
+
+    const payload = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      full_name: user.full_name,
+    };
+
+    const newAccessToken = generateAccessToken(payload);
+    const newRefreshToken = generateRefreshToken(payload);
+
+    await createSession({
+      userId: user.id,
+      token: newAccessToken,
+      deviceInfo: req.headers['user-agent'] || 'Unknown',
+      ipAddress: req.ip || req.socket.remoteAddress || 'Unknown',
+      expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+    });
+
+    await limitUserSessions(user.id, MAX_SESSIONS_PER_USER);
+
+    res.status(200).json({
+      success: true,
+      message: 'Mot de passe mis à jour avec succès',
+      token: newAccessToken,
+      refreshToken: newRefreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        full_name: user.full_name,
+        must_change_password: false,
+      },
+    });
+  } catch (error) {
+    console.error('Erreur lors du changement de mot de passe:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors du changement de mot de passe',
     });
   }
 }

@@ -10,6 +10,7 @@ export const API_ENDPOINTS = {
     refresh: '/auth/refresh',
     me: '/auth/me',
     register: '/auth/register',
+    changePassword: '/auth/change-password',
   },
 };
 
