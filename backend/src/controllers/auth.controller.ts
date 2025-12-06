@@ -38,6 +38,7 @@ const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_DURATION_MINUTES = 30;
 const MAX_SESSIONS_PER_USER = 5;
 const PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES = 60;
+const INVITE_TOKEN_EXPIRATION_DAYS = 7;
 
 // =========================
 // LOGIN
@@ -322,10 +323,10 @@ export async function requestPasswordReset(req: Request, res: Response): Promise
     await pool.query(
       `
         INSERT INTO password_reset_tokens (
-          user_id, token, expires_at, created_ip, user_agent
-        ) VALUES ($1, $2, $3, $4, $5)
+          user_id, token, purpose, expires_at, created_ip, user_agent
+        ) VALUES ($1, $2, $3, $4, $5, $6)
       `,
-      [user.id, token, expiresAt, createdIp, userAgent]
+      [user.id, token, 'reset', expiresAt, createdIp, userAgent]
     );
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
@@ -682,6 +683,12 @@ export async function register(req: Request, res: Response): Promise<void> {
       full_name,
     });
 
+    await createInviteTokenForUser({
+      id: user.id,
+      email: user.email,
+      full_name: user.full_name,
+    });
+
     // Créer le profil selon le rôle
     let profile = null;
     switch (role) {
@@ -718,4 +725,27 @@ export async function register(req: Request, res: Response): Promise<void> {
       error: 'Erreur serveur lors de la création de l\'utilisateur',
     });
   }
+}
+
+export async function createInviteTokenForUser(user: {
+  id: string;
+  email: string;
+  full_name?: string;
+}): Promise<string> {
+  const token = generateResetToken();
+  const expiresAt = new Date(Date.now() + INVITE_TOKEN_EXPIRATION_DAYS * 24 * 60 * 60 * 1000);
+
+  await pool.query(
+    `
+      INSERT INTO password_reset_tokens (
+        user_id, token, purpose, expires_at
+      ) VALUES ($1, $2, $3, $4)
+    `,
+    [user.id, token, 'invite', expiresAt]
+  );
+
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const activationUrl = `${frontendUrl.replace(/\/$/, '')}/reset-mot-de-passe?token=${encodeURIComponent(token)}`;
+  console.log('[INVITE] Lien d’activation pour', user.email, ':', activationUrl);
+  return activationUrl;
 }

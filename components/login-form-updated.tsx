@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -63,7 +64,9 @@ export function LoginFormUpdated({ role, title, description, redirectPath, first
       case "teacher": return "professeur"
       case "staff": return "staff"
       case "admin": return "administrateur"
-      default: return "utilisateur"
+      default:
+      // valeur de secours, au cas où un nouveau rôle apparaît plus tard
+      return "utilisateur"
     }
   }
 
@@ -120,6 +123,15 @@ export function LoginFormUpdated({ role, title, description, redirectPath, first
               "Se connecter"
             )}
           </Button>
+
+          <div className="mt-4 text-center">
+            <Link
+              href="/mot-de-passe-oublie"
+              className="text-sm text-blue-600 hover:underline"
+            >
+              Mot de passe oublié ?
+            </Link>
+          </div>
         </form>
       </CardContent>
     </Card>
