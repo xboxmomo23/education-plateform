@@ -8,6 +8,8 @@ import {
   getCurrentUser,
   register,
   changePasswordHandler,
+  requestPasswordReset,
+  resetPassword,
 } from '../controllers/auth.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import { validateRequest } from '../middleware/validation.middleware';
@@ -51,6 +53,28 @@ const registerValidation = [
     .withMessage('Rôle invalide'),
 ];
 
+const requestPasswordResetValidation = [
+  body('email')
+    .isEmail()
+    .withMessage('Email invalide')
+    .normalizeEmail(),
+];
+
+const resetPasswordValidation = [
+  body('token')
+    .notEmpty()
+    .withMessage('Token requis'),
+  body('newPassword')
+    .isLength({ min: 12 })
+    .withMessage('Le mot de passe doit contenir au moins 12 caractères')
+    .matches(/[A-Z]/)
+    .withMessage('Le mot de passe doit contenir au moins une majuscule')
+    .matches(/[0-9]/)
+    .withMessage('Le mot de passe doit contenir au moins un chiffre')
+    .matches(/[^A-Za-z0-9]/)
+    .withMessage('Le mot de passe doit contenir au moins un caractère spécial'),
+];
+
 const refreshTokenValidation = [
   body('refreshToken')
     .notEmpty()
@@ -66,6 +90,28 @@ const refreshTokenValidation = [
  * Authentifie un utilisateur
  */
 router.post('/login', loginValidation, validateRequest, login);
+
+/**
+ * POST /api/auth/request-password-reset
+ * Envoie un lien de réinitialisation
+ */
+router.post(
+  '/request-password-reset',
+  requestPasswordResetValidation,
+  validateRequest,
+  requestPasswordReset
+);
+
+/**
+ * POST /api/auth/reset-password
+ * Réinitialise un mot de passe via token
+ */
+router.post(
+  '/reset-password',
+  resetPasswordValidation,
+  validateRequest,
+  resetPassword
+);
 
 /**
  * POST /api/auth/refresh

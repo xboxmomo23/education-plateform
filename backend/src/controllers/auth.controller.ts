@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { pool } from '../config/database';
 import {
   findUserByEmail,
   updateLastLogin,
@@ -26,6 +27,7 @@ import {
   verifyToken,
   extractTokenFromHeader,
   validatePassword,
+  generateResetToken,
 } from '../utils/auth.utils';
 import { LoginResponse, RegisterRequest, UserRole } from '../types';
 
@@ -35,6 +37,7 @@ import { LoginResponse, RegisterRequest, UserRole } from '../types';
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_DURATION_MINUTES = 30;
 const MAX_SESSIONS_PER_USER = 5;
+const PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES = 60;
 
 // =========================
 // LOGIN
@@ -281,6 +284,156 @@ export async function changePasswordHandler(req: Request, res: Response): Promis
     res.status(500).json({
       success: false,
       error: 'Erreur serveur lors du changement de mot de passe',
+    });
+  }
+}
+
+// =========================
+// PASSWORD RESET REQUEST
+// =========================
+
+export async function requestPasswordReset(req: Request, res: Response): Promise<void> {
+  const genericResponse = {
+    success: true,
+    message: 'Si un compte existe, un email a été envoyé.',
+  };
+
+  try {
+    const { email } = req.body || {};
+
+    if (!email || typeof email !== 'string') {
+      res.status(200).json(genericResponse);
+      return;
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await findUserByEmail(normalizedEmail);
+
+    if (!user) {
+      res.status(200).json(genericResponse);
+      return;
+    }
+
+    const token = generateResetToken();
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES * 60 * 1000);
+    const createdIp = req.ip || req.socket.remoteAddress || null;
+    const userAgent = req.headers['user-agent'] || null;
+
+    await pool.query(
+      `
+        INSERT INTO password_reset_tokens (
+          user_id, token, expires_at, created_ip, user_agent
+        ) VALUES ($1, $2, $3, $4, $5)
+      `,
+      [user.id, token, expiresAt, createdIp, userAgent]
+    );
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const resetUrl = `${frontendUrl.replace(/\/$/, '')}/reset-mot-de-passe?token=${encodeURIComponent(token)}`;
+    console.log(`🔐 Lien de réinitialisation pour ${user.email}: ${resetUrl}`);
+
+    res.status(200).json(genericResponse);
+  } catch (error) {
+    console.error('Erreur lors de la demande de réinitialisation:', error);
+    res.status(200).json(genericResponse);
+  }
+}
+
+// =========================
+// PASSWORD RESET CONFIRMATION
+// =========================
+
+export async function resetPassword(req: Request, res: Response): Promise<void> {
+  try {
+    const { token, newPassword } = req.body || {};
+
+    if (!token || typeof token !== 'string') {
+      res.status(400).json({
+        success: false,
+        error: 'Lien de réinitialisation invalide ou expiré',
+      });
+      return;
+    }
+
+    if (!newPassword || typeof newPassword !== 'string') {
+      res.status(400).json({
+        success: false,
+        error: 'Nouveau mot de passe requis',
+      });
+      return;
+    }
+
+    const validation = validatePassword(newPassword);
+    if (!validation.isValid) {
+      res.status(400).json({
+        success: false,
+        error: validation.errors.join('. '),
+      });
+      return;
+    }
+
+    const tokenResult = await pool.query(
+      `
+        SELECT *
+        FROM password_reset_tokens
+        WHERE token = $1
+        LIMIT 1
+      `,
+      [token]
+    );
+
+    const resetEntry = tokenResult.rows[0];
+
+    if (
+      !resetEntry ||
+      resetEntry.used_at ||
+      !resetEntry.expires_at ||
+      new Date(resetEntry.expires_at) < new Date()
+    ) {
+      res.status(400).json({
+        success: false,
+        error: 'Lien de réinitialisation invalide ou expiré',
+      });
+      return;
+    }
+
+    const user = await findUserById(resetEntry.user_id);
+    if (!user) {
+      res.status(400).json({
+        success: false,
+        error: 'Lien de réinitialisation invalide ou expiré',
+      });
+      return;
+    }
+
+    await updatePassword(user.id, newPassword);
+    await pool.query(
+      `
+        UPDATE users
+        SET account_locked_until = NULL
+        WHERE id = $1
+      `,
+      [user.id]
+    );
+
+    await pool.query(
+      `
+        UPDATE password_reset_tokens
+        SET used_at = NOW()
+        WHERE id = $1
+      `,
+      [resetEntry.id]
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Mot de passe réinitialisé avec succès',
+    });
+  } catch (error) {
+    console.error('Erreur lors de la réinitialisation du mot de passe:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur serveur lors de la réinitialisation du mot de passe',
     });
   }
 }

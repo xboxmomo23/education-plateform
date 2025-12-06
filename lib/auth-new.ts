@@ -156,3 +156,58 @@ export async function changePassword(payload: ChangePasswordPayload): Promise<Au
     };
   }
 }
+
+export interface PasswordResetResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+export async function requestPasswordReset(email: string): Promise<PasswordResetResponse> {
+  try {
+    const response = await api.post('/auth/request-password-reset', { email });
+    if (response.success) {
+      return {
+        success: true,
+        message:
+          response.message ||
+          'Si un compte existe, un email de réinitialisation a été envoyé.',
+      };
+    }
+
+    return {
+      success: false,
+      error: response.error || 'Impossible d\'envoyer la demande.',
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: 'Erreur de connexion au serveur',
+    };
+  }
+}
+
+export async function resetPasswordWithToken(
+  token: string,
+  newPassword: string
+): Promise<PasswordResetResponse> {
+  try {
+    const response = await api.post('/auth/reset-password', { token, newPassword });
+    if (response.success) {
+      return {
+        success: true,
+        message: response.message || 'Mot de passe réinitialisé avec succès.',
+      };
+    }
+
+    return {
+      success: false,
+      error: response.error || 'Impossible de réinitialiser le mot de passe.',
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: 'Erreur de connexion au serveur',
+    };
+  }
+}
