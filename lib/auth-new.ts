@@ -1,4 +1,4 @@
-import { api, saveToken, clearToken } from './api/client';
+import { api, saveToken } from './api/client';
 import { API_ENDPOINTS } from './api/config';
 
 export type UserRole = "student" | "teacher" | "admin" | "staff" | "super_admin";
@@ -165,7 +165,7 @@ export interface PasswordResetResponse {
 
 export async function requestPasswordReset(email: string): Promise<PasswordResetResponse> {
   try {
-    const response = await api.post('/auth/request-password-reset', { email });
+    const response = await api.post(API_ENDPOINTS.auth.requestPasswordReset, { email });
     if (response.success) {
       return {
         success: true,
@@ -192,7 +192,7 @@ export async function resetPasswordWithToken(
   newPassword: string
 ): Promise<PasswordResetResponse> {
   try {
-    const response = await api.post('/auth/reset-password', { token, newPassword });
+    const response = await api.post(API_ENDPOINTS.auth.resetPassword, { token, newPassword });
     if (response.success) {
       return {
         success: true,
@@ -203,6 +203,48 @@ export async function resetPasswordWithToken(
     return {
       success: false,
       error: response.error || 'Impossible de réinitialiser le mot de passe.',
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: 'Erreur de connexion au serveur',
+    };
+  }
+}
+
+export async function acceptInvite(
+  token: string,
+  newPassword: string
+): Promise<AuthResult> {
+  try {
+    const response = await api.post<BackendLoginResponse>(API_ENDPOINTS.auth.acceptInvite, {
+      token,
+      newPassword,
+    });
+
+    if (response.success) {
+      const tokenValue = (response as any).token || response.data?.token;
+      const refreshToken = (response as any).refreshToken || response.data?.refreshToken;
+      const user = (response as any).user || response.data?.user;
+
+      if (tokenValue) {
+        saveToken(tokenValue);
+      }
+
+      if (refreshToken) {
+        localStorage.setItem('refresh_token', refreshToken);
+      }
+
+      if (user) {
+        setUserSession(user);
+      }
+
+      return { success: true, user };
+    }
+
+    return {
+      success: false,
+      error: response.error || 'Impossible d\'activer le compte',
     };
   } catch (error) {
     return {

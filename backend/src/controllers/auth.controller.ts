@@ -28,8 +28,9 @@ import {
   extractTokenFromHeader,
   validatePassword,
   generateResetToken,
+  generateTemporaryPassword,
 } from '../utils/auth.utils';
-import { LoginResponse, RegisterRequest, UserRole } from '../types';
+import { LoginResponse, RegisterRequest, UserRole, User } from '../types';
 
 
 
@@ -373,24 +374,8 @@ export async function resetPassword(req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const tokenResult = await pool.query(
-      `
-        SELECT *
-        FROM password_reset_tokens
-        WHERE token = $1
-        LIMIT 1
-      `,
-      [token]
-    );
-
-    const resetEntry = tokenResult.rows[0];
-
-    if (
-      !resetEntry ||
-      resetEntry.used_at ||
-      !resetEntry.expires_at ||
-      new Date(resetEntry.expires_at) < new Date()
-    ) {
+    const tokenData = await getValidPasswordResetToken(token, ['reset']);
+    if (!tokenData) {
       res.status(400).json({
         success: false,
         error: 'Lien de réinitialisation invalide ou expiré',
@@ -398,14 +383,7 @@ export async function resetPassword(req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const user = await findUserById(resetEntry.user_id);
-    if (!user) {
-      res.status(400).json({
-        success: false,
-        error: 'Lien de réinitialisation invalide ou expiré',
-      });
-      return;
-    }
+    const { entry: resetEntry, user } = tokenData;
 
     await updatePassword(user.id, newPassword);
     await pool.query(
@@ -436,6 +414,114 @@ export async function resetPassword(req: Request, res: Response): Promise<void> 
       success: false,
       error: 'Erreur serveur lors de la réinitialisation du mot de passe',
     });
+  }
+}
+
+// =========================
+// FIRST LOGIN VIA INVITE TOKEN
+// =========================
+
+export async function acceptInvite(req: Request, res: Response): Promise<void> {
+  try {
+    const { token, newPassword } = req.body || {};
+
+    if (!token || typeof token !== 'string') {
+      res.status(400).json({
+        success: false,
+        error: 'Lien d\'activation invalide ou expiré',
+      });
+      return;
+    }
+
+    if (!newPassword || typeof newPassword !== 'string') {
+      res.status(400).json({
+        success: false,
+        error: 'Nouveau mot de passe requis',
+      });
+      return;
+    }
+
+    const validation = validatePassword(newPassword);
+    if (!validation.isValid) {
+      res.status(400).json({
+        success: false,
+        error: validation.errors.join('. '),
+      });
+      return;
+    }
+
+    const tokenData = await getValidPasswordResetToken(token, ['invite']);
+    if (!tokenData) {
+      res.status(400).json({
+        success: false,
+        error: 'Lien d\'activation invalide ou expiré',
+      });
+      return;
+    }
+
+    const { entry, user } = tokenData;
+
+    await updatePassword(user.id, newPassword);
+    await pool.query(
+      `
+        UPDATE users
+        SET account_locked_until = NULL
+        WHERE id = $1
+      `,
+      [user.id]
+    );
+
+    await pool.query(
+      `
+        UPDATE password_reset_tokens
+        SET used_at = NOW()
+        WHERE id = $1
+      `,
+      [entry.id]
+    );
+
+    const payload = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      full_name: user.full_name,
+    };
+
+    const accessToken = generateAccessToken(payload);
+    const refreshToken = generateRefreshToken(payload);
+
+    await createSession({
+      userId: user.id,
+      token: accessToken,
+      deviceInfo: req.headers['user-agent'] || 'Unknown',
+      ipAddress: req.ip || req.socket.remoteAddress || 'Unknown',
+      expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+    });
+
+    await limitUserSessions(user.id, MAX_SESSIONS_PER_USER);
+    await updateLastLogin(user.id);
+
+    const userWithProfile = await getUserWithProfile(user.id, user.role);
+    const profile = userWithProfile?.profile || null;
+
+    res.status(200).json({
+      success: true,
+      token: accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        full_name: user.full_name,
+        profile: profile || undefined,
+      },
+    });
+  } catch (error) {
+    console.error('Erreur lors de l\'activation:', error);
+  res.status(500).json({
+    success: false,
+    error: 'Erreur serveur lors de l\'activation du compte',
+  });
   }
 }
 
@@ -676,17 +762,16 @@ export async function register(req: Request, res: Response): Promise<void> {
     }
 
     // Créer l'utilisateur
+    const initialPassword =
+      typeof password === 'string' && password.length > 0
+        ? password
+        : generateTemporaryPassword();
+
     const user = await createUser({
       email: email.toLowerCase().trim(),
-      password,
+      password: initialPassword,
       role,
       full_name,
-    });
-
-    await createInviteTokenForUser({
-      id: user.id,
-      email: user.email,
-      full_name: user.full_name,
     });
 
     // Créer le profil selon le rôle
@@ -707,15 +792,24 @@ export async function register(req: Request, res: Response): Promise<void> {
     // Ne pas renvoyer le password_hash
     const { password_hash, ...userWithoutPassword } = user;
 
+    const invite = await createInviteTokenForUser({
+      id: user.id,
+      email: user.email,
+      full_name: user.full_name,
+    });
+
     res.status(201).json({
       success: true,
       message: 'Utilisateur créé avec succès',
       data: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        full_name: user.full_name,
-        profile: profile || undefined, // où 'profile' peut être StaffProfile, etc.
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          full_name: user.full_name,
+          profile: profile || undefined,
+        },
+        inviteUrl: invite.inviteUrl,
       },
     });
   } catch (error) {
@@ -727,11 +821,52 @@ export async function register(req: Request, res: Response): Promise<void> {
   }
 }
 
+// =========================
+// ADMIN - SEND INVITE
+// =========================
+
+export async function sendInvite(req: Request, res: Response): Promise<void> {
+  try {
+    const { userId } = req.body || {};
+
+    if (!userId || typeof userId !== 'string') {
+      res.status(400).json({
+        success: false,
+        error: 'userId requis',
+      });
+      return;
+    }
+
+    const user = await findUserById(userId);
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        error: 'Utilisateur introuvable',
+      });
+      return;
+    }
+
+    const invite = await createInviteTokenForUser(user);
+
+    res.status(200).json({
+      success: true,
+      token: invite.token,
+      inviteUrl: invite.inviteUrl,
+    });
+  } catch (error) {
+    console.error('Erreur lors de l\'envoi de l\'invitation:', error);
+  res.status(500).json({
+    success: false,
+    error: 'Erreur serveur lors de l\'envoi de l\'invitation',
+  });
+  }
+}
+
 export async function createInviteTokenForUser(user: {
   id: string;
   email: string;
   full_name?: string;
-}): Promise<string> {
+}): Promise<{ token: string; inviteUrl: string }> {
   const token = generateResetToken();
   const expiresAt = new Date(Date.now() + INVITE_TOKEN_EXPIRATION_DAYS * 24 * 60 * 60 * 1000);
 
@@ -744,8 +879,50 @@ export async function createInviteTokenForUser(user: {
     [user.id, token, 'invite', expiresAt]
   );
 
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-  const activationUrl = `${frontendUrl.replace(/\/$/, '')}/reset-mot-de-passe?token=${encodeURIComponent(token)}`;
-  console.log('[INVITE] Lien d’activation pour', user.email, ':', activationUrl);
-  return activationUrl;
+  const appUrl =
+    process.env.APP_URL ||
+    process.env.FRONTEND_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    'http://localhost:3000';
+  const inviteUrl = `${appUrl.replace(/\/$/, '')}/premiere-connexion?invite=${encodeURIComponent(token)}`;
+  console.log('[INVITE] Lien d\'activation pour', user.email, ':', inviteUrl);
+  return { token, inviteUrl };
+}
+
+async function getValidPasswordResetToken(
+  token: string,
+  allowedPurposes?: string[]
+): Promise<{ entry: any; user: User } | null> {
+  const tokenResult = await pool.query(
+    `
+      SELECT *
+      FROM password_reset_tokens
+      WHERE token = $1
+      LIMIT 1
+    `,
+    [token]
+  );
+
+  const entry = tokenResult.rows[0];
+
+  if (
+    !entry ||
+    entry.used_at ||
+    !entry.expires_at ||
+    new Date(entry.expires_at) < new Date()
+  ) {
+    return null;
+  }
+
+  const purpose = entry.purpose || 'reset';
+  if (allowedPurposes && !allowedPurposes.includes(purpose)) {
+    return null;
+  }
+
+  const user = await findUserById(entry.user_id);
+  if (!user) {
+    return null;
+  }
+
+  return { entry, user };
 }

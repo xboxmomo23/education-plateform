@@ -1,26 +1,8 @@
 import { apiCallWithAbort } from './client';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-
 // Helper pour les appels API
 async function apiCall(endpoint: string, options: RequestInit = {}) {
-  const token = localStorage.getItem('auth_token');
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-      ...options.headers,
-    },
-  });
-
-  const data = await response.json();
-  
-  if (!response.ok) {
-    throw new Error(data.error || 'Erreur API');
-  }
-
-  return data;
+  return apiCallWithAbort(endpoint, options);
 }
 
 // =========================

@@ -16,6 +16,8 @@ const defaultHeaders: Record<string, string> = {
   'Content-Type': 'application/json',
 };
 
+let isHandlingUnauthorized = false;
+
 function getToken(): string | null {
   if (typeof window !== 'undefined') {
     return localStorage.getItem('auth_token');
@@ -34,6 +36,50 @@ export function clearToken(): void {
     localStorage.removeItem('auth_token');
     localStorage.removeItem('refresh_token');
   }
+}
+
+function clearAuthStorage(): void {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('user');
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('refresh_token');
+  }
+}
+
+function getLoginPath(): string {
+  if (typeof window === 'undefined') {
+    return '/login-eleve';
+  }
+  const userRaw = localStorage.getItem('user');
+  if (userRaw) {
+    try {
+      const parsed = JSON.parse(userRaw);
+      switch (parsed.role) {
+        case 'teacher':
+          return '/login-professeur';
+        case 'staff':
+          return '/login-staff';
+        case 'admin':
+          return '/login-admin-ecole';
+        case 'super_admin':
+          return '/login-super-admin';
+        default:
+          return '/login-eleve';
+      }
+    } catch (error) {
+      console.error('Erreur parsing user pour redirection login:', error);
+    }
+  }
+  return '/login-eleve';
+}
+
+function handleUnauthorized() {
+  if (typeof window === 'undefined') return;
+  if (isHandlingUnauthorized) return;
+  isHandlingUnauthorized = true;
+  const loginPath = getLoginPath();
+  clearAuthStorage();
+  window.location.href = loginPath;
 }
 
 function buildUrl(endpoint: string, params?: Record<string, any>): string {
@@ -75,6 +121,15 @@ async function apiRequest<T = any>(
     });
 
     const data: ApiResponse<T> = await response.json();
+
+    if (response.status === 401) {
+      handleUnauthorized();
+      return {
+        success: false,
+        error: data.error || 'Authentification requise',
+        errors: data.errors,
+      };
+    }
 
     if (!response.ok) {
       return {
@@ -169,6 +224,11 @@ export async function apiCallWithAbort<T = any>(
   });
 
   const data = await response.json();
+
+  if (response.status === 401) {
+    handleUnauthorized();
+    throw new Error(data.error || 'Authentification requise');
+  }
 
   if (!response.ok) {
     throw new Error(data.error || `Erreur HTTP ${response.status}`);

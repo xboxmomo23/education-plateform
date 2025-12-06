@@ -10,6 +10,8 @@ import {
   changePasswordHandler,
   requestPasswordReset,
   resetPassword,
+  sendInvite,
+  acceptInvite,
 } from '../controllers/auth.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import { validateRequest } from '../middleware/validation.middleware';
@@ -36,6 +38,7 @@ const registerValidation = [
     .withMessage('Email invalide')
     .normalizeEmail(),
   body('password')
+    .optional({ checkFalsy: true })
     .isLength({ min: 12 })
     .withMessage('Le mot de passe doit contenir au moins 12 caractères')
     .matches(/[A-Z]/)
@@ -75,6 +78,27 @@ const resetPasswordValidation = [
     .withMessage('Le mot de passe doit contenir au moins un caractère spécial'),
 ];
 
+const acceptInviteValidation = [
+  body('token')
+    .notEmpty()
+    .withMessage('Token requis'),
+  body('newPassword')
+    .isLength({ min: 12 })
+    .withMessage('Le mot de passe doit contenir au moins 12 caractères')
+    .matches(/[A-Z]/)
+    .withMessage('Le mot de passe doit contenir au moins une majuscule')
+    .matches(/[0-9]/)
+    .withMessage('Le mot de passe doit contenir au moins un chiffre')
+    .matches(/[^A-Za-z0-9]/)
+    .withMessage('Le mot de passe doit contenir au moins un caractère spécial'),
+];
+
+const sendInviteValidation = [
+  body('userId')
+    .isUUID()
+    .withMessage('userId invalide'),
+];
+
 const refreshTokenValidation = [
   body('refreshToken')
     .notEmpty()
@@ -111,6 +135,17 @@ router.post(
   resetPasswordValidation,
   validateRequest,
   resetPassword
+);
+
+/**
+ * POST /api/auth/accept-invite
+ * Active un compte via invitation
+ */
+router.post(
+  '/accept-invite',
+  acceptInviteValidation,
+  validateRequest,
+  acceptInvite
 );
 
 /**
@@ -162,6 +197,19 @@ router.post(
   registerValidation,
   validateRequest,
   register
+);
+
+/**
+ * POST /api/auth/send-invite
+ * Génère un lien d'invitation pour un utilisateur
+ */
+router.post(
+  '/send-invite',
+  authenticate,
+  authorize('admin'),
+  sendInviteValidation,
+  validateRequest,
+  sendInvite
 );
 
 export default router;

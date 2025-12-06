@@ -54,7 +54,7 @@ interface CreateStudentResponse {
       full_name: string;
       active: boolean;
     };
-    initial_password: string;
+    inviteUrl: string;
   };
 }
 
@@ -68,10 +68,8 @@ export default function AdminStudentsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
-  const [createdStudentInfo, setCreatedStudentInfo] = useState<{
-    email: string;
-    password: string;
-  } | null>(null);
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
 
   const [form, setForm] = useState<{
     full_name: string;
@@ -79,14 +77,12 @@ export default function AdminStudentsPage() {
     class_id: string;
     student_number: string;
     date_of_birth: string;
-    password: string;
   }>({
     full_name: "",
     email: "",
     class_id: "",
     student_number: "",
     date_of_birth: "",
-    password: "eleve123",
   });
 
   useEffect(() => {
@@ -123,7 +119,8 @@ export default function AdminStudentsPage() {
   function openModal() {
     setSubmitError(null);
     setSubmitSuccess(null);
-    setCreatedStudentInfo(null);
+    setInviteUrl(null);
+    setCopyFeedback(null);
     setIsModalOpen(true);
   }
 
@@ -146,7 +143,8 @@ export default function AdminStudentsPage() {
     e.preventDefault();
     setSubmitError(null);
     setSubmitSuccess(null);
-    setCreatedStudentInfo(null);
+    setInviteUrl(null);
+    setCopyFeedback(null);
 
     if (!form.full_name || !form.email || !form.class_id) {
       setSubmitError(
@@ -164,7 +162,6 @@ export default function AdminStudentsPage() {
         class_id: form.class_id,
         student_number: form.student_number || null,
         date_of_birth: form.date_of_birth || null,
-        password: form.password || "eleve123",
       };
 
       const res = await apiFetch<CreateStudentResponse>("/admin/students", {
@@ -197,11 +194,8 @@ export default function AdminStudentsPage() {
 
       setStudents((prev) => [newItem, ...prev]);
 
-      setSubmitSuccess("Élève créé avec succès.");
-      setCreatedStudentInfo({
-        email: created.user.email,
-        password: created.initial_password,
-      });
+      setSubmitSuccess("Élève créé avec succès. Copiez le lien ci-dessous et envoyez-le à l'élève.");
+      setInviteUrl(created.inviteUrl);
 
       setForm({
         full_name: "",
@@ -209,7 +203,6 @@ export default function AdminStudentsPage() {
         class_id: "",
         student_number: "",
         date_of_birth: "",
-        password: "eleve123",
       });
     } catch (err: any) {
       console.error(err);
@@ -434,23 +427,6 @@ export default function AdminStudentsPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="mb-1 block text-xs font-medium">
-                  Mot de passe initial
-                </label>
-                <input
-                  type="text"
-                  name="password"
-                  value={form.password}
-                  onChange={handleChange}
-                  className="w-full rounded-md border px-3 py-2 text-sm font-mono"
-                />
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Ce mot de passe sera communiqué à l&apos;élève. Il pourra être
-                  changé plus tard.
-                </p>
-              </div>
-
               {submitError && (
                 <p className="text-xs text-red-600">{submitError}</p>
               )}
@@ -458,11 +434,31 @@ export default function AdminStudentsPage() {
               {submitSuccess && (
                 <div className="rounded-md bg-emerald-50 p-2 text-xs text-emerald-700">
                   <p>{submitSuccess}</p>
-                  {createdStudentInfo && (
-                    <p className="mt-1 font-mono">
-                      Élève : {createdStudentInfo.email} — Mot de passe :{" "}
-                      {createdStudentInfo.password}
-                    </p>
+                  {inviteUrl && (
+                    <div className="mt-2 space-y-2">
+                      <p className="font-semibold">Lien d&apos;invitation :</p>
+                      <p className="break-all font-mono text-[11px]">
+                        {inviteUrl}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(inviteUrl)
+                            setCopyFeedback("Lien copié dans le presse-papiers.")
+                          } catch (err) {
+                            console.error(err)
+                            setSubmitError("Impossible de copier le lien.")
+                          }
+                        }}
+                        className="rounded-md border px-2 py-1 text-[11px] font-medium hover:bg-white/60"
+                      >
+                        Copier le lien
+                      </button>
+                      {copyFeedback && (
+                        <p className="text-[11px] text-emerald-700">{copyFeedback}</p>
+                      )}
+                    </div>
                   )}
                 </div>
               )}

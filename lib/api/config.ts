@@ -11,6 +11,10 @@ export const API_ENDPOINTS = {
     me: '/auth/me',
     register: '/auth/register',
     changePassword: '/auth/change-password',
+    requestPasswordReset: '/auth/request-password-reset',
+    resetPassword: '/auth/reset-password',
+    acceptInvite: '/auth/accept-invite',
+    sendInvite: '/auth/send-invite',
   },
 };
 

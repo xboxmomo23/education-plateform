@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
 import pool from "../config/database";
 import { createUser } from "../models/user.model";
+import { createInviteTokenForUser } from "./auth.controller";
+import { generateTemporaryPassword } from "../utils/auth.utils";
 
 /**
  * Helper : récupère l'établissement de l'admin connecté
@@ -381,7 +383,6 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
     const {
       full_name,
       email,
-      password,
       class_id,
       student_number,
       date_of_birth,
@@ -395,7 +396,7 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
       });
     }
 
-    const initialPassword: string = password || "eleve123";
+    const initialPassword: string = generateTemporaryPassword();
 
     const estId = await getAdminEstablishmentId(userId);
     if (!estId) {
@@ -452,6 +453,12 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
 
     const student = studentInsert.rows[0];
 
+    const invite = await createInviteTokenForUser({
+      id: user.id,
+      email: user.email,
+      full_name: user.full_name,
+    });
+
     return res.status(201).json({
       success: true,
       message: "Élève créé avec succès",
@@ -463,7 +470,7 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
           full_name: user.full_name,
           active: user.active,
         },
-        initial_password: initialPassword,
+        inviteUrl: invite.inviteUrl,
       },
     });
   } catch (error: any) {
@@ -1606,4 +1613,3 @@ export async function updateCourseForAdminHandler(req: Request, res: Response) {
     });
   }
 }
-
