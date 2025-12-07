@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import pool from "../config/database";
 import { createUser } from "../models/user.model";
 import { createInviteTokenForUser } from "./auth.controller";
+import { sendInviteEmail } from "../services/email.service";
 import { generateTemporaryPassword } from "../utils/auth.utils";
 
 /**
@@ -24,6 +25,14 @@ async function getAdminEstablishmentId(adminUserId: string): Promise<string | nu
   }
 
   return result.rows[0].id as string;
+}
+
+async function getEstablishmentName(establishmentId: string): Promise<string | null> {
+  const result = await pool.query(
+    `SELECT name FROM establishments WHERE id = $1 LIMIT 1`,
+    [establishmentId]
+  );
+  return result.rows[0]?.name || null;
 }
 
 /**
@@ -483,6 +492,20 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
       full_name: user.full_name,
     });
 
+    const establishmentName = await getEstablishmentName(estId);
+    const targetEmail = contactEmail || user.email;
+    if (targetEmail) {
+      await sendInviteEmail({
+        to: targetEmail,
+        loginEmail: user.email,
+        role: "student",
+        establishmentName: establishmentName || undefined,
+        inviteUrl: invite.inviteUrl,
+      }).catch((err) => {
+        console.error("[MAIL] Erreur envoi email d'invitation élève:", err);
+      });
+    }
+
     return res.status(201).json({
       success: true,
       message: "Élève créé avec succès",
@@ -709,6 +732,19 @@ export async function createStaffForAdminHandler(req: Request, res: Response) {
       email: newUser.email,
       full_name: newUser.full_name,
     });
+    const establishmentName = await getEstablishmentName(estId);
+    const targetEmail = contactEmail || newUser.email;
+    if (targetEmail) {
+      await sendInviteEmail({
+        to: targetEmail,
+        loginEmail: newUser.email,
+        role: "staff",
+        establishmentName: establishmentName || undefined,
+        inviteUrl: invite.inviteUrl,
+      }).catch((err) => {
+        console.error("[MAIL] Erreur envoi email d'invitation staff:", err);
+      });
+    }
 
     return res.status(201).json({
       success: true,
@@ -1104,6 +1140,19 @@ export async function createTeacherForAdminHandler(req: Request, res: Response) 
       email: user.email,
       full_name: user.full_name,
     });
+    const establishmentName = await getEstablishmentName(estId);
+    const targetEmail = profile.contact_email || user.email;
+    if (targetEmail) {
+      await sendInviteEmail({
+        to: targetEmail,
+        loginEmail: user.email,
+        role: "teacher",
+        establishmentName: establishmentName || undefined,
+        inviteUrl: invite.inviteUrl,
+      }).catch((err) => {
+        console.error("[MAIL] Erreur envoi email d'invitation professeur:", err);
+      });
+    }
 
     const teacherPayload = {
       user_id: user.id,

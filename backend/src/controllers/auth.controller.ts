@@ -20,6 +20,7 @@ import {
   revokeAllUserSessions,
   limitUserSessions,
 } from '../models/session.model';
+import { sendPasswordResetEmail } from '../services/email.service';
 import {
   comparePassword,
   generateAccessToken,
@@ -330,9 +331,21 @@ export async function requestPasswordReset(req: Request, res: Response): Promise
       [user.id, token, 'reset', expiresAt, createdIp, userAgent]
     );
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const resetUrl = `${frontendUrl.replace(/\/$/, '')}/reset-mot-de-passe?token=${encodeURIComponent(token)}`;
+    const appUrl = process.env.APP_URL || process.env.FRONTEND_URL || 'http://localhost:3000';
+    const resetUrl = `${appUrl.replace(/\/$/, '')}/reset-mot-de-passe?token=${encodeURIComponent(token)}`;
     console.log(`🔐 Lien de réinitialisation pour ${user.email}: ${resetUrl}`);
+
+    const contactEmail = await getUserContactEmail(user.id, user.role);
+    const targetEmail = contactEmail || user.email;
+    if (targetEmail) {
+      sendPasswordResetEmail({
+        to: targetEmail,
+        loginEmail: user.email,
+        resetUrl,
+      }).catch((err) => {
+        console.error('[MAIL] Erreur envoi email reset:', err);
+      });
+    }
 
     res.status(200).json(genericResponse);
   } catch (error) {
@@ -925,4 +938,32 @@ async function getValidPasswordResetToken(
   }
 
   return { entry, user };
+}
+
+async function getUserContactEmail(userId: string, role: UserRole): Promise<string | null> {
+  let table: string | null = null;
+  switch (role) {
+    case 'student':
+      table = 'student_profiles';
+      break;
+    case 'teacher':
+      table = 'teacher_profiles';
+      break;
+    case 'staff':
+      table = 'staff_profiles';
+      break;
+    default:
+      table = null;
+  }
+
+  if (!table) {
+    return null;
+  }
+
+  const result = await pool.query(
+    `SELECT contact_email FROM ${table} WHERE user_id = $1 LIMIT 1`,
+    [userId]
+  );
+  const contactEmail = result.rows[0]?.contact_email;
+  return contactEmail || null;
 }
