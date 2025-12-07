@@ -104,12 +104,6 @@ router.post(
       .optional({ checkFalsy: true })
       .isEmail()
       .withMessage("Email de contact invalide"),
-    body().custom((_, { req }) => {
-      if (!req.body.login_email && !req.body.email) {
-        throw new Error("L'email de connexion est obligatoire");
-      }
-      return true;
-    }),
     body("class_id").isUUID().withMessage("class_id doit être un UUID valide"),
     body("student_number")
       .optional()
@@ -154,8 +148,6 @@ router.get(
  */
 router.post(
   "/staff",
-  authenticate,
-  authorize("admin"),
   [
     body("full_name")
       .notEmpty()
@@ -180,12 +172,6 @@ router.post(
       .optional({ checkFalsy: true })
       .isString()
       .withMessage("La fonction doit être une chaîne"),
-    body().custom((_, { req }) => {
-      if (!req.body.login_email && !req.body.email) {
-        throw new Error("L'email de connexion est obligatoire");
-      }
-      return true;
-    }),
   ],
   validateRequest,
   createStaffForAdminHandler
@@ -356,12 +342,10 @@ router.post(
       .optional({ checkFalsy: true })
       .isEmail()
       .withMessage("Email de contact invalide"),
-    body().custom((_, { req }) => {
-      if (!req.body.login_email && !req.body.email) {
-        throw new Error("L'email de connexion est obligatoire");
-      }
-      return true;
-    }),
+    body("employee_no")
+      .optional({ checkFalsy: true })
+      .isString()
+      .withMessage("Le matricule doit être une chaîne"),
   ],
   validateRequest,
   createTeacherForAdminHandler

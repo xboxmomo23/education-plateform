@@ -28,6 +28,7 @@ export async function getEstablishmentsForSuperAdminHandler(
         e.subscription_start,
         e.subscription_end,
         e.max_students,
+        e.login_email_domain,
         e.active,
         e.verified,
         e.created_at,
@@ -77,6 +78,7 @@ export async function createEstablishmentWithAdminHandler(req: Request, res: Res
     max_students,
     timezone,
     subscription_plan,
+    login_email_domain,
 
     // admin d'école
     admin_email,
@@ -115,9 +117,10 @@ export async function createEstablishmentWithAdminHandler(req: Request, res: Res
         phone,
         max_students,
         timezone,
-        subscription_plan
+        subscription_plan,
+        login_email_domain
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       RETURNING
         id,
         name,
@@ -131,6 +134,7 @@ export async function createEstablishmentWithAdminHandler(req: Request, res: Res
         max_students,
         timezone,
         subscription_plan,
+        login_email_domain,
         active,
         verified,
         created_at
@@ -148,6 +152,7 @@ export async function createEstablishmentWithAdminHandler(req: Request, res: Res
       max_students ?? 100,
       timezone ?? 'Europe/Paris',
       subscription_plan ?? 'trial',
+      login_email_domain?.trim().toLowerCase() || null,
     ];
 
     const estResult = await pool.query(insertEstQuery, estValues);

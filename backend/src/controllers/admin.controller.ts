@@ -4,6 +4,10 @@ import { createUser } from "../models/user.model";
 import { createInviteTokenForUser } from "./auth.controller";
 import { sendInviteEmail } from "../services/email.service";
 import { generateTemporaryPassword } from "../utils/auth.utils";
+import {
+  generateHumanCode,
+  generateLoginEmailFromName,
+} from "../utils/identifier.utils";
 
 /**
  * Helper : récupère l'établissement de l'admin connecté
@@ -401,23 +405,13 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
       date_of_birth,
     } = req.body;
 
-    const loginEmail = (login_email || email || "").toLowerCase().trim();
-    const contactEmailProvided = typeof contact_email !== "undefined";
-    const contactEmail = contactEmailProvided
-      ? (typeof contact_email === "string" && contact_email.trim().length > 0
-          ? contact_email.trim().toLowerCase()
-          : null)
-      : null;
-
-    if (!full_name || !loginEmail || !class_id) {
+    if (!full_name || !class_id) {
       return res.status(400).json({
         success: false,
         error:
-          "Les champs full_name, email et class_id sont obligatoires pour créer un élève",
+          "Les champs full_name et class_id sont obligatoires pour créer un élève",
       });
     }
-
-    const initialPassword: string = generateTemporaryPassword();
 
     const estId = await getAdminEstablishmentId(userId);
     if (!estId) {
@@ -445,6 +439,56 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
       });
     }
 
+    let loginEmail = (login_email || email || "");
+    if (typeof loginEmail === "string") {
+      loginEmail = loginEmail.toLowerCase().trim();
+    } else {
+      loginEmail = "";
+    }
+
+    if (!loginEmail) {
+      loginEmail = await generateLoginEmailFromName({
+        fullName: full_name,
+        establishmentId: estId,
+      });
+    }
+
+    const duplicateCheck = await pool.query(
+      `SELECT id FROM users WHERE email = $1 LIMIT 1`,
+      [loginEmail]
+    );
+    const duplicateCount = duplicateCheck?.rowCount ?? 0;
+    if (duplicateCount > 0) {
+      return res.status(409).json({
+        success: false,
+        error: "Un utilisateur avec cet email existe déjà",
+      });
+    }
+
+    const contactEmail =
+      typeof contact_email === "string" && contact_email.trim().length > 0
+        ? contact_email.trim().toLowerCase()
+        : null;
+
+    let finalStudentNumber: string | null = null;
+    if (typeof student_number === "string" && student_number.trim().length > 0) {
+      finalStudentNumber = student_number.trim();
+    } else if (
+      typeof student_number === "number" &&
+      Number.isFinite(student_number)
+    ) {
+      finalStudentNumber = String(student_number);
+    }
+
+    if (!finalStudentNumber) {
+      finalStudentNumber = await generateHumanCode({
+        establishmentId: estId,
+        role: "student",
+      });
+    }
+
+    const initialPassword: string = generateTemporaryPassword();
+
     const user = await createUser({
       email: loginEmail,
       password: initialPassword,
@@ -462,7 +506,7 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
         DO UPDATE SET contact_email = EXCLUDED.contact_email,
                       student_no = COALESCE(EXCLUDED.student_no, student_profiles.student_no)
       `,
-      [user.id, student_number || null, contactEmail]
+      [user.id, finalStudentNumber, contactEmail]
     );
 
     const studentInsert = await pool.query(
@@ -479,7 +523,7 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
       [
         user.id,
         class_id,
-        student_number || null,
+        finalStudentNumber,
         date_of_birth ? new Date(date_of_birth) : null,
       ]
     );
@@ -619,7 +663,8 @@ export async function getAdminStaffHandler(req: Request, res: Response) {
         u.created_at,
         sp.contact_email,
         sp.phone,
-        sp.department
+        sp.department,
+        sp.employee_no
       FROM users u
       LEFT JOIN staff_profiles sp ON sp.user_id = u.id
       WHERE u.role = 'staff'
@@ -656,6 +701,7 @@ export async function createStaffForAdminHandler(req: Request, res: Response) {
       contact_email,
       phone,
       department,
+      employee_no,
     } = req.body as {
       full_name: string;
       email?: string;
@@ -663,19 +709,13 @@ export async function createStaffForAdminHandler(req: Request, res: Response) {
       contact_email?: string;
       phone?: string;
       department?: string;
+      employee_no?: string;
     };
 
-    const loginEmail = (login_email || email || "").toLowerCase().trim();
-    const contactEmail = typeof contact_email === "string" && contact_email.trim().length > 0
-      ? contact_email.trim().toLowerCase()
-      : null;
-    const normalizedPhone = typeof phone === "string" ? phone.trim() || null : null;
-    const normalizedDepartment = typeof department === "string" ? department.trim() || null : null;
-
-    if (!full_name || !loginEmail) {
+    if (!full_name) {
       return res.status(400).json({
         success: false,
-        error: "Nom complet et email de connexion sont requis",
+        error: "Le nom complet est requis",
       });
     }
 
@@ -684,6 +724,50 @@ export async function createStaffForAdminHandler(req: Request, res: Response) {
       return res.status(404).json({
         success: false,
         error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    let loginEmail = (login_email || email || "");
+    if (typeof loginEmail === "string") {
+      loginEmail = loginEmail.toLowerCase().trim();
+    } else {
+      loginEmail = "";
+    }
+
+    if (!loginEmail) {
+      loginEmail = await generateLoginEmailFromName({
+        fullName: full_name,
+        establishmentId: estId,
+      });
+    }
+
+    const duplicateCheck = await pool.query(
+      `SELECT id FROM users WHERE email = $1 LIMIT 1`,
+      [loginEmail]
+    );
+    const duplicateCount = duplicateCheck?.rowCount ?? 0;
+    if (duplicateCount > 0) {
+      return res.status(409).json({
+        success: false,
+        error: "Un utilisateur avec cet email existe déjà",
+      });
+    }
+
+    const contactEmail =
+      typeof contact_email === "string" && contact_email.trim().length > 0
+        ? contact_email.trim().toLowerCase()
+        : null;
+    const normalizedPhone = typeof phone === "string" ? phone.trim() || null : null;
+    const normalizedDepartment = typeof department === "string" ? department.trim() || null : null;
+
+    let finalStaffCode: string | null =
+      typeof employee_no === "string" && employee_no.trim().length > 0
+        ? employee_no.trim()
+        : null;
+    if (!finalStaffCode) {
+      finalStaffCode = await generateHumanCode({
+        establishmentId: estId,
+        role: "staff",
       });
     }
 
@@ -717,14 +801,15 @@ export async function createStaffForAdminHandler(req: Request, res: Response) {
     await pool.query(
       `
         INSERT INTO staff_profiles (
-          user_id, phone, department, contact_email
-        ) VALUES ($1, $2, $3, $4)
+          user_id, phone, department, contact_email, employee_no
+        ) VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (user_id) DO UPDATE SET
           phone = COALESCE(EXCLUDED.phone, staff_profiles.phone),
           department = COALESCE(EXCLUDED.department, staff_profiles.department),
-          contact_email = EXCLUDED.contact_email
+          contact_email = EXCLUDED.contact_email,
+          employee_no = COALESCE(EXCLUDED.employee_no, staff_profiles.employee_no)
       `,
-      [newUser.id, normalizedPhone, normalizedDepartment, contactEmail]
+      [newUser.id, normalizedPhone, normalizedDepartment, contactEmail, finalStaffCode]
     );
 
     const invite = await createInviteTokenForUser({
@@ -755,6 +840,7 @@ export async function createStaffForAdminHandler(req: Request, res: Response) {
         contact_email: contactEmail,
         phone: normalizedPhone,
         department: normalizedDepartment,
+        employee_no: finalStaffCode,
         active: newUser.active,
         created_at: newUser.created_at,
         inviteUrl: invite.inviteUrl,
@@ -1077,19 +1163,12 @@ export async function createTeacherForAdminHandler(req: Request, res: Response) 
       office_room,
     } = req.body;
 
-    const loginEmail = (login_email || email || "").toLowerCase().trim();
-    const contactEmail = typeof contact_email === "string" && contact_email.trim().length > 0
-      ? contact_email.trim().toLowerCase()
-      : null;
-
-    if (!full_name || !loginEmail) {
+    if (!full_name) {
       return res.status(400).json({
         success: false,
-        error: "Les champs 'full_name' et 'email' sont obligatoires",
+        error: "Le champ 'full_name' est obligatoire",
       });
     }
-
-    const initialPassword: string = generateTemporaryPassword();
 
     const estId = await getAdminEstablishmentId(userId);
     if (!estId) {
@@ -1098,6 +1177,39 @@ export async function createTeacherForAdminHandler(req: Request, res: Response) 
         error: "Établissement non trouvé pour cet admin",
       });
     }
+
+    let loginEmail = (login_email || email || "");
+    if (typeof loginEmail === "string") {
+      loginEmail = loginEmail.toLowerCase().trim();
+    } else {
+      loginEmail = "";
+    }
+
+    if (!loginEmail) {
+      loginEmail = await generateLoginEmailFromName({
+        fullName: full_name,
+        establishmentId: estId,
+      });
+    }
+
+    const contactEmail =
+      typeof contact_email === "string" && contact_email.trim().length > 0
+        ? contact_email.trim().toLowerCase()
+        : null;
+
+    let finalEmployeeNo: string | null =
+      typeof employee_no === "string" && employee_no.trim().length > 0
+        ? employee_no.trim()
+        : null;
+
+    if (!finalEmployeeNo) {
+      finalEmployeeNo = await generateHumanCode({
+        establishmentId: estId,
+        role: "teacher",
+      });
+    }
+
+    const initialPassword: string = generateTemporaryPassword();
 
     // Création du user
     const user = await createUser({
@@ -1125,7 +1237,7 @@ export async function createTeacherForAdminHandler(req: Request, res: Response) 
     `,
       [
         user.id,
-        employee_no || null,
+        finalEmployeeNo,
         hire_date ? new Date(hire_date) : null,
         specialization || null,
         phone || null,
@@ -1159,7 +1271,7 @@ export async function createTeacherForAdminHandler(req: Request, res: Response) 
       full_name: user.full_name,
       email: user.email,
       active: user.active,
-      employee_no: profile.employee_no,
+      employee_no: profile.employee_no || finalEmployeeNo,
       hire_date: profile.hire_date,
       specialization: profile.specialization,
       phone: profile.phone,

@@ -23,6 +23,7 @@ interface AdminStaff {
   contact_email?: string | null;
   phone?: string | null;
   department?: string | null;
+  employee_no?: string | null;
 }
 
 interface StaffListResponse {
@@ -132,8 +133,8 @@ export default function AdminStaffPage() {
   };
 
   const handleCreate = async () => {
-    if (!createFullName || !createLoginEmail) {
-      setCreateError("Nom complet et email de connexion sont requis");
+    if (!createFullName.trim()) {
+      setCreateError("Le nom complet est requis");
       return;
     }
 
@@ -143,16 +144,25 @@ export default function AdminStaffPage() {
       setCreateSuccess(null);
       setCreateInviteUrl(null);
       setCreateCopyFeedback(null);
+      const payload: Record<string, unknown> = {
+        full_name: createFullName.trim(),
+      };
+      if (createLoginEmail.trim()) {
+        payload.login_email = createLoginEmail.trim();
+      }
+      if (createContactEmail.trim()) {
+        payload.contact_email = createContactEmail.trim();
+      }
+      if (createPhone.trim()) {
+        payload.phone = createPhone.trim();
+      }
+      if (createDepartment.trim()) {
+        payload.department = createDepartment.trim();
+      }
+
       const res = await apiFetch<StaffMutationResponse>("/admin/staff", {
         method: "POST",
-        body: JSON.stringify({
-          full_name: createFullName,
-          login_email: createLoginEmail,
-          email: createLoginEmail,
-          contact_email: createContactEmail || undefined,
-          phone: createPhone || undefined,
-          department: createDepartment || undefined,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.success || !res.data) {
@@ -332,7 +342,14 @@ export default function AdminStaffPage() {
               <tbody>
                 {filteredStaff.map((s) => (
                   <tr key={s.staff_id} className="border-b last:border-0">
-                    <td className="px-4 py-2">{s.full_name}</td>
+                    <td className="px-4 py-2">
+                      <div className="font-medium">{s.full_name}</div>
+                      {s.employee_no && (
+                        <div className="text-xs text-muted-foreground">
+                          Matricule : {s.employee_no}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-2 text-xs font-mono">{s.email}</td>
                     <td className="px-4 py-2 text-xs">
                       {s.contact_email || (
@@ -407,13 +424,18 @@ export default function AdminStaffPage() {
             </div>
 
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Email de connexion</p>
+              <p className="text-xs font-medium text-foreground">
+                Email de connexion (optionnel)
+              </p>
               <Input
                 type="email"
                 value={createLoginEmail}
                 onChange={(e) => setCreateLoginEmail(e.target.value)}
                 placeholder="staff@ecole.com"
               />
+              <p className="text-[11px] text-muted-foreground">
+                Si vous laissez ce champ vide, une adresse sera générée automatiquement.
+              </p>
             </div>
 
             <div className="space-y-1">
@@ -424,6 +446,10 @@ export default function AdminStaffPage() {
                 onChange={(e) => setCreateContactEmail(e.target.value)}
                 placeholder="Laisser vide si identique"
               />
+            </div>
+
+            <div className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+              Le matricule staff est généré automatiquement (ex&nbsp;: STF-2025-00001).
             </div>
 
             <div className="space-y-1">

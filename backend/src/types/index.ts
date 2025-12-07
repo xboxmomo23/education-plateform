@@ -242,6 +242,13 @@ export interface StudentAttendanceData {
   justification: string | null;
 }
 
+export interface Establishment {
+  id: string;
+  name: string;
+  code?: string | null;
+  login_email_domain?: string | null;
+}
+
 // ============================================
 // TYPES POUR LES RÉPONSES API (Présences)
 // ============================================

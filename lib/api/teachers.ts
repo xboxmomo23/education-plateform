@@ -41,7 +41,7 @@ export const teachersApi = {
 
   async create(payload: {
     full_name: string;
-    login_email: string;
+    login_email?: string;
     contact_email?: string;
     employee_no?: string;
     hire_date?: string;

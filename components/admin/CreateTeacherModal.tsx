@@ -27,7 +27,6 @@ export function CreateTeacherModal({
     full_name: "",
     login_email: "",
     contact_email: "",
-    employee_no: "",
     hire_date: "",
     specialization: "",
     phone: "",
@@ -46,7 +45,6 @@ export function CreateTeacherModal({
         full_name: "",
         login_email: "",
         contact_email: "",
-        employee_no: "",
         hire_date: "",
         specialization: "",
         phone: "",
@@ -67,6 +65,10 @@ export function CreateTeacherModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.full_name.trim()) {
+      setError("Le nom complet est obligatoire.");
+      return;
+    }
     setLoading(true);
     setError(null);
     setSuccessMessage(null);
@@ -74,15 +76,36 @@ export function CreateTeacherModal({
     setCopyFeedback(null);
 
     try {
-      const res = await teachersApi.create({
-        full_name: form.full_name,
-        login_email: form.login_email,
-        contact_email: form.contact_email || undefined,
-        employee_no: form.employee_no || undefined,
-        hire_date: form.hire_date || undefined,
-        specialization: form.specialization || undefined,
-        phone: form.phone || undefined,
-        office_room: form.office_room || undefined,
+      const payload: Record<string, unknown> = {
+        full_name: form.full_name.trim(),
+      };
+      if (form.login_email.trim()) {
+        payload.login_email = form.login_email.trim();
+      }
+      if (form.contact_email.trim()) {
+        payload.contact_email = form.contact_email.trim();
+      }
+      if (form.hire_date) {
+        payload.hire_date = form.hire_date;
+      }
+      if (form.specialization.trim()) {
+        payload.specialization = form.specialization.trim();
+      }
+      if (form.phone.trim()) {
+        payload.phone = form.phone.trim();
+      }
+      if (form.office_room.trim()) {
+        payload.office_room = form.office_room.trim();
+      }
+
+      const res = await teachersApi.create(payload as {
+        full_name: string;
+        login_email?: string;
+        contact_email?: string;
+        hire_date?: string;
+        specialization?: string;
+        phone?: string;
+        office_room?: string;
       });
 
       if (!res.success) {
@@ -98,7 +121,6 @@ export function CreateTeacherModal({
         full_name: "",
         login_email: "",
         contact_email: "",
-        employee_no: "",
         hire_date: "",
         specialization: "",
         phone: "",
@@ -130,13 +152,16 @@ export function CreateTeacherModal({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Email de connexion</Label>
+              <Label>Email de connexion (optionnel)</Label>
               <Input
                 type="email"
                 value={form.login_email}
                 onChange={handleChange("login_email")}
-                required
+                placeholder="professeur@ecole.com"
               />
+              <p className="text-xs text-muted-foreground">
+                Si vous laissez ce champ vide, une adresse sera générée automatiquement.
+              </p>
             </div>
           </div>
 
@@ -152,20 +177,16 @@ export function CreateTeacherModal({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label>Matricule</Label>
-              <Input
-                value={form.employee_no}
-                onChange={handleChange("employee_no")}
-                placeholder="Ex: P-2025-001"
-              />
-            </div>
-            <div className="space-y-1.5">
               <Label>Date d&apos;embauche</Label>
               <Input
                 type="date"
                 value={form.hire_date}
                 onChange={handleChange("hire_date")}
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Matricule</Label>
+              <Input value="Généré automatiquement" disabled readOnly />
             </div>
           </div>
 

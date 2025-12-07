@@ -77,14 +77,12 @@ export default function AdminStudentsPage() {
     login_email: string;
     contact_email: string;
     class_id: string;
-    student_number: string;
     date_of_birth: string;
   }>({
     full_name: "",
     login_email: "",
     contact_email: "",
     class_id: "",
-    student_number: "",
     date_of_birth: "",
   });
 
@@ -149,9 +147,9 @@ export default function AdminStudentsPage() {
     setInviteUrl(null);
     setCopyFeedback(null);
 
-    if (!form.full_name || !form.login_email || !form.class_id) {
+    if (!form.full_name.trim() || !form.class_id) {
       setSubmitError(
-        "Merci de renseigner au minimum : nom complet, email, classe."
+        "Merci de renseigner au minimum : nom complet et classe."
       );
       return;
     }
@@ -159,15 +157,19 @@ export default function AdminStudentsPage() {
     try {
       setIsSubmitting(true);
 
-      const payload = {
-        full_name: form.full_name,
-        login_email: form.login_email,
-        email: form.login_email,
-        contact_email: form.contact_email || undefined,
+      const payload: Record<string, unknown> = {
+        full_name: form.full_name.trim(),
         class_id: form.class_id,
-        student_number: form.student_number || null,
-        date_of_birth: form.date_of_birth || null,
       };
+      if (form.login_email.trim()) {
+        payload.login_email = form.login_email.trim();
+      }
+      if (form.contact_email.trim()) {
+        payload.contact_email = form.contact_email.trim();
+      }
+      if (form.date_of_birth) {
+        payload.date_of_birth = form.date_of_birth;
+      }
 
       const res = await apiFetch<CreateStudentResponse>("/admin/students", {
         method: "POST",
@@ -207,7 +209,6 @@ export default function AdminStudentsPage() {
         login_email: "",
         contact_email: "",
         class_id: "",
-        student_number: "",
         date_of_birth: "",
       });
     } catch (err: any) {
@@ -374,7 +375,7 @@ export default function AdminStudentsPage() {
 
               <div>
                 <label className="mb-1 block text-xs font-medium">
-                  Email de connexion *
+                  Email de connexion (optionnel)
                 </label>
                 <input
                   type="email"
@@ -384,6 +385,9 @@ export default function AdminStudentsPage() {
                   className="w-full rounded-md border px-3 py-2 text-sm"
                   placeholder="eleve@exemple.com"
                 />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Si vous laissez ce champ vide, l&apos;email sera généré automatiquement.
+                </p>
               </div>
 
               <div>
@@ -420,17 +424,12 @@ export default function AdminStudentsPage() {
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-medium">
-                    Numéro élève (optionnel)
-                  </label>
-                  <input
-                    type="text"
-                    name="student_number"
-                    value={form.student_number}
-                    onChange={handleChange}
-                    className="w-full rounded-md border px-3 py-2 text-sm"
-                  />
+                <div className="rounded-md border border-dashed px-3 py-2 text-xs">
+                  <p className="font-semibold">Numéro élève</p>
+                  <p className="text-muted-foreground">
+                    Généré automatiquement (ex&nbsp;: STU-2025-00001). Vous pourrez le
+                    consulter dans la liste après création.
+                  </p>
                 </div>
 
                 <div>
