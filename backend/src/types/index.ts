@@ -122,6 +122,7 @@ export interface StudentProfile {
   emergency_contact?: string;
   medical_notes?: string;
   photo_url?: string;
+  contact_email?: string;
 }
 
 export interface TeacherProfile {
@@ -131,6 +132,7 @@ export interface TeacherProfile {
   specialization?: string;
   phone?: string;
   office_room?: string;
+  contact_email?: string;
 }
 
 export interface StaffProfile {
@@ -141,6 +143,7 @@ export interface StaffProfile {
   department?: string;
   hire_date?: Date;
   created_at?: Date;
+  contact_email?: string;
 }
 
 export interface ParentProfile {

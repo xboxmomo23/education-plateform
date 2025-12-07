@@ -187,9 +187,9 @@ export default function AdminDashboardPage() {
               href="/admin/signature"
             />
             <QuickLink
-              title="Présence & absences"
-              description="Accéder au module de suivi des présences (à venir)."
-              href="/admin/attendance"
+              title="Staff"
+              description="comptes staff a créer"
+              href="/admin/staff"
             />
           </section>
         </>

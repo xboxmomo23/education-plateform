@@ -31,6 +31,7 @@ export function EditTeacherModal({
     specialization: teacher.specialization || "",
     phone: teacher.phone || "",
     office_room: teacher.office_room || "",
+    contact_email: teacher.contact_email || "",
   });
 
   const [loading, setLoading] = useState(false);
@@ -99,6 +100,16 @@ export function EditTeacherModal({
                 required
               />
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Email de contact</Label>
+            <Input
+              type="email"
+              value={form.contact_email}
+              onChange={handleChange("contact_email")}
+              placeholder="Facultatif"
+            />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">

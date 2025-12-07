@@ -20,6 +20,9 @@ interface AdminStaff {
   email: string;
   active: boolean;
   created_at: string;
+  contact_email?: string | null;
+  phone?: string | null;
+  department?: string | null;
 }
 
 interface StaffListResponse {
@@ -29,7 +32,7 @@ interface StaffListResponse {
 
 interface StaffMutationResponse {
   success: boolean;
-  data?: AdminStaff;
+  data?: (AdminStaff & { inviteUrl?: string });
   error?: string;
   message?: string;
 }
@@ -45,15 +48,24 @@ export default function AdminStaffPage() {
   // Modale création
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createFullName, setCreateFullName] = useState("");
-  const [createEmail, setCreateEmail] = useState("");
-  const [createPassword, setCreatePassword] = useState("");
+  const [createLoginEmail, setCreateLoginEmail] = useState("");
+  const [createContactEmail, setCreateContactEmail] = useState("");
+  const [createPhone, setCreatePhone] = useState("");
+  const [createDepartment, setCreateDepartment] = useState("");
   const [savingCreate, setSavingCreate] = useState(false);
+  const [createSuccess, setCreateSuccess] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createInviteUrl, setCreateInviteUrl] = useState<string | null>(null);
+  const [createCopyFeedback, setCreateCopyFeedback] = useState<string | null>(null);
 
   // Modale édition
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingStaff, setEditingStaff] = useState<AdminStaff | null>(null);
   const [editFullName, setEditFullName] = useState("");
   const [editEmail, setEditEmail] = useState("");
+  const [editContactEmail, setEditContactEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editDepartment, setEditDepartment] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -108,38 +120,62 @@ export default function AdminStaffPage() {
 
   const openCreate = () => {
     setCreateFullName("");
-    setCreateEmail("");
-    setCreatePassword("");
+    setCreateLoginEmail("");
+    setCreateContactEmail("");
+    setCreatePhone("");
+    setCreateDepartment("");
+    setCreateError(null);
+    setCreateSuccess(null);
+    setCreateInviteUrl(null);
+    setCreateCopyFeedback(null);
     setShowCreateModal(true);
   };
 
   const handleCreate = async () => {
-    if (!createFullName || !createEmail || !createPassword) {
-      alert("Nom complet, email et mot de passe sont requis");
+    if (!createFullName || !createLoginEmail) {
+      setCreateError("Nom complet et email de connexion sont requis");
       return;
     }
 
     try {
       setSavingCreate(true);
+      setCreateError(null);
+      setCreateSuccess(null);
+      setCreateInviteUrl(null);
+      setCreateCopyFeedback(null);
       const res = await apiFetch<StaffMutationResponse>("/admin/staff", {
         method: "POST",
         body: JSON.stringify({
           full_name: createFullName,
-          email: createEmail,
-          password: createPassword,
+          login_email: createLoginEmail,
+          email: createLoginEmail,
+          contact_email: createContactEmail || undefined,
+          phone: createPhone || undefined,
+          department: createDepartment || undefined,
         }),
       });
 
-      if (!res.success) {
-        alert(res.error || "Erreur lors de la création du staff");
+      if (!res.success || !res.data) {
+        setCreateError(res.error || "Erreur lors de la création du staff");
+        setCreateSuccess(null);
+        setCreateInviteUrl(null);
         return;
       }
 
-      setShowCreateModal(false);
       await reloadStaff();
+      setCreateSuccess("Compte staff créé. Copiez le lien ci-dessous et envoyez-le au collaborateur.");
+      setCreateInviteUrl(res.data.inviteUrl || null);
+      setCreateCopyFeedback(null);
+      setCreateFullName("");
+      setCreateLoginEmail("");
+      setCreateContactEmail("");
+      setCreatePhone("");
+      setCreateDepartment("");
     } catch (err: any) {
       console.error("Erreur création staff:", err);
-      alert(err.message || "Erreur lors de la création du staff");
+      setCreateError(err.message || "Erreur lors de la création du staff");
+      setCreateSuccess(null);
+      setCreateInviteUrl(null);
     } finally {
       setSavingCreate(false);
     }
@@ -151,6 +187,9 @@ export default function AdminStaffPage() {
     setEditingStaff(item);
     setEditFullName(item.full_name);
     setEditEmail(item.email);
+    setEditContactEmail(item.contact_email || "");
+    setEditPhone(item.phone || "");
+    setEditDepartment(item.department || "");
     setShowEditModal(true);
   };
 
@@ -171,6 +210,9 @@ export default function AdminStaffPage() {
           body: JSON.stringify({
             full_name: editFullName,
             email: editEmail,
+            contact_email: editContactEmail || undefined,
+            phone: editPhone || undefined,
+            department: editDepartment || undefined,
           }),
         }
       );
@@ -182,6 +224,9 @@ export default function AdminStaffPage() {
 
       setShowEditModal(false);
       setEditingStaff(null);
+      setEditContactEmail("");
+      setEditPhone("");
+      setEditDepartment("");
       await reloadStaff();
     } catch (err: any) {
       console.error("Erreur mise à jour staff:", err);
@@ -276,7 +321,10 @@ export default function AdminStaffPage() {
               <thead className="border-b bg-muted/60">
                 <tr>
                   <th className="px-4 py-2 text-left">Nom</th>
-                  <th className="px-4 py-2 text-left">Email</th>
+                  <th className="px-4 py-2 text-left">Email de connexion</th>
+                  <th className="px-4 py-2 text-left">Email de contact</th>
+                  <th className="px-4 py-2 text-left">Téléphone</th>
+                  <th className="px-4 py-2 text-left">Fonction</th>
                   <th className="px-4 py-2 text-left">Statut</th>
                   <th className="px-4 py-2 text-left">Actions</th>
                 </tr>
@@ -285,7 +333,18 @@ export default function AdminStaffPage() {
                 {filteredStaff.map((s) => (
                   <tr key={s.staff_id} className="border-b last:border-0">
                     <td className="px-4 py-2">{s.full_name}</td>
-                    <td className="px-4 py-2">{s.email}</td>
+                    <td className="px-4 py-2 text-xs font-mono">{s.email}</td>
+                    <td className="px-4 py-2 text-xs">
+                      {s.contact_email || (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-xs">
+                      {s.phone || <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-4 py-2 text-xs">
+                      {s.department || <span className="text-muted-foreground">—</span>}
+                    </td>
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
                         <Switch
@@ -316,7 +375,23 @@ export default function AdminStaffPage() {
       </div>
 
       {/* Modale création staff */}
-      <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+      <Dialog
+        open={showCreateModal}
+        onOpenChange={(state) => {
+          setShowCreateModal(state);
+          if (!state) {
+            setCreateError(null);
+            setCreateSuccess(null);
+            setCreateInviteUrl(null);
+            setCreateCopyFeedback(null);
+            setCreateFullName("");
+            setCreateLoginEmail("");
+            setCreateContactEmail("");
+            setCreatePhone("");
+            setCreateDepartment("");
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Créer un compte staff</DialogTitle>
@@ -332,25 +407,75 @@ export default function AdminStaffPage() {
             </div>
 
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Email</p>
+              <p className="text-xs text-muted-foreground">Email de connexion</p>
               <Input
                 type="email"
-                value={createEmail}
-                onChange={(e) => setCreateEmail(e.target.value)}
+                value={createLoginEmail}
+                onChange={(e) => setCreateLoginEmail(e.target.value)}
+                placeholder="staff@ecole.com"
               />
             </div>
 
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">
-                Mot de passe (min. 6 caractères)
-              </p>
+              <p className="text-xs text-muted-foreground">Email de contact (facultatif)</p>
               <Input
-                type="password"
-                value={createPassword}
-                onChange={(e) => setCreatePassword(e.target.value)}
+                type="email"
+                value={createContactEmail}
+                onChange={(e) => setCreateContactEmail(e.target.value)}
+                placeholder="Laisser vide si identique"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Téléphone (facultatif)</p>
+              <Input
+                value={createPhone}
+                onChange={(e) => setCreatePhone(e.target.value)}
+                placeholder="+213..."
+              />
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Fonction / rôle interne</p>
+              <Input
+                value={createDepartment}
+                onChange={(e) => setCreateDepartment(e.target.value)}
+                placeholder="Secrétariat, Vie scolaire..."
               />
             </div>
           </div>
+
+          {createError && (
+            <p className="text-xs text-red-600">{createError}</p>
+          )}
+
+          {createSuccess && createInviteUrl && (
+            <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+              <p>{createSuccess}</p>
+              <p className="mt-2 font-semibold">Lien d&apos;invitation :</p>
+              <p className="break-all font-mono text-[11px]">{createInviteUrl}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(createInviteUrl);
+                    setCreateCopyFeedback("Lien copié dans le presse-papiers.");
+                  } catch (err) {
+                    console.error(err);
+                    setCreateCopyFeedback("Impossible de copier le lien.");
+                  }
+                }}
+              >
+                Copier le lien
+              </Button>
+              {createCopyFeedback && (
+                <p className="mt-1 text-[11px] text-emerald-700">{createCopyFeedback}</p>
+              )}
+            </div>
+          )}
 
           <DialogFooter>
             <Button
@@ -368,7 +493,20 @@ export default function AdminStaffPage() {
       </Dialog>
 
       {/* Modale édition staff */}
-      <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
+      <Dialog
+        open={showEditModal}
+        onOpenChange={(state) => {
+          setShowEditModal(state);
+          if (!state) {
+            setEditingStaff(null);
+            setEditFullName("");
+            setEditEmail("");
+            setEditContactEmail("");
+            setEditPhone("");
+            setEditDepartment("");
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Modifier le compte staff</DialogTitle>
@@ -391,6 +529,33 @@ export default function AdminStaffPage() {
                 onChange={(e) => setEditEmail(e.target.value)}
               />
             </div>
+
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Email de contact</p>
+              <Input
+                type="email"
+                value={editContactEmail}
+                onChange={(e) => setEditContactEmail(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Téléphone</p>
+              <Input
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                placeholder="+213..."
+              />
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Fonction</p>
+              <Input
+                value={editDepartment}
+                onChange={(e) => setEditDepartment(e.target.value)}
+                placeholder="Secrétariat, Vie scolaire..."
+              />
+            </div>
           </div>
 
           <DialogFooter>
@@ -399,6 +564,9 @@ export default function AdminStaffPage() {
               onClick={() => {
                 setShowEditModal(false);
                 setEditingStaff(null);
+                setEditContactEmail("");
+                setEditPhone("");
+                setEditDepartment("");
               }}
               disabled={savingEdit}
             >

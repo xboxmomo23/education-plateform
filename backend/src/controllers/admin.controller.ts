@@ -345,6 +345,7 @@ export async function getAdminStudentsHandler(req: Request, res: Response) {
         u.full_name,
         u.email,
         u.active,
+        sp.contact_email,
         s.student_number,
         s.date_of_birth,
         c.id AS class_id,
@@ -355,6 +356,7 @@ export async function getAdminStudentsHandler(req: Request, res: Response) {
       FROM students s
       JOIN users u ON u.id = s.user_id
       JOIN classes c ON c.id = s.class_id
+      LEFT JOIN student_profiles sp ON sp.user_id = u.id
       WHERE c.establishment_id = $1
       ORDER BY c.academic_year DESC, c.label ASC, u.full_name ASC
     `,
@@ -383,12 +385,22 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
     const {
       full_name,
       email,
+      login_email,
+      contact_email,
       class_id,
       student_number,
       date_of_birth,
     } = req.body;
 
-    if (!full_name || !email || !class_id) {
+    const loginEmail = (login_email || email || "").toLowerCase().trim();
+    const contactEmailProvided = typeof contact_email !== "undefined";
+    const contactEmail = contactEmailProvided
+      ? (typeof contact_email === "string" && contact_email.trim().length > 0
+          ? contact_email.trim().toLowerCase()
+          : null)
+      : null;
+
+    if (!full_name || !loginEmail || !class_id) {
       return res.status(400).json({
         success: false,
         error:
@@ -425,12 +437,24 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
     }
 
     const user = await createUser({
-      email,
+      email: loginEmail,
       password: initialPassword,
       role: "student",
       full_name,
       establishmentId: estId,
     });
+
+    await pool.query(
+      `
+        INSERT INTO student_profiles (
+          user_id, student_no, contact_email
+        ) VALUES ($1, $2, $3)
+        ON CONFLICT (user_id)
+        DO UPDATE SET contact_email = EXCLUDED.contact_email,
+                      student_no = COALESCE(EXCLUDED.student_no, student_profiles.student_no)
+      `,
+      [user.id, student_number || null, contactEmail]
+    );
 
     const studentInsert = await pool.query(
       `
@@ -470,6 +494,7 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
           full_name: user.full_name,
           active: user.active,
         },
+        contact_email: contactEmail,
         inviteUrl: invite.inviteUrl,
       },
     });
@@ -568,8 +593,12 @@ export async function getAdminStaffHandler(req: Request, res: Response) {
         u.full_name,
         u.email,
         u.active,
-        u.created_at
+        u.created_at,
+        sp.contact_email,
+        sp.phone,
+        sp.department
       FROM users u
+      LEFT JOIN staff_profiles sp ON sp.user_id = u.id
       WHERE u.role = 'staff'
         AND u.establishment_id = $1
       ORDER BY u.full_name ASC
@@ -597,16 +626,33 @@ export async function getAdminStaffHandler(req: Request, res: Response) {
 export async function createStaffForAdminHandler(req: Request, res: Response) {
   try {
     const { userId } = req.user!;
-    const { full_name, email, password } = req.body as {
+    const {
+      full_name,
+      email,
+      login_email,
+      contact_email,
+      phone,
+      department,
+    } = req.body as {
       full_name: string;
-      email: string;
-      password: string;
+      email?: string;
+      login_email?: string;
+      contact_email?: string;
+      phone?: string;
+      department?: string;
     };
 
-    if (!full_name || !email || !password) {
+    const loginEmail = (login_email || email || "").toLowerCase().trim();
+    const contactEmail = typeof contact_email === "string" && contact_email.trim().length > 0
+      ? contact_email.trim().toLowerCase()
+      : null;
+    const normalizedPhone = typeof phone === "string" ? phone.trim() || null : null;
+    const normalizedDepartment = typeof department === "string" ? department.trim() || null : null;
+
+    if (!full_name || !loginEmail) {
       return res.status(400).json({
         success: false,
-        error: "Nom complet, email et mot de passe sont requis",
+        error: "Nom complet et email de connexion sont requis",
       });
     }
 
@@ -624,7 +670,7 @@ export async function createStaffForAdminHandler(req: Request, res: Response) {
       SELECT id FROM users
       WHERE email = $1
       `,
-      [email]
+      [loginEmail]
     );
 
     if (existing.rows.length > 0) {
@@ -634,13 +680,34 @@ export async function createStaffForAdminHandler(req: Request, res: Response) {
       });
     }
 
+    const initialPassword = generateTemporaryPassword();
+
     // Créer l'utilisateur staff
     const newUser = await createUser({
-      email,
-      password,
+      email: loginEmail,
+      password: initialPassword,
       role: "staff",
       full_name,
       establishmentId: estId,
+    });
+
+    await pool.query(
+      `
+        INSERT INTO staff_profiles (
+          user_id, phone, department, contact_email
+        ) VALUES ($1, $2, $3, $4)
+        ON CONFLICT (user_id) DO UPDATE SET
+          phone = COALESCE(EXCLUDED.phone, staff_profiles.phone),
+          department = COALESCE(EXCLUDED.department, staff_profiles.department),
+          contact_email = EXCLUDED.contact_email
+      `,
+      [newUser.id, normalizedPhone, normalizedDepartment, contactEmail]
+    );
+
+    const invite = await createInviteTokenForUser({
+      id: newUser.id,
+      email: newUser.email,
+      full_name: newUser.full_name,
     });
 
     return res.status(201).json({
@@ -649,8 +716,12 @@ export async function createStaffForAdminHandler(req: Request, res: Response) {
         staff_id: newUser.id,
         full_name: newUser.full_name,
         email: newUser.email,
+        contact_email: contactEmail,
+        phone: normalizedPhone,
+        department: normalizedDepartment,
         active: newUser.active,
         created_at: newUser.created_at,
+        inviteUrl: invite.inviteUrl,
       },
     });
   } catch (error: any) {
@@ -678,10 +749,27 @@ export async function updateStaffForAdminHandler(req: Request, res: Response) {
   try {
     const { userId } = req.user!;
     const { staffId } = req.params;
-    const { full_name, email } = req.body as {
+    const { full_name, email, contact_email, phone, department } = req.body as {
       full_name?: string;
       email?: string;
+      contact_email?: string;
+      phone?: string;
+      department?: string;
     };
+
+    const contactEmail = typeof contact_email === "string" && contact_email.trim().length > 0
+      ? contact_email.trim().toLowerCase()
+      : null;
+    const phoneProvided = typeof phone !== "undefined";
+    const departmentProvided = typeof department !== "undefined";
+    const normalizedPhone = phoneProvided
+      ? (phone && phone.trim().length > 0 ? phone.trim() : null)
+      : undefined;
+    const normalizedDepartment = departmentProvided
+      ? (department && department.trim().length > 0 ? department.trim() : null)
+      : undefined;
+      
+      
 
     const estId = await getAdminEstablishmentId(userId);
     if (!estId) {
@@ -731,7 +819,7 @@ export async function updateStaffForAdminHandler(req: Request, res: Response) {
       }
     }
 
-    const result = await pool.query(
+    await pool.query(
       `
       UPDATE users
       SET
@@ -740,14 +828,82 @@ export async function updateStaffForAdminHandler(req: Request, res: Response) {
       WHERE id = $3
         AND role = 'staff'
         AND establishment_id = $4
-      RETURNING id AS staff_id, full_name, email, active, created_at
       `,
       [full_name ?? null, email ?? null, staffId, estId]
     );
 
+    // ✅ À AJOUTER :
+    const contactEmailProvided =
+      typeof contactEmail === "string" && contactEmail.trim() !== "";
+
+    const shouldUpdateProfile = phoneProvided || departmentProvided || contactEmailProvided;
+
+    if (shouldUpdateProfile) {
+      const profileCheck = await pool.query(
+        `SELECT user_id FROM staff_profiles WHERE user_id = $1 LIMIT 1`,
+        [staffId]
+      );
+
+      if (profileCheck.rowCount === 0) {
+        await pool.query(
+          `
+            INSERT INTO staff_profiles (user_id, phone, department, contact_email)
+            VALUES ($1, $2, $3, $4)
+          `,
+          [staffId, normalizedPhone ?? null, normalizedDepartment ?? null, contactEmail]
+        );
+      } else {
+        const updates: string[] = [];
+        const values: any[] = [];
+
+        if (phoneProvided) {
+          updates.push(`phone = $${updates.length + 1}`);
+          values.push(normalizedPhone ?? null);
+        }
+
+        if (departmentProvided) {
+          updates.push(`department = $${updates.length + 1}`);
+          values.push(normalizedDepartment ?? null);
+        }
+
+        if (contactEmailProvided) {
+          updates.push(`contact_email = $${updates.length + 1}`);
+          values.push(contactEmail);
+        }
+
+        if (updates.length > 0) {
+          values.push(staffId);
+          await pool.query(
+            `UPDATE staff_profiles SET ${updates.join(", ")} WHERE user_id = $${values.length}`,
+            values
+          );
+        }
+      }
+    }
+
+    const final = await pool.query(
+      `
+        SELECT
+          u.id AS staff_id,
+          u.full_name,
+          u.email,
+          u.active,
+          u.created_at,
+          sp.contact_email,
+          sp.phone,
+          sp.department
+        FROM users u
+        LEFT JOIN staff_profiles sp ON sp.user_id = u.id
+        WHERE u.id = $1
+          AND u.role = 'staff'
+          AND u.establishment_id = $2
+      `,
+      [staffId, estId]
+    );
+
     return res.json({
       success: true,
-      data: result.rows[0],
+      data: final.rows[0],
     });
   } catch (error) {
     console.error("Erreur updateStaffForAdminHandler:", error);
@@ -842,7 +998,8 @@ export async function getAdminTeachersHandler(req: Request, res: Response) {
         tp.hire_date,
         tp.specialization,
         tp.phone,
-        tp.office_room
+        tp.office_room,
+        tp.contact_email
       FROM users u
       LEFT JOIN teacher_profiles tp ON tp.user_id = u.id
       WHERE u.role = 'teacher'
@@ -875,7 +1032,8 @@ export async function createTeacherForAdminHandler(req: Request, res: Response) 
     const {
       full_name,
       email,
-      password,
+      login_email,
+      contact_email,
       employee_no,
       hire_date,
       specialization,
@@ -883,14 +1041,19 @@ export async function createTeacherForAdminHandler(req: Request, res: Response) 
       office_room,
     } = req.body;
 
-    if (!full_name || !email) {
+    const loginEmail = (login_email || email || "").toLowerCase().trim();
+    const contactEmail = typeof contact_email === "string" && contact_email.trim().length > 0
+      ? contact_email.trim().toLowerCase()
+      : null;
+
+    if (!full_name || !loginEmail) {
       return res.status(400).json({
         success: false,
         error: "Les champs 'full_name' et 'email' sont obligatoires",
       });
     }
 
-    const initialPassword: string = password || "prof123";
+    const initialPassword: string = generateTemporaryPassword();
 
     const estId = await getAdminEstablishmentId(userId);
     if (!estId) {
@@ -902,7 +1065,7 @@ export async function createTeacherForAdminHandler(req: Request, res: Response) 
 
     // Création du user
     const user = await createUser({
-      email,
+      email: loginEmail,
       password: initialPassword,
       role: "teacher",
       full_name,
@@ -918,10 +1081,11 @@ export async function createTeacherForAdminHandler(req: Request, res: Response) 
         hire_date,
         specialization,
         phone,
-        office_room
+        office_room,
+        contact_email
       )
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING user_id, employee_no, hire_date, specialization, phone, office_room
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING user_id, employee_no, hire_date, specialization, phone, office_room, contact_email
     `,
       [
         user.id,
@@ -930,24 +1094,35 @@ export async function createTeacherForAdminHandler(req: Request, res: Response) 
         specialization || null,
         phone || null,
         office_room || null,
+        contactEmail,
       ]
     );
 
     const profile = profileInsert.rows[0];
+    const invite = await createInviteTokenForUser({
+      id: user.id,
+      email: user.email,
+      full_name: user.full_name,
+    });
+
+    const teacherPayload = {
+      user_id: user.id,
+      full_name: user.full_name,
+      email: user.email,
+      active: user.active,
+      employee_no: profile.employee_no,
+      hire_date: profile.hire_date,
+      specialization: profile.specialization,
+      phone: profile.phone,
+      office_room: profile.office_room,
+      contact_email: profile.contact_email,
+    };
 
     return res.status(201).json({
       success: true,
       message: "Professeur créé avec succès",
-      data: {
-        user: {
-          id: user.id,
-          email: user.email,
-          full_name: user.full_name,
-          active: user.active,
-        },
-        profile,
-        initial_password: initialPassword,
-      },
+      teacher: teacherPayload,
+      inviteUrl: invite.inviteUrl,
     });
   } catch (error: any) {
     console.error("Erreur createTeacherForAdminHandler:", error);
@@ -983,6 +1158,7 @@ export async function updateTeacherForAdminHandler(req: Request, res: Response) 
       specialization,
       phone,
       office_room,
+      contact_email,
     } = req.body;
 
     const estId = await getAdminEstablishmentId(userId);
@@ -1044,10 +1220,11 @@ export async function updateTeacherForAdminHandler(req: Request, res: Response) 
           hire_date,
           specialization,
           phone,
-          office_room
+          office_room,
+          contact_email
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING user_id, employee_no, hire_date, specialization, phone, office_room
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING user_id, employee_no, hire_date, specialization, phone, office_room, contact_email
       `,
         [
           targetUserId,
@@ -1056,6 +1233,7 @@ export async function updateTeacherForAdminHandler(req: Request, res: Response) 
           specialization || null,
           phone || null,
           office_room || null,
+          contact_email ? contact_email.toLowerCase().trim() : null,
         ]
       );
       profileRow = insertProfile.rows[0];
@@ -1069,9 +1247,10 @@ export async function updateTeacherForAdminHandler(req: Request, res: Response) 
           hire_date = COALESCE($3, hire_date),
           specialization = COALESCE($4, specialization),
           phone = COALESCE($5, phone),
-          office_room = COALESCE($6, office_room)
+          office_room = COALESCE($6, office_room),
+          contact_email = COALESCE($7, contact_email)
         WHERE user_id = $1
-        RETURNING user_id, employee_no, hire_date, specialization, phone, office_room
+        RETURNING user_id, employee_no, hire_date, specialization, phone, office_room, contact_email
       `,
         [
           targetUserId,
@@ -1080,6 +1259,7 @@ export async function updateTeacherForAdminHandler(req: Request, res: Response) 
           specialization || null,
           phone || null,
           office_room || null,
+          contact_email ? contact_email.toLowerCase().trim() : null,
         ]
       );
       profileRow = updateProfile.rows[0];
@@ -1097,7 +1277,8 @@ export async function updateTeacherForAdminHandler(req: Request, res: Response) 
         tp.hire_date,
         tp.specialization,
         tp.phone,
-        tp.office_room
+        tp.office_room,
+        tp.contact_email
       FROM users u
       LEFT JOIN teacher_profiles tp ON tp.user_id = u.id
       WHERE u.id = $1

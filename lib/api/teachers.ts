@@ -12,6 +12,7 @@ export interface AdminTeacher {
   specialization?: string | null;
   phone?: string | null;
   office_room?: string | null;
+  contact_email?: string | null;
 }
 
 interface ListTeachersResponse {
@@ -25,6 +26,14 @@ interface TeacherMutationResponse {
   data?: AdminTeacher;
 }
 
+interface TeacherCreateResponse {
+  success: boolean;
+  message?: string;
+  teacher?: AdminTeacher;
+  inviteUrl?: string;
+  error?: string;
+}
+
 export const teachersApi = {
   async list() {
     return apiFetch<ListTeachersResponse>("/admin/teachers");
@@ -32,15 +41,15 @@ export const teachersApi = {
 
   async create(payload: {
     full_name: string;
-    email: string;
-    password?: string;
+    login_email: string;
+    contact_email?: string;
     employee_no?: string;
     hire_date?: string;
     specialization?: string;
     phone?: string;
     office_room?: string;
   }) {
-    return apiFetch<TeacherMutationResponse>("/admin/teachers", {
+    return apiFetch<TeacherCreateResponse>("/admin/teachers", {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -54,6 +63,7 @@ export const teachersApi = {
     specialization: string;
     phone: string;
     office_room: string;
+    contact_email: string;
   }>) {
     return apiFetch<TeacherMutationResponse>(`/admin/teachers/${userId}`, {
       method: "PATCH",

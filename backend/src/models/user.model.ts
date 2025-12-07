@@ -62,9 +62,9 @@ export async function createStudentProfile(
   const query = `
     INSERT INTO student_profiles (
       user_id, student_no, birthdate, address, phone, 
-      emergency_contact, medical_notes, photo_url
+      emergency_contact, medical_notes, photo_url, contact_email
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     RETURNING *
   `;
   
@@ -77,6 +77,7 @@ export async function createStudentProfile(
     profileData.emergency_contact || null,
     profileData.medical_notes || null,
     profileData.photo_url || null,
+    profileData.contact_email || null,
   ];
   
   const result = await pool.query(query, values);
@@ -89,9 +90,9 @@ export async function createTeacherProfile(
 ): Promise<TeacherProfile> {
   const query = `
     INSERT INTO teacher_profiles (
-      user_id, employee_no, hire_date, specialization, phone, office_room
+      user_id, employee_no, hire_date, specialization, phone, office_room, contact_email
     )
-    VALUES ($1, $2, $3, $4, $5, $6)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     RETURNING *
   `;
   
@@ -102,6 +103,7 @@ export async function createTeacherProfile(
     profileData.specialization || null,
     profileData.phone || null,
     profileData.office_room || null,
+    profileData.contact_email || null,
   ];
   
   const result = await pool.query(query, values);
@@ -115,10 +117,10 @@ export async function createStaffProfile(
 ): Promise<StaffProfile> {
   const query = `
     INSERT INTO staff_profiles (
-      user_id, phone, department, office_room, employee_no, hire_date
+      user_id, phone, department, office_room, employee_no, hire_date, contact_email
     )
-    VALUES ($1, $2, $3, $4, $5, $6)
-    RETURNING user_id, phone, department, office_room, employee_no, hire_date, created_at
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING user_id, phone, department, office_room, employee_no, hire_date, contact_email, created_at
   `;
   
   const values = [
@@ -128,6 +130,7 @@ export async function createStaffProfile(
     profileData.office_room || null,
     profileData.employee_no || null,
     profileData.hire_date || null,
+    profileData.contact_email || null,
   ];
   
   const result = await pool.query(query, values);

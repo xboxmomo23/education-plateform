@@ -92,7 +92,24 @@ router.post(
       .isString()
       .notEmpty()
       .withMessage("Le nom complet de l'élève est obligatoire"),
-    body("email").isEmail().withMessage("Email de l'élève invalide"),
+    body("login_email")
+      .optional({ checkFalsy: true })
+      .isEmail()
+      .withMessage("Email de connexion invalide"),
+    body("email")
+      .optional({ checkFalsy: true })
+      .isEmail()
+      .withMessage("Email de connexion invalide"),
+    body("contact_email")
+      .optional({ checkFalsy: true })
+      .isEmail()
+      .withMessage("Email de contact invalide"),
+    body().custom((_, { req }) => {
+      if (!req.body.login_email && !req.body.email) {
+        throw new Error("L'email de connexion est obligatoire");
+      }
+      return true;
+    }),
     body("class_id").isUUID().withMessage("class_id doit être un UUID valide"),
     body("student_number")
       .optional()
@@ -143,12 +160,32 @@ router.post(
     body("full_name")
       .notEmpty()
       .withMessage("Le nom complet est requis"),
-    body("email")
+    body("login_email")
+      .optional({ checkFalsy: true })
       .isEmail()
-      .withMessage("Email invalide"),
-    body("password")
-      .isLength({ min: 6 })
-      .withMessage("Le mot de passe doit contenir au moins 6 caractères"),
+      .withMessage("Email de connexion invalide"),
+    body("email")
+      .optional({ checkFalsy: true })
+      .isEmail()
+      .withMessage("Email de connexion invalide"),
+    body("contact_email")
+      .optional({ checkFalsy: true })
+      .isEmail()
+      .withMessage("Email de contact invalide"),
+    body("phone")
+      .optional({ checkFalsy: true })
+      .isString()
+      .withMessage("Le téléphone doit être une chaîne"),
+    body("department")
+      .optional({ checkFalsy: true })
+      .isString()
+      .withMessage("La fonction doit être une chaîne"),
+    body().custom((_, { req }) => {
+      if (!req.body.login_email && !req.body.email) {
+        throw new Error("L'email de connexion est obligatoire");
+      }
+      return true;
+    }),
   ],
   validateRequest,
   createStaffForAdminHandler
@@ -164,6 +201,18 @@ router.patch(
   [
     body("full_name").optional().isString(),
     body("email").optional().isEmail().withMessage("Email invalide"),
+    body("contact_email")
+      .optional({ checkFalsy: true })
+      .isEmail()
+      .withMessage("Email de contact invalide"),
+    body("phone")
+      .optional({ checkFalsy: true })
+      .isString()
+      .withMessage("Le téléphone doit être une chaîne"),
+    body("department")
+      .optional({ checkFalsy: true })
+      .isString()
+      .withMessage("La fonction doit être une chaîne"),
   ],
   validateRequest,
   updateStaffForAdminHandler
@@ -295,7 +344,24 @@ router.post(
       .isString()
       .notEmpty()
       .withMessage("Le nom complet du professeur est obligatoire"),
-    body("email").isEmail().withMessage("Email du professeur invalide"),
+    body("login_email")
+      .optional({ checkFalsy: true })
+      .isEmail()
+      .withMessage("Email de connexion invalide"),
+    body("email")
+      .optional({ checkFalsy: true })
+      .isEmail()
+      .withMessage("Email de connexion invalide"),
+    body("contact_email")
+      .optional({ checkFalsy: true })
+      .isEmail()
+      .withMessage("Email de contact invalide"),
+    body().custom((_, { req }) => {
+      if (!req.body.login_email && !req.body.email) {
+        throw new Error("L'email de connexion est obligatoire");
+      }
+      return true;
+    }),
   ],
   validateRequest,
   createTeacherForAdminHandler
@@ -308,6 +374,10 @@ router.patch(
       .optional()
       .isEmail()
       .withMessage("Email du professeur invalide"),
+    body("contact_email")
+      .optional({ checkFalsy: true })
+      .isEmail()
+      .withMessage("Email de contact invalide"),
   ],
   validateRequest,
   updateTeacherForAdminHandler

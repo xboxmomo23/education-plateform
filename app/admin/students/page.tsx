@@ -54,6 +54,7 @@ interface CreateStudentResponse {
       full_name: string;
       active: boolean;
     };
+    contact_email?: string | null;
     inviteUrl: string;
   };
 }
@@ -73,13 +74,15 @@ export default function AdminStudentsPage() {
 
   const [form, setForm] = useState<{
     full_name: string;
-    email: string;
+    login_email: string;
+    contact_email: string;
     class_id: string;
     student_number: string;
     date_of_birth: string;
   }>({
     full_name: "",
-    email: "",
+    login_email: "",
+    contact_email: "",
     class_id: "",
     student_number: "",
     date_of_birth: "",
@@ -146,7 +149,7 @@ export default function AdminStudentsPage() {
     setInviteUrl(null);
     setCopyFeedback(null);
 
-    if (!form.full_name || !form.email || !form.class_id) {
+    if (!form.full_name || !form.login_email || !form.class_id) {
       setSubmitError(
         "Merci de renseigner au minimum : nom complet, email, classe."
       );
@@ -158,7 +161,9 @@ export default function AdminStudentsPage() {
 
       const payload = {
         full_name: form.full_name,
-        email: form.email,
+        login_email: form.login_email,
+        email: form.login_email,
+        contact_email: form.contact_email || undefined,
         class_id: form.class_id,
         student_number: form.student_number || null,
         date_of_birth: form.date_of_birth || null,
@@ -199,7 +204,8 @@ export default function AdminStudentsPage() {
 
       setForm({
         full_name: "",
-        email: "",
+        login_email: "",
+        contact_email: "",
         class_id: "",
         student_number: "",
         date_of_birth: "",
@@ -368,15 +374,29 @@ export default function AdminStudentsPage() {
 
               <div>
                 <label className="mb-1 block text-xs font-medium">
-                  Email *
+                  Email de connexion *
                 </label>
                 <input
                   type="email"
-                  name="email"
-                  value={form.email}
+                  name="login_email"
+                  value={form.login_email}
                   onChange={handleChange}
                   className="w-full rounded-md border px-3 py-2 text-sm"
                   placeholder="eleve@exemple.com"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium">
+                  Email de contact (facultatif)
+                </label>
+                <input
+                  type="email"
+                  name="contact_email"
+                  value={form.contact_email}
+                  onChange={handleChange}
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                  placeholder="Laisser vide si identique"
                 />
               </div>
 

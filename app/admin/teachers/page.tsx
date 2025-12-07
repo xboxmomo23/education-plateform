@@ -101,7 +101,8 @@ export default function AdminTeachersPage() {
             <thead className="border-b bg-muted/60">
               <tr>
                 <th className="px-4 py-2 text-left">Nom</th>
-                <th className="px-4 py-2 text-left">Email</th>
+                <th className="px-4 py-2 text-left">Email de connexion</th>
+                <th className="px-4 py-2 text-left">Email de contact</th>
                 <th className="px-4 py-2 text-left">Téléphone</th>
                 <th className="px-4 py-2 text-left">Spécialité</th>
                 <th className="px-4 py-2 text-left">Bureau</th>
@@ -122,6 +123,9 @@ export default function AdminTeachersPage() {
                   </td>
                   <td className="px-4 py-2">
                     <div className="text-xs font-mono">{t.email}</div>
+                  </td>
+                  <td className="px-4 py-2 text-xs">
+                    {t.contact_email || <span className="text-muted-foreground">—</span>}
                   </td>
                   <td className="px-4 py-2 text-xs">
                     {t.phone || <span className="text-muted-foreground">—</span>}
@@ -181,10 +185,7 @@ export default function AdminTeachersPage() {
       <CreateTeacherModal
         open={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-        onCreated={() => {
-          setShowCreateModal(false);
-          load();
-        }}
+        onCreated={load}
       />
     </main>
   );
