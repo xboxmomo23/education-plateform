@@ -8,11 +8,14 @@ import {
   getAdminStudentsHandler,
   createStudentForAdminHandler,
   updateStudentStatusHandler,
+  updateStudentClassHandler,
+  resendStudentInviteHandler,
   // 👇 Professeurs
   getAdminTeachersHandler,
   createTeacherForAdminHandler,
   updateTeacherForAdminHandler,
   updateTeacherStatusHandler,
+  resendTeacherInviteHandler,
   // 👇 Matières
   getAdminSubjectsHandler,
   createSubjectForAdminHandler,
@@ -26,6 +29,7 @@ import {
   createStaffForAdminHandler,
   updateStaffForAdminHandler,
   updateStaffStatusHandler,
+  resendStaffInviteHandler,
 } from "../controllers/admin.controller";
 
 
@@ -104,7 +108,10 @@ router.post(
       .optional({ checkFalsy: true })
       .isEmail()
       .withMessage("Email de contact invalide"),
-    body("class_id").isUUID().withMessage("class_id doit être un UUID valide"),
+    body("class_id")
+      .optional({ nullable: true, checkFalsy: true })
+      .isUUID()
+      .withMessage("class_id doit être un UUID valide"),
     body("student_number")
       .optional()
       .isString()
@@ -128,6 +135,20 @@ router.patch(
   validateRequest,
   updateStudentStatusHandler
 );
+
+router.patch(
+  "/students/:userId",
+  [
+    body("class_id")
+      .optional({ nullable: true, checkFalsy: true })
+      .isUUID()
+      .withMessage("class_id doit être un UUID valide"),
+  ],
+  validateRequest,
+  updateStudentClassHandler
+);
+
+router.post("/students/:userId/resend-invite", resendStudentInviteHandler);
 
 
 
@@ -175,6 +196,11 @@ router.post(
   ],
   validateRequest,
   createStaffForAdminHandler
+);
+
+router.post(
+  "/staff/:staffId/resend-invite",
+  resendStaffInviteHandler
 );
 
 /**
@@ -376,6 +402,11 @@ router.patch(
   ],
   validateRequest,
   updateTeacherStatusHandler
+);
+
+router.post(
+  "/teachers/:userId/resend-invite",
+  resendTeacherInviteHandler
 );
 
 export default router;

@@ -17,6 +17,13 @@ export default function AdminTeachersPage() {
     null
   );
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [resendInfo, setResendInfo] = useState<{ message: string; inviteUrl?: string } | null>(null);
+  const [resendError, setResendError] = useState<string | null>(null);
+  const [resendCopyFeedback, setResendCopyFeedback] = useState<string | null>(null);
+  const [resendLoadingId, setResendLoadingId] = useState<string | null>(null);
+  const [statusInfo, setStatusInfo] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -47,15 +54,49 @@ export default function AdminTeachersPage() {
     }
 
     try {
+      setTogglingId(teacher.user_id);
+      setStatusInfo(null);
+      setStatusError(null);
       await teachersApi.updateStatus(teacher.user_id, !teacher.active);
       setTeachers((prev) =>
         prev.map((t) =>
           t.user_id === teacher.user_id ? { ...t, active: !t.active } : t
         )
       );
+      setStatusInfo(
+        `Compte professeur ${teacher.full_name} ${
+          teacher.active ? "désactivé" : "réactivé"
+        }.`
+      );
     } catch (err: any) {
       console.error(err);
-      alert("Erreur lors de la mise à jour du statut du professeur");
+      setStatusError(err.message || "Erreur lors de la mise à jour du statut du professeur.");
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  const handleResendInvite = async (teacher: AdminTeacher) => {
+    if (!teacher.user_id) return;
+    try {
+      setResendLoadingId(teacher.user_id);
+      setResendError(null);
+      setResendInfo(null);
+      setResendCopyFeedback(null);
+      const res = await teachersApi.resendInvite(teacher.user_id);
+      if (!res.success) {
+        setResendError(res.error || "Impossible de renvoyer l'invitation.");
+        return;
+      }
+      setResendInfo({
+        message: `Invitation renvoyée à ${teacher.full_name}.`,
+        inviteUrl: res.inviteUrl,
+      });
+    } catch (err: any) {
+      console.error(err);
+      setResendError(err.message || "Erreur lors de l'envoi de l'invitation.");
+    } finally {
+      setResendLoadingId(null);
     }
   };
 
@@ -77,6 +118,50 @@ export default function AdminTeachersPage() {
         </div>
         <Button onClick={() => setShowCreateModal(true)}>+ Créer un professeur</Button>
       </header>
+
+      {statusInfo && (
+        <p className="mb-3 text-sm text-emerald-700">{statusInfo}</p>
+      )}
+      {statusError && (
+        <p className="mb-3 text-sm text-red-600">{statusError}</p>
+      )}
+
+      {resendInfo && (
+        <div className="mb-4 rounded-md bg-emerald-50 p-3 text-xs text-emerald-800">
+          <p>{resendInfo.message}</p>
+          {resendInfo.inviteUrl && (
+            <>
+              <p className="mt-2 break-all font-mono text-[11px]">
+                {resendInfo.inviteUrl}
+              </p>
+              <button
+                type="button"
+                className="mt-2 rounded border px-2 py-1 font-medium hover:bg-white"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(resendInfo.inviteUrl!);
+                    setResendCopyFeedback("Lien copié dans le presse-papiers.");
+                  } catch (err) {
+                    console.error(err);
+                    setResendCopyFeedback("Impossible de copier le lien.");
+                  }
+                }}
+              >
+                Copier le lien
+              </button>
+              {resendCopyFeedback && (
+                <p className="text-[11px] text-emerald-700">
+                  {resendCopyFeedback}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {resendError && (
+        <p className="mb-4 text-sm text-red-600">{resendError}</p>
+      )}
 
       {/* États de chargement / erreur */}
       {loading && (
@@ -145,6 +230,7 @@ export default function AdminTeachersPage() {
                       <Switch
                         checked={t.active}
                         onCheckedChange={() => handleToggleActive(t)}
+                        disabled={togglingId === t.user_id}
                       />
                       <Badge
                         variant={t.active ? "default" : "outline"}
@@ -155,14 +241,28 @@ export default function AdminTeachersPage() {
                     </div>
                   </td>
                   <td className="px-4 py-2 text-right">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setSelectedTeacher(t)}
-                      disabled={!t.user_id}
-                    >
-                      Modifier
-                    </Button>
+                    <div className="flex flex-col items-end gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setSelectedTeacher(t)}
+                        disabled={!t.user_id}
+                      >
+                        Modifier
+                      </Button>
+                      {t.must_change_password && !t.last_login && t.user_id && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleResendInvite(t)}
+                          disabled={resendLoadingId === t.user_id}
+                        >
+                          {resendLoadingId === t.user_id
+                            ? "Envoi..."
+                            : "Renvoyer l'invitation"}
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

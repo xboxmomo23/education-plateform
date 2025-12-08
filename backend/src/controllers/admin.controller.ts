@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import pool from "../config/database";
 import { createUser } from "../models/user.model";
-import { createInviteTokenForUser } from "./auth.controller";
+import { buildInviteUrl, createInviteTokenForUser } from "./auth.controller";
 import { sendInviteEmail } from "../services/email.service";
 import { generateTemporaryPassword } from "../utils/auth.utils";
 import {
@@ -37,6 +37,116 @@ async function getEstablishmentName(establishmentId: string): Promise<string | n
     [establishmentId]
   );
   return result.rows[0]?.name || null;
+}
+
+type BasicUserRole = "student" | "teacher" | "staff";
+
+async function getContactEmailForRole(userId: string, role: BasicUserRole): Promise<string | null> {
+  let table: string | null = null;
+  switch (role) {
+    case "student":
+      table = "student_profiles";
+      break;
+    case "teacher":
+      table = "teacher_profiles";
+      break;
+    case "staff":
+      table = "staff_profiles";
+      break;
+    default:
+      table = null;
+  }
+
+  if (!table) {
+    return null;
+  }
+
+  const res = await pool.query(
+    `SELECT contact_email FROM ${table} WHERE user_id = $1 LIMIT 1`,
+    [userId]
+  );
+
+  return res.rows[0]?.contact_email || null;
+}
+
+async function processInviteResend(
+  targetUserId: string,
+  role: BasicUserRole,
+  estId: string
+): Promise<
+  | { ok: true; inviteUrl: string }
+  | { ok: false; status: number; message: string }
+> {
+  const userResult = await pool.query(
+    `
+      SELECT id, email, full_name, must_change_password, last_login
+      FROM users
+      WHERE id = $1
+        AND role = $2
+        AND establishment_id = $3
+    `,
+    [targetUserId, role, estId]
+  );
+
+  if (userResult.rowCount === 0) {
+    return { ok: false, status: 404, message: "Utilisateur introuvable pour cet établissement" };
+  }
+
+  const userRow = userResult.rows[0];
+  if (!userRow.must_change_password || userRow.last_login) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Ce compte est déjà activé, l'invitation ne peut pas être renvoyée",
+    };
+  }
+
+  let inviteUrl: string;
+  const existingTokenResult = await pool.query(
+    `
+      SELECT token
+      FROM password_reset_tokens
+      WHERE user_id = $1
+        AND purpose = 'invite'
+        AND used_at IS NULL
+        AND expires_at > NOW()
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+    [userRow.id]
+  );
+
+  const existingCount = existingTokenResult?.rowCount ?? 0;
+  if (existingCount > 0) {
+    const token = existingTokenResult.rows[0].token as string;
+    inviteUrl = buildInviteUrl(token);
+    console.log("[INVITE] Réutilisation du lien d'activation pour", userRow.email, ":", inviteUrl);
+  } else {
+    const invite = await createInviteTokenForUser({
+      id: userRow.id,
+      email: userRow.email,
+      full_name: userRow.full_name,
+    });
+    inviteUrl = invite.inviteUrl;
+  }
+
+  const contactEmail = await getContactEmailForRole(userRow.id, role);
+  const establishmentName = await getEstablishmentName(estId);
+  const targetEmail = contactEmail || userRow.email;
+
+  if (targetEmail) {
+    await sendInviteEmail({
+      to: targetEmail,
+      loginEmail: userRow.email,
+      role,
+      establishmentName: establishmentName || undefined,
+      inviteUrl,
+    }).catch((err) => {
+      console.error("[MAIL] Erreur envoi email d'invitation:", err);
+    });
+  }
+
+  return { ok: true, inviteUrl };
 }
 
 /**
@@ -358,20 +468,26 @@ export async function getAdminStudentsHandler(req: Request, res: Response) {
         u.full_name,
         u.email,
         u.active,
+        u.must_change_password,
+        u.last_login,
         sp.contact_email,
         s.student_number,
         s.date_of_birth,
-        c.id AS class_id,
+        s.class_id,
         c.label AS class_label,
         c.code AS class_code,
         c.level,
         c.academic_year
       FROM students s
       JOIN users u ON u.id = s.user_id
-      JOIN classes c ON c.id = s.class_id
+      LEFT JOIN classes c ON c.id = s.class_id
       LEFT JOIN student_profiles sp ON sp.user_id = u.id
-      WHERE c.establishment_id = $1
-      ORDER BY c.academic_year DESC, c.label ASC, u.full_name ASC
+      WHERE u.establishment_id = $1
+        AND u.role = 'student'
+      ORDER BY
+        c.academic_year DESC NULLS LAST,
+        c.label ASC NULLS LAST,
+        u.full_name ASC
     `,
       [estId]
     );
@@ -405,11 +521,11 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
       date_of_birth,
     } = req.body;
 
-    if (!full_name || !class_id) {
+    if (!full_name) {
       return res.status(400).json({
         success: false,
         error:
-          "Les champs full_name et class_id sont obligatoires pour créer un élève",
+          "Le champ full_name est obligatoire pour créer un élève",
       });
     }
 
@@ -421,22 +537,26 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
       });
     }
 
-    const classResult = await pool.query(
-      `
-      SELECT id, code, label
-      FROM classes
-      WHERE id = $1
-        AND establishment_id = $2
-    `,
-      [class_id, estId]
-    );
+    let normalizedClassId: string | null = null;
+    if (typeof class_id === "string" && class_id.trim().length > 0) {
+      normalizedClassId = class_id.trim();
+      const classResult = await pool.query(
+        `
+        SELECT id
+        FROM classes
+        WHERE id = $1
+          AND establishment_id = $2
+      `,
+        [normalizedClassId, estId]
+      );
 
-    if (classResult.rowCount === 0) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "La classe choisie n'appartient pas à votre établissement ou n'existe pas",
-      });
+      if (classResult.rowCount === 0) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "La classe choisie n'appartient pas à votre établissement ou n'existe pas",
+        });
+      }
     }
 
     let loginEmail = (login_email || email || "");
@@ -522,7 +642,7 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
     `,
       [
         user.id,
-        class_id,
+        normalizedClassId,
         finalStudentNumber,
         date_of_birth ? new Date(date_of_birth) : null,
       ]
@@ -631,10 +751,125 @@ export async function updateStudentStatusHandler(req: Request, res: Response) {
   }
 }
 
+export async function updateStudentClassHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const targetUserId = req.params.userId;
+    const { class_id } = req.body as { class_id?: string | null };
 
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
 
+    const studentUserResult = await pool.query(
+      `
+        SELECT id
+        FROM users
+        WHERE id = $1
+          AND role = 'student'
+          AND establishment_id = $2
+      `,
+      [targetUserId, estId]
+    );
 
+    if (studentUserResult.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Élève introuvable pour cet établissement",
+      });
+    }
 
+    let normalizedClassId: string | null = null;
+    if (typeof class_id === "string" && class_id.trim().length > 0) {
+      normalizedClassId = class_id.trim();
+      const classResult = await pool.query(
+        `
+          SELECT id
+          FROM classes
+          WHERE id = $1
+            AND establishment_id = $2
+        `,
+        [normalizedClassId, estId]
+      );
+
+      if (classResult.rowCount === 0) {
+        return res.status(400).json({
+          success: false,
+          error: "La classe choisie n'appartient pas à votre établissement ou n'existe pas",
+        });
+      }
+    }
+
+    const updateResult = await pool.query(
+      `
+        UPDATE students
+        SET class_id = $1
+        WHERE user_id = $2
+      `,
+      [normalizedClassId, targetUserId]
+    );
+
+    if (updateResult.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Impossible de mettre à jour la classe de cet élève",
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Classe de l'élève mise à jour",
+      data: {
+        class_id: normalizedClassId,
+      },
+    });
+  } catch (error) {
+    console.error("Erreur updateStudentClassHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la mise à jour de la classe de l'élève",
+    });
+  }
+}
+
+export async function resendStudentInviteHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const targetUserId = req.params.userId;
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const result = await processInviteResend(targetUserId, "student", estId);
+    if (!result.ok) {
+      return res.status(result.status).json({
+        success: false,
+        error: result.message,
+      });
+    }
+
+    return res.json({
+      success: true,
+      inviteUrl: result.inviteUrl,
+      message: "Invitation renvoyée avec succès",
+    });
+  } catch (error) {
+    console.error("Erreur resendStudentInviteHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de l'envoi de la nouvelle invitation",
+    });
+  }
+}
 
 
 /**
@@ -660,6 +895,8 @@ export async function getAdminStaffHandler(req: Request, res: Response) {
         u.full_name,
         u.email,
         u.active,
+        u.must_change_password,
+        u.last_login,
         u.created_at,
         sp.contact_email,
         sp.phone,
@@ -1085,6 +1322,41 @@ export async function updateStaffStatusHandler(req: Request, res: Response) {
   }
 }
 
+export async function resendStaffInviteHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const staffId = req.params.staffId;
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const result = await processInviteResend(staffId, "staff", estId);
+    if (!result.ok) {
+      return res.status(result.status).json({
+        success: false,
+        error: result.message,
+      });
+    }
+
+    return res.json({
+      success: true,
+      inviteUrl: result.inviteUrl,
+      message: "Invitation renvoyée avec succès",
+    });
+  } catch (error) {
+    console.error("Erreur resendStaffInviteHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de l'envoi de la nouvelle invitation",
+    });
+  }
+}
+
 
 
 
@@ -1116,6 +1388,8 @@ export async function getAdminTeachersHandler(req: Request, res: Response) {
         u.full_name,
         u.email,
         u.active,
+        u.must_change_password,
+        u.last_login,
         tp.employee_no,
         tp.hire_date,
         tp.specialization,
@@ -1514,6 +1788,41 @@ export async function updateTeacherStatusHandler(req: Request, res: Response) {
     return res.status(500).json({
       success: false,
       error: "Erreur lors de la mise à jour du statut du professeur",
+    });
+  }
+}
+
+export async function resendTeacherInviteHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const targetUserId = req.params.userId;
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const result = await processInviteResend(targetUserId, "teacher", estId);
+    if (!result.ok) {
+      return res.status(result.status).json({
+        success: false,
+        error: result.message,
+      });
+    }
+
+    return res.json({
+      success: true,
+      inviteUrl: result.inviteUrl,
+      message: "Invitation renvoyée avec succès",
+    });
+  } catch (error) {
+    console.error("Erreur resendTeacherInviteHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de l'envoi de la nouvelle invitation",
     });
   }
 }

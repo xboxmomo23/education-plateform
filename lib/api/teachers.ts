@@ -7,6 +7,8 @@ export interface AdminTeacher {
   full_name: string;
   email: string;
   active: boolean;
+  must_change_password?: boolean;
+  last_login?: string | null;
   employee_no?: string | null;
   hire_date?: string | null;
   specialization?: string | null;
@@ -78,6 +80,13 @@ export const teachersApi = {
         method: "PATCH",
         body: JSON.stringify({ active }),
       }
+    );
+  },
+
+  async resendInvite(userId: string) {
+    return apiFetch<{ success: boolean; inviteUrl?: string; error?: string }>(
+      `/admin/teachers/${userId}/resend-invite`,
+      { method: "POST" }
     );
   },
 };

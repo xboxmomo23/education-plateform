@@ -875,6 +875,19 @@ export async function sendInvite(req: Request, res: Response): Promise<void> {
   }
 }
 
+function buildInviteUrlFromToken(token: string): string {
+  const appUrl =
+    process.env.APP_URL ||
+    process.env.FRONTEND_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    'http://localhost:3000';
+  return `${appUrl.replace(/\/$/, '')}/premiere-connexion?invite=${encodeURIComponent(token)}`;
+}
+
+export function buildInviteUrl(token: string): string {
+  return buildInviteUrlFromToken(token);
+}
+
 export async function createInviteTokenForUser(user: {
   id: string;
   email: string;
@@ -892,12 +905,7 @@ export async function createInviteTokenForUser(user: {
     [user.id, token, 'invite', expiresAt]
   );
 
-  const appUrl =
-    process.env.APP_URL ||
-    process.env.FRONTEND_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    'http://localhost:3000';
-  const inviteUrl = `${appUrl.replace(/\/$/, '')}/premiere-connexion?invite=${encodeURIComponent(token)}`;
+  const inviteUrl = buildInviteUrlFromToken(token);
   console.log('[INVITE] Lien d\'activation pour', user.email, ':', inviteUrl);
   return { token, inviteUrl };
 }

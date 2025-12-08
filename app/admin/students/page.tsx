@@ -2,13 +2,14 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import { apiFetch } from "@/lib/api/api-client";
-import { updateStudentStatusApi } from "@/lib/api/students";
+import { resendStudentInviteApi, updateStudentClassApi, updateStudentStatusApi } from "@/lib/api/students";
 
 interface ClassOption {
   id: string;
   code: string;
   label: string;
   academic_year: number;
+  level?: string | null;
 }
 
 interface StudentItem {
@@ -17,13 +18,15 @@ interface StudentItem {
   full_name: string;
   email: string;
   active: boolean;
+  must_change_password?: boolean;
+  last_login?: string | null;
   student_number: string | null;
   date_of_birth: string | null;
-  class_id: string;
-  class_label: string;
-  class_code: string;
-  level: string | null;
-  academic_year: number;
+  class_id: string | null;
+  class_label?: string | null;
+  class_code?: string | null;
+  level?: string | null;
+  academic_year?: number | null;
 }
 
 interface StudentsResponse {
@@ -85,6 +88,20 @@ export default function AdminStudentsPage() {
     class_id: "",
     date_of_birth: "",
   });
+  const [showOnlyNoClass, setShowOnlyNoClass] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<StudentItem | null>(null);
+  const [editClassId, setEditClassId] = useState<string>("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState<string | null>(null);
+  const [resendInviteUrl, setResendInviteUrl] = useState<string | null>(null);
+  const [resendError, setResendError] = useState<string | null>(null);
+  const [resendCopyFeedback, setResendCopyFeedback] = useState<string | null>(null);
+  const [resendLoadingId, setResendLoadingId] = useState<string | null>(null);
+
+  const displayedStudents = showOnlyNoClass
+    ? students.filter((st) => !st.class_id)
+    : students;
 
   useEffect(() => {
     loadData();
@@ -147,10 +164,8 @@ export default function AdminStudentsPage() {
     setInviteUrl(null);
     setCopyFeedback(null);
 
-    if (!form.full_name.trim() || !form.class_id) {
-      setSubmitError(
-        "Merci de renseigner au minimum : nom complet et classe."
-      );
+    if (!form.full_name.trim()) {
+      setSubmitError("Merci de renseigner le nom complet.");
       return;
     }
 
@@ -159,8 +174,10 @@ export default function AdminStudentsPage() {
 
       const payload: Record<string, unknown> = {
         full_name: form.full_name.trim(),
-        class_id: form.class_id,
       };
+      if (form.class_id) {
+        payload.class_id = form.class_id;
+      }
       if (form.login_email.trim()) {
         payload.login_email = form.login_email.trim();
       }
@@ -182,7 +199,9 @@ export default function AdminStudentsPage() {
       }
 
       const created = res.data;
-      const cls = classes.find((c) => c.id === created.student.class_id);
+      const cls = created.student.class_id
+        ? classes.find((c) => c.id === created.student.class_id)
+        : null;
 
       const newItem: StudentItem = {
         student_id: created.student.id,
@@ -190,13 +209,15 @@ export default function AdminStudentsPage() {
         full_name: created.user.full_name,
         email: created.user.email,
         active: created.user.active,
+        must_change_password: true,
+        last_login: null,
         student_number: created.student.student_number,
         date_of_birth: created.student.date_of_birth,
-        class_id: created.student.class_id,
-        class_label: cls?.label || "Classe",
-        class_code: cls?.code || "",
-        level: null,
-        academic_year: cls?.academic_year || new Date().getFullYear(),
+        class_id: created.student.class_id || null,
+        class_label: cls?.label || null,
+        class_code: cls?.code || null,
+        level: cls?.level || null,
+        academic_year: cls?.academic_year ?? null,
       };
 
       setStudents((prev) => [newItem, ...prev]);
@@ -234,6 +255,69 @@ export default function AdminStudentsPage() {
     }
   }
 
+  async function handleEditSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!editingStudent) return;
+    try {
+      setEditLoading(true);
+      setEditError(null);
+      const classIdPayload = editClassId ? editClassId : null;
+      const res = await updateStudentClassApi(editingStudent.user_id, classIdPayload);
+      if (res && (res as any).success === false) {
+        setEditError((res as any).error || "Erreur lors de la mise à jour de la classe.");
+        return;
+      }
+      const cls = classIdPayload
+        ? classes.find((c) => c.id === classIdPayload)
+        : null;
+      setStudents((prev) =>
+        prev.map((s) =>
+          s.user_id === editingStudent.user_id
+            ? {
+                ...s,
+                class_id: classIdPayload,
+                class_label: cls?.label || null,
+                class_code: cls?.code || null,
+                level: cls?.level || null,
+                academic_year: cls?.academic_year ?? null,
+              }
+            : s
+        )
+      );
+      setEditingStudent(null);
+      setEditClassId("");
+    } catch (err: any) {
+      console.error(err);
+      setEditError(err.message || "Erreur lors de la mise à jour de la classe.");
+    } finally {
+      setEditLoading(false);
+    }
+  }
+
+  async function handleResendInvite(student: StudentItem) {
+    try {
+      setResendError(null);
+      setResendSuccess(null);
+      setResendInviteUrl(null);
+      setResendCopyFeedback(null);
+      setResendLoadingId(student.user_id);
+      const res = await resendStudentInviteApi(student.user_id);
+      if (!res.success) {
+        setResendError(res.error || "Impossible de renvoyer l'invitation.");
+        return;
+      }
+      setResendSuccess(`Invitation renvoyée à ${student.full_name}.`);
+      if (res.inviteUrl) {
+        setResendInviteUrl(res.inviteUrl);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setResendError(err.message || "Erreur lors de l'envoi de l'invitation.");
+    } finally {
+      setResendLoadingId(null);
+    }
+  }
+
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
       <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -253,6 +337,49 @@ export default function AdminStudentsPage() {
           + Ajouter un élève
         </button>
       </header>
+
+      <div className="mb-4 flex flex-wrap items-center gap-3 text-sm">
+        <button
+          type="button"
+          onClick={() => setShowOnlyNoClass((prev) => !prev)}
+          className="rounded-md border px-3 py-1 text-xs font-medium hover:bg-muted"
+        >
+          {showOnlyNoClass ? "Afficher tous les élèves" : "Voir les élèves sans classe"}
+        </button>
+        {resendSuccess && (
+          <div className="flex flex-col gap-2 rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            <p>{resendSuccess}</p>
+            {resendInviteUrl && (
+              <>
+                <p className="break-all font-mono text-[11px]">
+                  {resendInviteUrl}
+                </p>
+                <button
+                  type="button"
+                  className="w-fit rounded border px-2 py-1 font-medium hover:bg-white"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(resendInviteUrl);
+                      setResendCopyFeedback("Lien copié dans le presse-papiers.");
+                    } catch (err) {
+                      console.error(err);
+                      setResendCopyFeedback("Impossible de copier le lien.");
+                    }
+                  }}
+                >
+                  Copier le lien
+                </button>
+                {resendCopyFeedback && (
+                  <p className="text-[11px] text-emerald-700">{resendCopyFeedback}</p>
+                )}
+              </>
+            )}
+          </div>
+        )}
+        {resendError && (
+          <p className="text-xs text-red-600">{resendError}</p>
+        )}
+      </div>
 
       {loading && (
         <p className="text-sm text-muted-foreground">
@@ -285,7 +412,7 @@ export default function AdminStudentsPage() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {students.map((st) => (
+              {displayedStudents.map((st) => (
                 <tr key={st.student_id} className="hover:bg-muted/30">
                   <td className="px-4 py-2">
                     <div className="font-medium">{st.full_name}</div>
@@ -299,10 +426,21 @@ export default function AdminStudentsPage() {
                     </a>
                   </td>
                   <td className="px-4 py-2 text-xs">
-                    <div>{st.class_label}</div>
-                    <div className="font-mono text-[11px] text-muted-foreground">
-                      {st.class_code}
-                    </div>
+                    {st.class_label ? (
+                      <>
+                        <div>{st.class_label}</div>
+                        <div className="font-mono text-[11px] text-muted-foreground">
+                          {st.class_code}
+                        </div>
+                        {st.academic_year && (
+                          <div className="text-[11px] text-muted-foreground">
+                            {st.academic_year}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">Aucune classe</span>
+                    )}
                   </td>
                   <td className="px-4 py-2 text-xs">
                     {st.student_number || "-"}
@@ -324,17 +462,42 @@ export default function AdminStudentsPage() {
                     </span>
                   </td>
                   <td className="px-4 py-2 text-right">
-                    <button
-                      type="button"
-                      onClick={() => toggleStudentStatus(st)}
-                      className={`text-xs font-medium ${
-                        st.active
-                          ? "text-red-600 hover:underline"
-                          : "text-emerald-700 hover:underline"
-                      }`}
-                    >
-                      {st.active ? "Désactiver" : "Réactiver"}
-                    </button>
+                    <div className="flex flex-col items-end gap-1 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => toggleStudentStatus(st)}
+                        className={`font-medium ${
+                          st.active
+                            ? "text-red-600 hover:underline"
+                            : "text-emerald-700 hover:underline"
+                        }`}
+                      >
+                        {st.active ? "Désactiver" : "Réactiver"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingStudent(st);
+                          setEditClassId(st.class_id || "");
+                          setEditError(null);
+                        }}
+                        className="text-primary hover:underline"
+                      >
+                        Modifier la classe
+                      </button>
+                      {st.must_change_password && !st.last_login && (
+                        <button
+                          type="button"
+                          onClick={() => handleResendInvite(st)}
+                          className="text-blue-600 hover:underline"
+                          disabled={resendLoadingId === st.user_id}
+                        >
+                          {resendLoadingId === st.user_id
+                            ? "Envoi..."
+                            : "Renvoyer l'invitation"}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -406,7 +569,7 @@ export default function AdminStudentsPage() {
 
               <div>
                 <label className="mb-1 block text-xs font-medium">
-                  Classe *
+                  Classe (optionnel)
                 </label>
                 <select
                   name="class_id"
@@ -414,13 +577,16 @@ export default function AdminStudentsPage() {
                   onChange={handleChange}
                   className="w-full rounded-md border px-3 py-2 text-sm"
                 >
-                  <option value="">Sélectionnez une classe</option>
+                  <option value="">— Aucune classe pour l'instant —</option>
                   {classes.map((cls) => (
                     <option key={cls.id} value={cls.id}>
                       {cls.label} ({cls.code}) – {cls.academic_year}
                     </option>
                   ))}
                 </select>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Vous pourrez affecter une classe plus tard depuis la fiche élève.
+                </p>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
@@ -497,6 +663,72 @@ export default function AdminStudentsPage() {
                   className="rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isSubmitting ? "Création..." : "Créer l'élève"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editingStudent && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-xl bg-background p-6 shadow-lg">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">
+                Modifier la classe de {editingStudent.full_name}
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!editLoading) {
+                    setEditingStudent(null);
+                    setEditClassId("");
+                  }
+                }}
+                className="text-sm text-muted-foreground hover:text-foreground"
+              >
+                Fermer
+              </button>
+            </div>
+            <form className="space-y-4" onSubmit={handleEditSubmit}>
+              <div>
+                <label className="mb-1 block text-xs font-medium">
+                  Classe
+                </label>
+                <select
+                  value={editClassId}
+                  onChange={(e) => setEditClassId(e.target.value)}
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                >
+                  <option value="">— Aucune classe —</option>
+                  {classes.map((cls) => (
+                    <option key={cls.id} value={cls.id}>
+                      {cls.label} ({cls.code}) – {cls.academic_year}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {editError && <p className="text-xs text-red-600">{editError}</p>}
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!editLoading) {
+                      setEditingStudent(null);
+                      setEditClassId("");
+                    }
+                  }}
+                  className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                  disabled={editLoading}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                  disabled={editLoading}
+                >
+                  {editLoading ? "Enregistrement..." : "Enregistrer"}
                 </button>
               </div>
             </form>

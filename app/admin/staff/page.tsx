@@ -24,6 +24,8 @@ interface AdminStaff {
   phone?: string | null;
   department?: string | null;
   employee_no?: string | null;
+  must_change_password?: boolean;
+  last_login?: string | null;
 }
 
 interface StaffListResponse {
@@ -58,6 +60,13 @@ export default function AdminStaffPage() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [createInviteUrl, setCreateInviteUrl] = useState<string | null>(null);
   const [createCopyFeedback, setCreateCopyFeedback] = useState<string | null>(null);
+  const [resendSuccess, setResendSuccess] = useState<string | null>(null);
+  const [resendInviteUrl, setResendInviteUrl] = useState<string | null>(null);
+  const [resendCopyFeedback, setResendCopyFeedback] = useState<string | null>(null);
+  const [resendError, setResendError] = useState<string | null>(null);
+  const [resendLoadingId, setResendLoadingId] = useState<string | null>(null);
+  const [statusInfo, setStatusInfo] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   // Modale édition
   const [showEditModal, setShowEditModal] = useState(false);
@@ -251,6 +260,8 @@ export default function AdminStaffPage() {
   const toggleActive = async (item: AdminStaff) => {
     try {
       setTogglingId(item.staff_id);
+      setStatusInfo(null);
+      setStatusError(null);
       const res = await apiFetch<StaffMutationResponse>(
         `/admin/staff/${item.staff_id}/status`,
         {
@@ -260,16 +271,48 @@ export default function AdminStaffPage() {
       );
 
       if (!res.success) {
-        alert(res.error || "Erreur lors de la mise à jour du statut");
+        setStatusError(res.error || "Erreur lors de la mise à jour du statut");
         return;
       }
 
       await reloadStaff();
+      setStatusInfo(
+        `Compte staff ${item.full_name} ${
+          item.active ? "désactivé" : "réactivé"
+        }.`
+      );
     } catch (err: any) {
       console.error("Erreur toggle staff:", err);
-      alert(err.message || "Erreur lors de la mise à jour du statut");
+      setStatusError(err.message || "Erreur lors de la mise à jour du statut");
     } finally {
       setTogglingId(null);
+    }
+  };
+
+  const handleResendInvite = async (item: AdminStaff) => {
+    try {
+      setResendLoadingId(item.staff_id);
+      setResendError(null);
+      setResendSuccess(null);
+      setResendInviteUrl(null);
+      setResendCopyFeedback(null);
+      const res = await apiFetch<{ success: boolean; inviteUrl?: string; error?: string }>(
+        `/admin/staff/${item.staff_id}/resend-invite`,
+        { method: "POST" }
+      );
+      if (!res.success) {
+        setResendError(res.error || "Impossible de renvoyer l'invitation.");
+        return;
+      }
+      setResendSuccess(`Invitation renvoyée à ${item.full_name}.`);
+      if (res.inviteUrl) {
+        setResendInviteUrl(res.inviteUrl);
+      }
+    } catch (err: any) {
+      console.error("Erreur renvoi invitation staff:", err);
+      setResendError(err.message || "Erreur lors de l'envoi de l'invitation.");
+    } finally {
+      setResendLoadingId(null);
     }
   };
 
@@ -308,6 +351,52 @@ export default function AdminStaffPage() {
             Créer un compte staff
           </Button>
         </div>
+
+        {resendSuccess && (
+          <div className="mb-4 rounded-md bg-emerald-50 p-3 text-xs text-emerald-800">
+            <p>{resendSuccess}</p>
+            {resendInviteUrl && (
+              <>
+                <p className="mt-2 break-all font-mono text-[11px]">
+                  {resendInviteUrl}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(resendInviteUrl);
+                      setResendCopyFeedback("Lien copié dans le presse-papiers.");
+                    } catch (err) {
+                      console.error(err);
+                      setResendCopyFeedback("Impossible de copier le lien.");
+                    }
+                  }}
+                >
+                  Copier le lien
+                </Button>
+                {resendCopyFeedback && (
+                  <p className="mt-1 text-[11px] text-emerald-700">
+                    {resendCopyFeedback}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {resendError && (
+          <p className="mb-4 text-xs text-red-600">{resendError}</p>
+        )}
+
+        {statusInfo && (
+          <p className="mb-2 text-xs text-emerald-700">{statusInfo}</p>
+        )}
+        {statusError && (
+          <p className="mb-2 text-xs text-red-600">{statusError}</p>
+        )}
 
         {loading && (
           <p className="text-sm text-muted-foreground">
@@ -375,13 +464,27 @@ export default function AdminStaffPage() {
                       </div>
                     </td>
                     <td className="px-4 py-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openEdit(s)}
-                      >
-                        Modifier
-                      </Button>
+                      <div className="flex flex-col items-start gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openEdit(s)}
+                        >
+                          Modifier
+                        </Button>
+                        {s.must_change_password && !s.last_login && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleResendInvite(s)}
+                            disabled={resendLoadingId === s.staff_id}
+                          >
+                            {resendLoadingId === s.staff_id
+                              ? "Envoi..."
+                              : "Renvoyer l'invitation"}
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
