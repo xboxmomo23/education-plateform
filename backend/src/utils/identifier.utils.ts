@@ -56,13 +56,22 @@ async function getEstablishmentDomain(establishmentId: string): Promise<string> 
       ? establishmentRow.login_email_domain.trim().toLowerCase()
       : null;
 
+  let domain: string;
   if (explicitDomain) {
-    return explicitDomain;
+    domain = explicitDomain;
+  } else {
+    const source = establishmentRow?.code || establishmentRow?.name || "etablissement";
+    const schoolSlug = slugify(source);
+    domain = `${schoolSlug}.${baseDomain}`;
   }
 
-  const source = establishmentRow?.code || establishmentRow?.name || "etablissement";
-  const schoolSlug = slugify(source);
-  return `${schoolSlug}.${baseDomain}`;
+  console.log("[LOGIN_EMAIL_DEBUG]", {
+    establishmentId,
+    login_email_domain: establishmentRow?.login_email_domain || null,
+    chosenDomain: domain,
+  });
+
+  return domain;
 }
 
 async function loginExists(email: string): Promise<boolean> {
