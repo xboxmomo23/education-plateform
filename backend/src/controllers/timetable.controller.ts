@@ -581,21 +581,60 @@ export async function generateFromTemplatesHandler(req: Request, res: Response) 
  */
 export async function getStaffClassesHandler(req: Request, res: Response) {
   try {
-    const { userId } = req.user!;
+    const { userId, role, establishmentId, assignedClassIds } = req.user!;
 
-    const query = `
-      SELECT DISTINCT
-        c.id as class_id,
-        c.label as class_label,
-        c.code as class_code,
-        c.level
-      FROM classes c
-      JOIN class_staff cs ON c.id = cs.class_id
-      WHERE cs.user_id = $1
-      ORDER BY c.level, c.label
-    `;
+    if (role === 'admin') {
+      const estId = establishmentId;
+      if (!estId) {
+        return res.status(403).json({
+          success: false,
+          error: 'Aucun établissement associé au compte admin',
+        });
+      }
 
-    const result = await pool.query(query, [userId]);
+      const result = await pool.query(
+        `
+          SELECT
+            id AS class_id,
+            label AS class_label,
+            code AS class_code,
+            level
+          FROM classes
+          WHERE establishment_id = $1
+            AND archived = false
+          ORDER BY level, label
+        `,
+        [estId]
+      );
+
+      return res.json({
+        success: true,
+        data: result.rows,
+      });
+    }
+
+    const assignments = assignedClassIds ?? [];
+    if (assignments.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
+      });
+    }
+
+    const result = await pool.query(
+      `
+        SELECT
+          id AS class_id,
+          label AS class_label,
+          code AS class_code,
+          level
+        FROM classes
+        WHERE id = ANY($1::uuid[])
+          AND archived = false
+        ORDER BY level, label
+      `,
+      [assignments]
+    );
 
     return res.json({
       success: true,
@@ -887,7 +926,7 @@ export async function getTeachersForStaffHandler(req: Request, res: Response) {
 // 🔹 Création d'un cours par le STAFF
 export async function createCourseForStaffHandler(req: Request, res: Response) {
   try {
-    const { userId, role } = req.user!;
+    const { userId, role, assignedClassIds } = req.user!;
     const { class_id, subject_id, teacher_id, default_room } = req.body;
 
     if (role !== 'staff' && role !== 'admin') {
@@ -897,17 +936,24 @@ export async function createCourseForStaffHandler(req: Request, res: Response) {
       });
     }
 
-    // Vérifier que le staff gère bien cette classe
-    const staffCheck = await pool.query(
-      `
-      SELECT 1
-      FROM class_staff
-      WHERE class_id = $1 AND user_id = $2
-      `,
-      [class_id, userId]
-    );
+    if (role === 'staff') {
+      const assignments = assignedClassIds ?? [];
+      if (!assignments.includes(class_id)) {
+        return res.status(403).json({
+          success: false,
+          error: "Vous ne gérez pas cette classe",
+        });
+      }
+    }
 
-    if (role === 'staff' && staffCheck.rows.length === 0) {
+    if (role === 'admin' && req.user?.establishmentId == null) {
+      return res.status(403).json({
+        success: false,
+        error: "Aucun établissement associé à ce compte",
+      });
+    }
+
+    if (role === 'staff' && (!assignedClassIds || assignedClassIds.length === 0)) {
       return res.status(403).json({
         success: false,
         error: "Vous ne gérez pas cette classe",
@@ -932,6 +978,15 @@ export async function createCourseForStaffHandler(req: Request, res: Response) {
     }
 
     const { academic_year, establishment_id, label, code } = classRes.rows[0];
+    if (
+      req.user?.establishmentId &&
+      req.user.establishmentId !== establishment_id
+    ) {
+      return res.status(403).json({
+        success: false,
+        error: "Vous ne pouvez pas modifier une classe d'un autre établissement",
+      });
+    }
 
     // Vérifier que la matière appartient bien à l'établissement
     const subjRes = await pool.query(

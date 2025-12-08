@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -12,14 +12,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { teachersApi, type AdminTeacher } from "@/lib/api/teachers";
 
+interface ClassOption {
+  id: string;
+  label: string;
+  code: string;
+  academic_year: number;
+}
+
 interface EditTeacherModalProps {
   teacher: AdminTeacher;
+  classes: ClassOption[];
   onClose: () => void;
   onSaved: (updated: AdminTeacher) => void;
 }
 
 export function EditTeacherModal({
   teacher,
+  classes,
   onClose,
   onSaved,
 }: EditTeacherModalProps) {
@@ -36,6 +45,18 @@ export function EditTeacherModal({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [assignedClasses, setAssignedClasses] = useState<string[]>(
+    teacher.assigned_class_ids ?? []
+  );
+  const [savingClasses, setSavingClasses] = useState(false);
+  const [classMessage, setClassMessage] = useState<string | null>(null);
+  const [classError, setClassError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAssignedClasses(teacher.assigned_class_ids ?? []);
+  }, [teacher]);
+
+  const selectedClassCount = useMemo(() => assignedClasses.length, [assignedClasses]);
 
   const handleChange =
     (field: keyof typeof form) =>
@@ -64,12 +85,51 @@ export function EditTeacherModal({
       }
 
       onSaved(res.data);
+      setAssignedClasses(res.data.assigned_class_ids ?? []);
       onClose();
     } catch (err: any) {
       console.error(err);
       setError(err.message || "Erreur lors de la mise à jour du professeur");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAssignedChange = (
+    e: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    const values = Array.from(e.target.selectedOptions).map((opt) => opt.value);
+    setAssignedClasses(values);
+    setClassMessage(null);
+    setClassError(null);
+  };
+
+  const handleSaveClasses = async () => {
+    if (!teacher.user_id) {
+      setClassError("Professeur invalide (user_id manquant)");
+      return;
+    }
+
+    try {
+      setSavingClasses(true);
+      setClassError(null);
+      setClassMessage(null);
+      const res = await teachersApi.updateClasses(
+        teacher.user_id,
+        assignedClasses
+      );
+      if (!res.success || !res.data) {
+        setClassError(res.error || "Impossible de mettre à jour les classes.");
+        return;
+      }
+      setAssignedClasses(res.data.assigned_class_ids ?? []);
+      onSaved(res.data);
+      setClassMessage("Classes assignées mises à jour.");
+    } catch (err: any) {
+      console.error(err);
+      setClassError(err.message || "Erreur lors de la mise à jour des classes.");
+    } finally {
+      setSavingClasses(false);
     }
   };
 
@@ -156,6 +216,41 @@ export function EditTeacherModal({
                 onChange={handleChange("office_room")}
                 placeholder="Bureau 12"
               />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Classes assignées ({selectedClassCount})</Label>
+            <select
+              multiple
+              value={assignedClasses}
+              onChange={handleAssignedChange}
+              className="h-40 w-full rounded-md border px-3 py-2 text-sm"
+            >
+              {classes.map((cls) => (
+                <option key={cls.id} value={cls.id}>
+                  {cls.label} ({cls.code}) – {cls.academic_year}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-muted-foreground">
+              Le professeur ne verra que les classes sélectionnées.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handleSaveClasses}
+                disabled={savingClasses}
+              >
+                {savingClasses ? "Enregistrement..." : "Enregistrer les classes"}
+              </Button>
+              {classMessage && (
+                <span className="text-xs text-emerald-700">{classMessage}</span>
+              )}
+              {classError && (
+                <span className="text-xs text-red-600">{classError}</span>
+              )}
             </div>
           </div>
 

@@ -15,6 +15,7 @@ export interface AdminTeacher {
   phone?: string | null;
   office_room?: string | null;
   contact_email?: string | null;
+  assigned_class_ids?: string[] | null;
 }
 
 interface ListTeachersResponse {
@@ -87,6 +88,16 @@ export const teachersApi = {
     return apiFetch<{ success: boolean; inviteUrl?: string; error?: string }>(
       `/admin/teachers/${userId}/resend-invite`,
       { method: "POST" }
+    );
+  },
+
+  async updateClasses(userId: string, classIds: string[]) {
+    return apiFetch<TeacherMutationResponse>(
+      `/admin/teachers/${userId}/classes`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ assigned_class_ids: classIds }),
+      }
     );
   },
 };

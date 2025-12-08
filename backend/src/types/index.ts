@@ -134,6 +134,7 @@ export interface TeacherProfile {
   phone?: string;
   office_room?: string;
   contact_email?: string;
+  assigned_class_ids?: string[] | null;
 }
 
 export interface StaffProfile {
@@ -145,6 +146,7 @@ export interface StaffProfile {
   hire_date?: Date;
   created_at?: Date;
   contact_email?: string;
+  assigned_class_ids?: string[] | null;
 }
 
 export interface StudentClassChange {

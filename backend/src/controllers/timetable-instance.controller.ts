@@ -65,11 +65,8 @@ export async function createInstanceHandler(req: Request, res: Response) {
 
     // Si staff, vérifier qu'il gère cette classe
     if (role === 'staff') {
-      const staffCheck = await pool.query(
-        'SELECT 1 FROM class_staff WHERE class_id = $1 AND user_id = $2',
-        [class_id, userId]
-      );
-      if (staffCheck.rows.length === 0) {
+      const assignments = req.user?.assignedClassIds ?? [];
+      if (!assignments.includes(class_id)) {
         return res.status(403).json({
           success: false,
           error: 'Vous ne gérez pas cette classe',
@@ -141,11 +138,8 @@ export async function generateFromTemplateHandler(req: Request, res: Response) {
     }
 
     if (role === 'staff') {
-      const staffCheck = await pool.query(
-        'SELECT 1 FROM class_staff WHERE class_id = $1 AND user_id = $2',
-        [class_id, userId]
-      );
-      if (staffCheck.rows.length === 0) {
+      const assignments = req.user?.assignedClassIds ?? [];
+      if (!assignments.includes(class_id)) {
         return res.status(403).json({
           success: false,
           error: 'Vous ne gérez pas cette classe',
@@ -193,11 +187,8 @@ export async function generateFromTemplateBulkHandler(req: Request, res: Respons
     }
 
     if (role === 'staff') {
-      const staffCheck = await pool.query(
-        'SELECT 1 FROM class_staff WHERE class_id = $1 AND user_id = $2',
-        [class_id, userId]
-      );
-      if (staffCheck.rows.length === 0) {
+      const assignments = req.user?.assignedClassIds ?? [];
+      if (!assignments.includes(class_id)) {
         return res.status(403).json({
           success: false,
           error: 'Vous ne gérez pas cette classe',
@@ -288,11 +279,8 @@ export async function copyWeekHandler(req: Request, res: Response) {
     }
 
     if (role === 'staff') {
-      const staffCheck = await pool.query(
-        'SELECT 1 FROM class_staff WHERE class_id = $1 AND user_id = $2',
-        [class_id, userId]
-      );
-      if (staffCheck.rows.length === 0) {
+      const assignments = req.user?.assignedClassIds ?? [];
+      if (!assignments.includes(class_id)) {
         return res.status(403).json({
           success: false,
           error: 'Vous ne gérez pas cette classe',
@@ -342,11 +330,8 @@ export async function updateInstanceHandler(req: Request, res: Response) {
     }
 
     if (role === 'staff') {
-      const staffCheck = await pool.query(
-        'SELECT 1 FROM class_staff WHERE class_id = $1 AND user_id = $2',
-        [instance.class_id, userId]
-      );
-      if (staffCheck.rows.length === 0) {
+      const assignments = req.user?.assignedClassIds ?? [];
+      if (!assignments.includes(instance.class_id)) {
         return res.status(403).json({
           success: false,
           error: 'Vous ne gérez pas cette classe',
@@ -423,11 +408,8 @@ export async function deleteInstanceHandler(req: Request, res: Response) {
     }
 
     if (role === 'staff') {
-      const staffCheck = await pool.query(
-        'SELECT 1 FROM class_staff WHERE class_id = $1 AND user_id = $2',
-        [instance.class_id, userId]
-      );
-      if (staffCheck.rows.length === 0) {
+      const assignments = req.user?.assignedClassIds ?? [];
+      if (!assignments.includes(instance.class_id)) {
         return res.status(403).json({
           success: false,
           error: 'Vous ne gérez pas cette classe',

@@ -1,17 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { teachersApi, type AdminTeacher } from "@/lib/api/teachers";
+import { apiFetch } from "@/lib/api/api-client";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { EditTeacherModal } from "@/components/admin/EditTeacherModal";
 import { CreateTeacherModal } from "@/components/admin/CreateTeacherModal";
 
+interface ClassOption {
+  id: string;
+  label: string;
+  code: string;
+  academic_year: number;
+}
+
+interface ClassesResponse {
+  success: boolean;
+  data: ClassOption[];
+}
+
 export default function AdminTeachersPage() {
   const [teachers, setTeachers] = useState<AdminTeacher[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [classes, setClasses] = useState<ClassOption[]>([]);
+  const [classesError, setClassesError] = useState<string | null>(null);
 
   const [selectedTeacher, setSelectedTeacher] = useState<AdminTeacher | null>(
     null
@@ -24,6 +39,14 @@ export default function AdminTeachersPage() {
   const [statusInfo, setStatusInfo] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const classLabelMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    classes.forEach((cls) => {
+      map[cls.id] = `${cls.label}${cls.code ? ` (${cls.code})` : ""}`;
+    });
+    return map;
+  }, [classes]);
 
   async function load() {
     try {
@@ -43,8 +66,26 @@ export default function AdminTeachersPage() {
     }
   }
 
+  async function loadClasses() {
+    try {
+      setClassesError(null);
+      const res = await apiFetch<ClassesResponse>("/admin/classes");
+      if (res.success) {
+        setClasses(res.data);
+      } else {
+        setClasses([]);
+        setClassesError("Impossible de charger les classes.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      setClasses([]);
+      setClassesError(err.message || "Erreur lors du chargement des classes.");
+    }
+  }
+
   useEffect(() => {
     load();
+    loadClasses();
   }, []);
 
   const handleToggleActive = async (teacher: AdminTeacher) => {
@@ -104,6 +145,25 @@ export default function AdminTeachersPage() {
     setTeachers((prev) =>
       prev.map((t) => (t.user_id === updated.user_id ? updated : t))
     );
+    if (selectedTeacher && selectedTeacher.user_id === updated.user_id) {
+      setSelectedTeacher(updated);
+    }
+  };
+
+  const renderAssignedClasses = (ids?: string[] | null) => {
+    if (!ids || ids.length === 0) {
+      return <span className="text-xs text-muted-foreground">—</span>;
+    }
+
+    return (
+      <div className="flex flex-wrap gap-1 text-[11px]">
+        {ids.map((id) => (
+          <span key={id} className="rounded bg-muted px-2 py-0.5">
+            {classLabelMap[id] || "Classe"}
+          </span>
+        ))}
+      </div>
+    );
   };
 
   return (
@@ -124,6 +184,9 @@ export default function AdminTeachersPage() {
       )}
       {statusError && (
         <p className="mb-3 text-sm text-red-600">{statusError}</p>
+      )}
+      {classesError && (
+        <p className="mb-3 text-sm text-red-600">{classesError}</p>
       )}
 
       {resendInfo && (
@@ -191,6 +254,7 @@ export default function AdminTeachersPage() {
                 <th className="px-4 py-2 text-left">Téléphone</th>
                 <th className="px-4 py-2 text-left">Spécialité</th>
                 <th className="px-4 py-2 text-left">Bureau</th>
+                <th className="px-4 py-2 text-left">Classes assignées</th>
                 <th className="px-4 py-2 text-left">Statut</th>
                 <th className="px-4 py-2 text-right">Actions</th>
               </tr>
@@ -224,6 +288,9 @@ export default function AdminTeachersPage() {
                     {t.office_room || (
                       <span className="text-muted-foreground">—</span>
                     )}
+                  </td>
+                  <td className="px-4 py-2">
+                    {renderAssignedClasses(t.assigned_class_ids)}
                   </td>
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
@@ -275,6 +342,7 @@ export default function AdminTeachersPage() {
       {selectedTeacher && selectedTeacher.user_id && (
         <EditTeacherModal
           teacher={selectedTeacher}
+          classes={classes}
           onClose={() => setSelectedTeacher(null)}
           onSaved={handleTeacherUpdated}
         />

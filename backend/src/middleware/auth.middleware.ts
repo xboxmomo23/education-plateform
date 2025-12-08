@@ -3,6 +3,7 @@ import { verifyToken, extractTokenFromHeader } from '../utils/auth.utils';
 import { findSessionByToken, updateSessionActivity } from '../models/session.model';
 import { findUserById } from '../models/user.model';
 import { UserRole, JWTPayload } from '../types';
+import pool from '../config/database';
 
 // Extension de l'interface Request pour inclure l'utilisateur
 declare global {
@@ -16,9 +17,25 @@ declare global {
         // Future: Multi-tenant context
         // Sera rempli automatiquement depuis user.establishment_id
         establishmentId?: string;
+        assignedClassIds?: string[];
       };
     }
   }
+}
+
+async function fetchAssignedClassIds(userId: string, role: UserRole): Promise<string[] | undefined> {
+  if (role !== 'teacher' && role !== 'staff') {
+    return undefined;
+  }
+
+  const table = role === 'teacher' ? 'teacher_profiles' : 'staff_profiles';
+  const result = await pool.query(
+    `SELECT assigned_class_ids FROM ${table} WHERE user_id = $1`,
+    [userId]
+  );
+
+  const assigned = result.rows[0]?.assigned_class_ids;
+  return assigned ? assigned.filter(Boolean) : [];
 }
 
 // =========================
@@ -76,12 +93,15 @@ export async function authenticate(
     
     await updateSessionActivity(token);
     
+    const assignedClassIds = await fetchAssignedClassIds(user.id, user.role);
+
     req.user = {
       userId: user.id,
       email: user.email,
       role: user.role,
       full_name: user.full_name,
       establishmentId: user.establishment_id || undefined,
+      assignedClassIds,
     };
     
     next();
@@ -159,12 +179,14 @@ export async function optionalAuthenticate(
       if (session) {
         const user = await findUserById(decoded.userId);
         if (user && user.active && !user.deleted_at) {
+          const assignedClassIds = await fetchAssignedClassIds(user.id, user.role);
           req.user = {
             userId: user.id,
             email: user.email,
             role: user.role,
             full_name: user.full_name,
             establishmentId: user.establishment_id || undefined,
+            assignedClassIds,
           };
           await updateSessionActivity(token);
         }

@@ -60,10 +60,9 @@ export async function getMyHistoryHandler(req: Request, res: Response) {
  */
 export async function getAllAbsencesHandler(req: Request, res: Response) {
   try {
-    const { userId, role } = req.user!;
-    
-    // Vérifier les permissions
-    if (role !== 'staff' && role !== 'admin' && role !== 'teacher') {
+    const { userId, role, assignedClassIds } = req.user!;
+
+    if (!['staff', 'admin', 'teacher'].includes(role)) {
       return res.status(403).json({
         success: false,
         error: 'Accès non autorisé',
@@ -73,7 +72,6 @@ export async function getAllAbsencesHandler(req: Request, res: Response) {
     const {
       classId,
       status,
-      schoolYear,
       startDate,
       endDate,
       justifiedOnly,
@@ -82,15 +80,89 @@ export async function getAllAbsencesHandler(req: Request, res: Response) {
       limit = '50',
     } = req.query;
 
-    console.log(`📋 Récupération absences - Filtres:`, req.query);
-
-    // Récupérer l'establishment_id de l'utilisateur
     const userQuery = 'SELECT establishment_id FROM users WHERE id = $1';
     const userResult = await pool.query(userQuery, [userId]);
     const establishmentId = userResult.rows[0]?.establishment_id;
 
-    // Construire la requête
-    let query = `
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = parseInt(limit as string, 10);
+    const offset = (pageNum - 1) * limitNum;
+
+    const classAssignments = assignedClassIds ?? [];
+    if ((role === 'teacher' || role === 'staff') && classAssignments.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
+        meta: {
+          page: pageNum,
+          limit: limitNum,
+          total: 0,
+          totalPages: 0,
+        },
+      });
+    }
+
+    const clauses: string[] = [
+      "ar.status IN ('absent', 'late', 'excused')",
+      "ases.establishment_id = $1",
+    ];
+    const params: any[] = [establishmentId];
+    let paramIndex = 2;
+
+    if (classId && classId !== 'all') {
+      clauses.push(`cl.id = $${paramIndex}`);
+      params.push(classId);
+      paramIndex++;
+    }
+
+    if (status && status !== 'all') {
+      clauses.push(`ar.status = $${paramIndex}`);
+      params.push(status);
+      paramIndex++;
+    }
+
+    if (startDate) {
+      clauses.push(`ases.session_date >= $${paramIndex}`);
+      params.push(startDate);
+      paramIndex++;
+    }
+
+    if (endDate) {
+      clauses.push(`ases.session_date <= $${paramIndex}`);
+      params.push(endDate);
+      paramIndex++;
+    }
+
+    if (justifiedOnly === 'true') {
+      clauses.push(`ar.justified = true`);
+    }
+
+    if (search) {
+      clauses.push(`(
+        u.full_name ILIKE $${paramIndex} OR
+        sp.student_no ILIKE $${paramIndex} OR
+        cl.label ILIKE $${paramIndex}
+      )`);
+      params.push(`%${search}%`);
+      paramIndex++;
+    }
+
+    if (role === 'teacher') {
+      clauses.push(`c.teacher_id = $${paramIndex}`);
+      params.push(userId);
+      paramIndex++;
+      clauses.push(`cl.id = ANY($${paramIndex}::uuid[])`);
+      params.push(classAssignments);
+      paramIndex++;
+    } else if (role === 'staff') {
+      clauses.push(`cl.id = ANY($${paramIndex}::uuid[])`);
+      params.push(classAssignments);
+      paramIndex++;
+    }
+
+    const whereClause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+
+    const dataQuery = `
       SELECT 
         ar.id,
         ar.student_id,
@@ -108,8 +180,7 @@ export async function getAllAbsencesHandler(req: Request, res: Response) {
         ar.comment,
         ar.justified,
         ar.justification,
-        ar.justified_at,
-        EXTRACT(YEAR FROM ases.session_date) || '-' || (EXTRACT(YEAR FROM ases.session_date) + 1) AS school_year
+        ar.justified_at
       FROM attendance_records ar
       JOIN attendance_sessions ases ON ar.session_id = ases.id
       JOIN users u ON ar.student_id = u.id
@@ -117,97 +188,26 @@ export async function getAllAbsencesHandler(req: Request, res: Response) {
       JOIN classes cl ON ases.class_id = cl.id
       JOIN courses c ON ases.course_id = c.id
       JOIN subjects s ON c.subject_id = s.id
-      WHERE ar.status IN ('absent', 'late', 'excused')
-        AND ases.establishment_id = $1
+      ${whereClause}
+      ORDER BY ases.session_date DESC, ases.start_time DESC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `;
 
-    const params: any[] = [establishmentId];
-    let paramIndex = 2;
+    const dataParams = [...params, limitNum, offset];
+    const result = await pool.query(dataQuery, dataParams);
 
-    // Filtre classe
-    if (classId && classId !== 'all') {
-      query += ` AND cl.id = $${paramIndex}`;
-      params.push(classId);
-      paramIndex++;
-    }
-
-    // Filtre statut
-    if (status && status !== 'all') {
-      query += ` AND ar.status = $${paramIndex}`;
-      params.push(status);
-      paramIndex++;
-    }
-
-    // Filtre date début
-    if (startDate) {
-      query += ` AND ases.session_date >= $${paramIndex}`;
-      params.push(startDate);
-      paramIndex++;
-    }
-
-    // Filtre date fin
-    if (endDate) {
-      query += ` AND ases.session_date <= $${paramIndex}`;
-      params.push(endDate);
-      paramIndex++;
-    }
-
-    // Filtre justifié seulement
-    if (justifiedOnly === 'true') {
-      query += ` AND ar.justified = true`;
-    }
-
-    // Recherche textuelle
-    if (search) {
-      query += ` AND (
-        u.full_name ILIKE $${paramIndex} OR
-        sp.student_no ILIKE $${paramIndex} OR
-        cl.label ILIKE $${paramIndex}
-      )`;
-      params.push(`%${search}%`);
-      paramIndex++;
-    }
-
-    // Si c'est un professeur, limiter à ses classes
-    if (role === 'teacher') {
-      query += ` AND c.teacher_id = $${paramIndex}`;
-      params.push(userId);
-      paramIndex++;
-    }
-
-    // Si c'est un staff, limiter à ses classes assignées
-    if (role === 'staff') {
-      query += ` AND cl.id IN (SELECT class_id FROM class_staff WHERE user_id = $${paramIndex})`;
-      params.push(userId);
-      paramIndex++;
-    }
-
-    // Ordre et pagination
-    query += ` ORDER BY ases.session_date DESC, ases.start_time DESC`;
-    
-    const pageNum = parseInt(page as string);
-    const limitNum = parseInt(limit as string);
-    const offset = (pageNum - 1) * limitNum;
-    
-    query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-    params.push(limitNum, offset);
-
-    const result = await pool.query(query, params);
-
-    // Compter le total
-    let countQuery = `
+    const countQuery = `
       SELECT COUNT(*) as total
       FROM attendance_records ar
       JOIN attendance_sessions ases ON ar.session_id = ases.id
       JOIN users u ON ar.student_id = u.id
       JOIN classes cl ON ases.class_id = cl.id
       JOIN courses c ON ases.course_id = c.id
-      WHERE ar.status IN ('absent', 'late', 'excused')
-        AND ases.establishment_id = $1
+      ${whereClause}
     `;
-    // Ajouter les mêmes filtres (simplifié)
-    const countResult = await pool.query(countQuery, [establishmentId]);
-    const total = parseInt(countResult.rows[0].total);
+
+    const countResult = await pool.query(countQuery, params);
+    const total = parseInt(countResult.rows[0].total, 10);
 
     return res.json({
       success: true,
@@ -236,10 +236,11 @@ export async function getAllAbsencesHandler(req: Request, res: Response) {
  */
 export async function getAccessibleClassesHandler(req: Request, res: Response) {
   try {
-    const { userId, role } = req.user!;
+    const { userId, role, assignedClassIds } = req.user!;
 
     let query: string;
     let params: any[];
+    const classAssignments = assignedClassIds ?? [];
 
     if (role === 'admin') {
       // Admin voit toutes les classes de l'établissement
@@ -252,25 +253,29 @@ export async function getAccessibleClassesHandler(req: Request, res: Response) {
       `;
       params = [userId];
     } else if (role === 'staff') {
-      // Staff voit ses classes assignées
+      if (classAssignments.length === 0) {
+        return res.json({ success: true, data: [] });
+      }
       query = `
         SELECT cl.id, cl.label
         FROM classes cl
-        JOIN class_staff cs ON cl.id = cs.class_id
-        WHERE cs.user_id = $1 AND cl.archived = false
+        WHERE cl.id = ANY($1::uuid[])
+          AND cl.archived = false
         ORDER BY cl.label
       `;
-      params = [userId];
+      params = [classAssignments];
     } else if (role === 'teacher') {
-      // Professeur voit les classes où il enseigne
+      if (classAssignments.length === 0) {
+        return res.json({ success: true, data: [] });
+      }
       query = `
-        SELECT DISTINCT cl.id, cl.label
+        SELECT cl.id, cl.label
         FROM classes cl
-        JOIN courses c ON cl.id = c.class_id
-        WHERE c.teacher_id = $1 AND c.active = true AND cl.archived = false
+        WHERE cl.id = ANY($1::uuid[])
+          AND cl.archived = false
         ORDER BY cl.label
       `;
-      params = [userId];
+      params = [classAssignments];
     } else {
       return res.json({
         success: true,

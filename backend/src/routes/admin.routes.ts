@@ -20,6 +20,7 @@ import {
   updateTeacherForAdminHandler,
   updateTeacherStatusHandler,
   resendTeacherInviteHandler,
+  updateTeacherClassesHandler,
   // 👇 Matières
   getAdminSubjectsHandler,
   createSubjectForAdminHandler,
@@ -34,6 +35,7 @@ import {
   updateStaffForAdminHandler,
   updateStaffStatusHandler,
   resendStaffInviteHandler,
+  updateStaffClassesHandler,
 } from "../controllers/admin.controller";
 
 
@@ -237,6 +239,20 @@ router.post(
 router.post(
   "/staff/:staffId/resend-invite",
   resendStaffInviteHandler
+);
+
+router.put(
+  "/staff/:staffId/classes",
+  [
+    body("assigned_class_ids")
+      .isArray()
+      .withMessage("assigned_class_ids doit être un tableau"),
+    body("assigned_class_ids.*")
+      .isUUID()
+      .withMessage("Chaque class_id doit être un UUID valide"),
+  ],
+  validateRequest,
+  updateStaffClassesHandler
 );
 
 /**
@@ -443,6 +459,20 @@ router.patch(
 router.post(
   "/teachers/:userId/resend-invite",
   resendTeacherInviteHandler
+);
+
+router.put(
+  "/teachers/:userId/classes",
+  [
+    body("assigned_class_ids")
+      .isArray()
+      .withMessage("assigned_class_ids doit être un tableau"),
+    body("assigned_class_ids.*")
+      .isUUID()
+      .withMessage("Chaque class_id doit être un UUID valide"),
+  ],
+  validateRequest,
+  updateTeacherClassesHandler
 );
 
 export default router;

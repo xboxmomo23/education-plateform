@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api/api-client";
 import { getUserSession, User } from "@/lib/auth-new";
 import { Input } from "@/components/ui/input";
@@ -13,19 +13,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { staffApi, type AdminStaffApi } from "@/lib/api/staff";
 
-interface AdminStaff {
-  staff_id: string;
-  full_name: string;
-  email: string;
-  active: boolean;
-  created_at: string;
-  contact_email?: string | null;
-  phone?: string | null;
-  department?: string | null;
-  employee_no?: string | null;
-  must_change_password?: boolean;
-  last_login?: string | null;
+type AdminStaff = AdminStaffApi;
+
+interface ClassOption {
+  id: string;
+  label: string;
+  code: string;
+  academic_year: number;
+}
+
+interface ClassesResponse {
+  success: boolean;
+  data: ClassOption[];
 }
 
 interface StaffListResponse {
@@ -45,6 +46,8 @@ export default function AdminStaffPage() {
   const [staff, setStaff] = useState<AdminStaff[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [classes, setClasses] = useState<ClassOption[]>([]);
+  const [classesError, setClassesError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
 
@@ -76,9 +79,21 @@ export default function AdminStaffPage() {
   const [editContactEmail, setEditContactEmail] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editDepartment, setEditDepartment] = useState("");
+  const [editAssignedClasses, setEditAssignedClasses] = useState<string[]>([]);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [savingClassAssignments, setSavingClassAssignments] = useState(false);
+  const [classAssignFeedback, setClassAssignFeedback] = useState<string | null>(null);
+  const [classAssignError, setClassAssignError] = useState<string | null>(null);
 
   const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const classLabelMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    classes.forEach((cls) => {
+      map[cls.id] = `${cls.label}${cls.code ? ` (${cls.code})` : ""}`;
+    });
+    return map;
+  }, [classes]);
 
   useEffect(() => {
     const sessionUser = getUserSession();
@@ -105,6 +120,7 @@ export default function AdminStaffPage() {
     }
 
     loadStaff();
+    loadClasses();
   }, []);
 
   const reloadStaff = async () => {
@@ -118,6 +134,23 @@ export default function AdminStaffPage() {
     }
   };
 
+  const loadClasses = async () => {
+    try {
+      setClassesError(null);
+      const res = await apiFetch<ClassesResponse>("/admin/classes");
+      if (res.success) {
+        setClasses(res.data);
+      } else {
+        setClasses([]);
+        setClassesError("Erreur lors du chargement des classes.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      setClasses([]);
+      setClassesError(err.message || "Erreur lors du chargement des classes.");
+    }
+  };
+
   const filteredStaff = staff.filter((s) => {
     const q = search.toLowerCase();
     return (
@@ -125,6 +158,21 @@ export default function AdminStaffPage() {
       s.email.toLowerCase().includes(q)
     );
   });
+
+  const renderAssignedClasses = (ids?: string[] | null) => {
+    if (!ids || ids.length === 0) {
+      return <span className="text-xs text-muted-foreground">—</span>;
+    }
+    return (
+      <div className="flex flex-wrap gap-1 text-[11px]">
+        {ids.map((id) => (
+          <span key={id} className="rounded bg-muted px-2 py-0.5">
+            {classLabelMap[id] || "Classe"}
+          </span>
+        ))}
+      </div>
+    );
+  };
 
   // ======== Création ========
 
@@ -209,6 +257,9 @@ export default function AdminStaffPage() {
     setEditContactEmail(item.contact_email || "");
     setEditPhone(item.phone || "");
     setEditDepartment(item.department || "");
+    setEditAssignedClasses(item.assigned_class_ids ?? []);
+    setClassAssignFeedback(null);
+    setClassAssignError(null);
     setShowEditModal(true);
   };
 
@@ -252,6 +303,49 @@ export default function AdminStaffPage() {
       alert(err.message || "Erreur lors de la mise à jour du staff");
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  const handleAssignedClassesChange = (
+    e: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    const values = Array.from(e.target.selectedOptions).map((opt) => opt.value);
+    setEditAssignedClasses(values);
+    setClassAssignFeedback(null);
+    setClassAssignError(null);
+  };
+
+  const handleSaveClassAssignments = async () => {
+    if (!editingStaff) return;
+    try {
+      setSavingClassAssignments(true);
+      setClassAssignFeedback(null);
+      setClassAssignError(null);
+      const res = await staffApi.updateClasses(
+        editingStaff.staff_id,
+        editAssignedClasses
+      );
+      if (!res.success || !res.data) {
+        setClassAssignError(res.error || "Erreur lors de la mise à jour des classes.");
+        return;
+      }
+      setClassAssignFeedback("Classes assignées mises à jour.");
+      setStaff((prev) =>
+        prev.map((s) =>
+          s.staff_id === editingStaff.staff_id
+            ? { ...s, assigned_class_ids: res.data.assigned_class_ids ?? [] }
+            : s
+        )
+      );
+      setEditingStaff((prev) =>
+        prev ? { ...prev, assigned_class_ids: res.data.assigned_class_ids ?? [] } : prev
+      );
+      setEditAssignedClasses(res.data.assigned_class_ids ?? []);
+    } catch (err: any) {
+      console.error("Erreur mise à jour classes staff:", err);
+      setClassAssignError(err.message || "Erreur lors de la mise à jour des classes.");
+    } finally {
+      setSavingClassAssignments(false);
     }
   };
 
@@ -397,6 +491,9 @@ export default function AdminStaffPage() {
         {statusError && (
           <p className="mb-2 text-xs text-red-600">{statusError}</p>
         )}
+        {classesError && (
+          <p className="mb-2 text-xs text-red-600">{classesError}</p>
+        )}
 
         {loading && (
           <p className="text-sm text-muted-foreground">
@@ -422,9 +519,10 @@ export default function AdminStaffPage() {
                   <th className="px-4 py-2 text-left">Nom</th>
                   <th className="px-4 py-2 text-left">Email de connexion</th>
                   <th className="px-4 py-2 text-left">Email de contact</th>
-                  <th className="px-4 py-2 text-left">Téléphone</th>
-                  <th className="px-4 py-2 text-left">Fonction</th>
-                  <th className="px-4 py-2 text-left">Statut</th>
+                <th className="px-4 py-2 text-left">Téléphone</th>
+                <th className="px-4 py-2 text-left">Fonction</th>
+                <th className="px-4 py-2 text-left">Classes assignées</th>
+                <th className="px-4 py-2 text-left">Statut</th>
                   <th className="px-4 py-2 text-left">Actions</th>
                 </tr>
               </thead>
@@ -450,6 +548,9 @@ export default function AdminStaffPage() {
                     </td>
                     <td className="px-4 py-2 text-xs">
                       {s.department || <span className="text-muted-foreground">—</span>}
+                    </td>
+                    <td className="px-4 py-2">
+                      {renderAssignedClasses(s.assigned_class_ids)}
                     </td>
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
@@ -633,6 +734,9 @@ export default function AdminStaffPage() {
             setEditContactEmail("");
             setEditPhone("");
             setEditDepartment("");
+            setEditAssignedClasses([]);
+            setClassAssignFeedback(null);
+            setClassAssignError(null);
           }
         }}
       >
@@ -684,6 +788,45 @@ export default function AdminStaffPage() {
                 onChange={(e) => setEditDepartment(e.target.value)}
                 placeholder="Secrétariat, Vie scolaire..."
               />
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">
+                Classes assignées ({editAssignedClasses.length})
+              </p>
+              <select
+                multiple
+                value={editAssignedClasses}
+                onChange={handleAssignedClassesChange}
+                className="h-40 w-full rounded-md border px-3 py-2 text-sm"
+              >
+                {classes.map((cls) => (
+                  <option key={cls.id} value={cls.id}>
+                    {cls.label} ({cls.code}) – {cls.academic_year}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-muted-foreground">
+                Le staff ne verra que les classes sélectionnées.
+              </p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleSaveClassAssignments}
+                  disabled={savingClassAssignments}
+                >
+                  {savingClassAssignments
+                    ? "Enregistrement..."
+                    : "Enregistrer les classes"}
+                </Button>
+                {classAssignFeedback && (
+                  <span className="text-xs text-emerald-700">{classAssignFeedback}</span>
+                )}
+                {classAssignError && (
+                  <span className="text-xs text-red-600">{classAssignError}</span>
+                )}
+              </div>
             </div>
           </div>
 

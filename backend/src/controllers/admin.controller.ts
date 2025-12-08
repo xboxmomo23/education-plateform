@@ -1080,7 +1080,7 @@ export async function scheduleStudentClassChangeHandler(req: Request, res: Respo
 
     const termResult = await pool.query(
       `
-        SELECT id
+        SELECT id, start_date
         FROM terms
         WHERE id = $1
           AND establishment_id = $2
@@ -1092,6 +1092,17 @@ export async function scheduleStudentClassChangeHandler(req: Request, res: Respo
       return res.status(400).json({
         success: false,
         error: "La période choisie n'existe pas pour votre établissement",
+      });
+    }
+
+    const termRow = termResult.rows[0];
+    const now = new Date();
+    const termStart = new Date(termRow.start_date);
+
+    if (termStart <= now) {
+      return res.status(400).json({
+        success: false,
+        error: "Vous ne pouvez programmer un changement que pour une période future.",
       });
     }
 
@@ -1264,7 +1275,7 @@ export async function applyStudentClassChangesForTermHandler(req: Request, res: 
 
     const termResult = await pool.query(
       `
-        SELECT id
+        SELECT id, start_date, end_date
         FROM terms
         WHERE id = $1
           AND establishment_id = $2
@@ -1276,6 +1287,25 @@ export async function applyStudentClassChangesForTermHandler(req: Request, res: 
       return res.status(404).json({
         success: false,
         error: "Période introuvable pour votre établissement",
+      });
+    }
+
+    const termRow = termResult.rows[0];
+    const now = new Date();
+    const termStart = new Date(termRow.start_date);
+    const termEnd = new Date(termRow.end_date);
+
+    if (now < termStart) {
+      return res.status(400).json({
+        success: false,
+        error: "Cette période n'a pas encore commencé, vous ne pouvez pas appliquer les changements.",
+      });
+    }
+
+    if (now > termEnd) {
+      return res.status(400).json({
+        success: false,
+        error: "Cette période est terminée, impossible d'appliquer les changements.",
       });
     }
 
@@ -1376,7 +1406,8 @@ export async function getAdminStaffHandler(req: Request, res: Response) {
         sp.contact_email,
         sp.phone,
         sp.department,
-        sp.employee_no
+        sp.employee_no,
+        sp.assigned_class_ids
       FROM users u
       LEFT JOIN staff_profiles sp ON sp.user_id = u.id
       WHERE u.role = 'staff'
@@ -1555,6 +1586,7 @@ export async function createStaffForAdminHandler(req: Request, res: Response) {
         employee_no: finalStaffCode,
         active: newUser.active,
         created_at: newUser.created_at,
+        assigned_class_ids: [],
         inviteUrl: invite.inviteUrl,
       },
     });
@@ -1725,7 +1757,8 @@ export async function updateStaffForAdminHandler(req: Request, res: Response) {
           u.created_at,
           sp.contact_email,
           sp.phone,
-          sp.department
+          sp.department,
+          sp.assigned_class_ids
         FROM users u
         LEFT JOIN staff_profiles sp ON sp.user_id = u.id
         WHERE u.id = $1
@@ -1793,6 +1826,103 @@ export async function updateStaffStatusHandler(req: Request, res: Response) {
     return res.status(500).json({
       success: false,
       error: "Erreur lors de la mise à jour du statut du staff",
+    });
+  }
+}
+
+export async function updateStaffClassesHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const staffId = req.params.staffId;
+    const { assigned_class_ids } = req.body as { assigned_class_ids?: string[] };
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const staffUser = await pool.query(
+      `
+        SELECT id
+        FROM users
+        WHERE id = $1
+          AND role = 'staff'
+          AND establishment_id = $2
+      `,
+      [staffId, estId]
+    );
+
+    if (staffUser.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Compte staff introuvable pour cet établissement",
+      });
+    }
+
+    const normalizedIds = Array.isArray(assigned_class_ids)
+      ? Array.from(new Set(assigned_class_ids.filter(Boolean)))
+      : [];
+
+    if (normalizedIds.length > 0) {
+      const classCheck = await pool.query(
+        `
+          SELECT id
+          FROM classes
+          WHERE establishment_id = $1
+            AND id = ANY($2::uuid[])
+        `,
+        [estId, normalizedIds]
+      );
+
+      if (classCheck.rowCount !== normalizedIds.length) {
+        return res.status(400).json({
+          success: false,
+          error: "Certaines classes sélectionnées n'appartiennent pas à votre établissement",
+        });
+      }
+    }
+
+    await pool.query(
+      `
+        UPDATE staff_profiles
+        SET assigned_class_ids = $1
+        WHERE user_id = $2
+      `,
+      [normalizedIds.length > 0 ? normalizedIds : null, staffId]
+    );
+
+    const final = await pool.query(
+      `
+        SELECT
+          u.id AS staff_id,
+          u.full_name,
+          u.email,
+          u.active,
+          u.created_at,
+          sp.contact_email,
+          sp.phone,
+          sp.department,
+          sp.employee_no,
+          sp.assigned_class_ids
+        FROM users u
+        LEFT JOIN staff_profiles sp ON sp.user_id = u.id
+        WHERE u.id = $1
+      `,
+      [staffId]
+    );
+
+    return res.json({
+      success: true,
+      data: final.rows[0],
+    });
+  } catch (error) {
+    console.error("Erreur updateStaffClassesHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la mise à jour des classes du staff",
     });
   }
 }
@@ -1870,7 +2000,8 @@ export async function getAdminTeachersHandler(req: Request, res: Response) {
         tp.specialization,
         tp.phone,
         tp.office_room,
-        tp.contact_email
+        tp.contact_email,
+        tp.assigned_class_ids
       FROM users u
       LEFT JOIN teacher_profiles tp ON tp.user_id = u.id
       WHERE u.role = 'teacher'
@@ -2026,6 +2157,7 @@ export async function createTeacherForAdminHandler(req: Request, res: Response) 
       phone: profile.phone,
       office_room: profile.office_room,
       contact_email: profile.contact_email,
+      assigned_class_ids: [],
     };
 
     return res.status(201).json({
@@ -2188,7 +2320,8 @@ export async function updateTeacherForAdminHandler(req: Request, res: Response) 
         tp.specialization,
         tp.phone,
         tp.office_room,
-        tp.contact_email
+        tp.contact_email,
+        tp.assigned_class_ids
       FROM users u
       LEFT JOIN teacher_profiles tp ON tp.user_id = u.id
       WHERE u.id = $1
@@ -2298,6 +2431,104 @@ export async function resendTeacherInviteHandler(req: Request, res: Response) {
     return res.status(500).json({
       success: false,
       error: "Erreur lors de l'envoi de la nouvelle invitation",
+    });
+  }
+}
+
+export async function updateTeacherClassesHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const targetUserId = req.params.userId;
+    const { assigned_class_ids } = req.body as { assigned_class_ids?: string[] };
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const teacherResult = await pool.query(
+      `
+        SELECT id
+        FROM users
+        WHERE id = $1
+          AND establishment_id = $2
+          AND role = 'teacher'
+      `,
+      [targetUserId, estId]
+    );
+
+    if (teacherResult.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Professeur introuvable pour cet établissement",
+      });
+    }
+
+    const normalizedIds = Array.isArray(assigned_class_ids)
+      ? Array.from(new Set(assigned_class_ids.filter(Boolean)))
+      : [];
+
+    if (normalizedIds.length > 0) {
+      const classCheck = await pool.query(
+        `
+          SELECT id
+          FROM classes
+          WHERE establishment_id = $1
+            AND id = ANY($2::uuid[])
+        `,
+        [estId, normalizedIds]
+      );
+
+      if (classCheck.rowCount !== normalizedIds.length) {
+        return res.status(400).json({
+          success: false,
+          error: "Certaines classes sélectionnées n'appartiennent pas à votre établissement",
+        });
+      }
+    }
+
+    await pool.query(
+      `
+        UPDATE teacher_profiles
+        SET assigned_class_ids = $1
+        WHERE user_id = $2
+      `,
+      [normalizedIds.length > 0 ? normalizedIds : null, targetUserId]
+    );
+
+    const finalResult = await pool.query(
+      `
+        SELECT
+          u.id AS user_id,
+          u.full_name,
+          u.email,
+          u.active,
+          tp.employee_no,
+          tp.hire_date,
+          tp.specialization,
+          tp.phone,
+          tp.office_room,
+          tp.contact_email,
+          tp.assigned_class_ids
+        FROM users u
+        LEFT JOIN teacher_profiles tp ON tp.user_id = u.id
+        WHERE u.id = $1
+      `,
+      [targetUserId]
+    );
+
+    return res.json({
+      success: true,
+      data: finalResult.rows[0],
+    });
+  } catch (error) {
+    console.error("Erreur updateTeacherClassesHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la mise à jour des classes du professeur",
     });
   }
 }
