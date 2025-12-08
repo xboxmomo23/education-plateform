@@ -81,8 +81,7 @@ export async function authenticate(
       email: user.email,
       role: user.role,
       full_name: user.full_name,
-      // Future: Ajouter automatiquement le contexte establishment
-      // establishmentId: user.establishment_id,
+      establishmentId: user.establishment_id || undefined,
     };
     
     next();
@@ -165,8 +164,7 @@ export async function optionalAuthenticate(
             email: user.email,
             role: user.role,
             full_name: user.full_name,
-            // Future
-            // establishmentId: user.establishment_id,
+            establishmentId: user.establishment_id || undefined,
           };
           await updateSessionActivity(token);
         }

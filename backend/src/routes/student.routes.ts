@@ -74,7 +74,14 @@ router.get(
       const { academicYear, termId } = req.query;
 
       const year = academicYear ? parseInt(academicYear as string) : new Date().getFullYear();
-      const establishmentId = req.user!.establishmentId || '18fdec95-29be-4d71-8669-21d67f3a4587';
+      const establishmentId = req.user!.establishmentId;
+      if (!establishmentId) {
+        res.status(403).json({
+          success: false,
+          error: "Aucun établissement associé à ce compte",
+        });
+        return;
+      }
 
       let termInfo = null;
       if (termId) {

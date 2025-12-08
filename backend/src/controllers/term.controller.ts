@@ -52,9 +52,14 @@ export async function createTermHandler(req: Request, res: Response): Promise<vo
       return;
     }
 
-    // Récupérer l'establishmentId depuis le user
-    // TODO: À implémenter quand le multi-tenant sera actif
-    const establishmentId = req.user.establishmentId || '18fdec95-29be-4d71-8669-21d67f3a4587';
+    const establishmentId = req.user.establishmentId;
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé à ce compte',
+      });
+      return;
+    }
 
     const term = await createTerm({
       academicYear,
@@ -100,8 +105,14 @@ export async function getTermsHandler(req: Request, res: Response): Promise<void
 
     const { academicYear } = req.query;
 
-    // TODO: À implémenter quand le multi-tenant sera actif
-    const establishmentId = req.user.establishmentId || '18fdec95-29be-4d71-8669-21d67f3a4587';
+    const establishmentId = req.user.establishmentId;
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé à ce compte',
+      });
+      return;
+    }
 
     const filters = {
       establishmentId,
@@ -145,7 +156,14 @@ export async function getCurrentTermHandler(req: Request, res: Response): Promis
       return;
     }
 
-    const establishmentId = req.user.establishmentId || '18fdec95-29be-4d71-8669-21d67f3a4587';
+    const establishmentId = req.user.establishmentId;
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé à ce compte',
+      });
+      return;
+    }
     const term = await getCurrentTerm(establishmentId);
 
     if (!term) {
@@ -190,7 +208,14 @@ export async function getTermByIdHandler(req: Request, res: Response): Promise<v
     }
 
     const { id } = req.params;
-    const establishmentId = req.user.establishmentId || '18fdec95-29be-4d71-8669-21d67f3a4587';
+    const establishmentId = req.user.establishmentId;
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé à ce compte',
+      });
+      return;
+    }
 
     const term = await findTermById(id, establishmentId);
 
@@ -241,7 +266,14 @@ export async function updateTermHandler(req: Request, res: Response): Promise<vo
 
     const { id } = req.params;
     const { name, startDate, endDate, isCurrent } = req.body;
-    const establishmentId = req.user.establishmentId || '18fdec95-29be-4d71-8669-21d67f3a4587';
+    const establishmentId = req.user.establishmentId;
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé à ce compte',
+      });
+      return;
+    }
 
     const updateData: any = {};
     if (name !== undefined) updateData.name = name;
@@ -309,7 +341,14 @@ export async function deleteTermHandler(req: Request, res: Response): Promise<vo
     }
 
     const { id } = req.params;
-    const establishmentId = req.user.establishmentId || '18fdec95-29be-4d71-8669-21d67f3a4587';
+    const establishmentId = req.user.establishmentId;
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé à ce compte',
+      });
+      return;
+    }
 
     const deleted = await deleteTerm(id, establishmentId);
 

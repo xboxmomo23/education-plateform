@@ -111,6 +111,7 @@ export interface User {
   created_at: Date;
   updated_at?: Date;
   deleted_at?: Date;
+  establishment_id?: string | null;
 }
 
 export interface StudentProfile {
@@ -144,6 +145,20 @@ export interface StaffProfile {
   hire_date?: Date;
   created_at?: Date;
   contact_email?: string;
+}
+
+export interface StudentClassChange {
+  id: string;
+  student_id: string;
+  old_class_id?: string | null;
+  new_class_id: string;
+  effective_term_id: string;
+  establishment_id: string;
+  created_at: Date;
+  created_by: string;
+  applied_at?: Date | null;
+  applied_by?: string | null;
+  reason?: string | null;
 }
 
 export interface ParentProfile {

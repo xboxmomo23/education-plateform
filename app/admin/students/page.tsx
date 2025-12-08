@@ -1,8 +1,17 @@
 "use client";
 
-import { useEffect, useState, FormEvent } from "react";
+import { useEffect, useState, FormEvent, ChangeEvent } from "react";
 import { apiFetch } from "@/lib/api/api-client";
-import { resendStudentInviteApi, updateStudentClassApi, updateStudentStatusApi } from "@/lib/api/students";
+import type { StudentClassChange } from "@/lib/api/students";
+import {
+  applyStudentClassChangesApi,
+  deleteStudentClassChangeApi,
+  getStudentClassChangesApi,
+  resendStudentInviteApi,
+  scheduleStudentClassChangeApi,
+  updateStudentClassApi,
+  updateStudentStatusApi,
+} from "@/lib/api/students";
 
 interface ClassOption {
   id: string;
@@ -39,6 +48,19 @@ interface ClassesResponse {
   data: ClassOption[];
 }
 
+interface TermItem {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  academicYear: number;
+}
+
+interface TermsResponse {
+  success: boolean;
+  data: TermItem[];
+}
+
 interface CreateStudentResponse {
   success: boolean;
   message: string;
@@ -65,8 +87,11 @@ interface CreateStudentResponse {
 export default function AdminStudentsPage() {
   const [students, setStudents] = useState<StudentItem[]>([]);
   const [classes, setClasses] = useState<ClassOption[]>([]);
+  const [terms, setTerms] = useState<TermItem[]>([]);
+  const [classChanges, setClassChanges] = useState<StudentClassChange[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [classChangesError, setClassChangesError] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -98,23 +123,60 @@ export default function AdminStudentsPage() {
   const [resendError, setResendError] = useState<string | null>(null);
   const [resendCopyFeedback, setResendCopyFeedback] = useState<string | null>(null);
   const [resendLoadingId, setResendLoadingId] = useState<string | null>(null);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [scheduleTarget, setScheduleTarget] = useState<StudentItem | null>(null);
+  const [scheduleForm, setScheduleForm] = useState({
+    new_class_id: "",
+    term_id: "",
+    reason: "",
+  });
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [scheduleSuccess, setScheduleSuccess] = useState<string | null>(null);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [applyTermId, setApplyTermId] = useState<string>("");
+  const [applyStatus, setApplyStatus] = useState<string | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [applyLoading, setApplyLoading] = useState(false);
+  const [cancelLoadingId, setCancelLoadingId] = useState<string | null>(null);
 
   const displayedStudents = showOnlyNoClass
     ? students.filter((st) => !st.class_id)
     : students;
 
+  const pendingClassChanges = classChanges.filter((change) => !change.applied_at);
+  const appliedClassChanges = classChanges.filter((change) => change.applied_at);
+  const pendingTermOptions = Array.from(
+    new Map(
+      pendingClassChanges.map((change) => [change.term.id, change.term])
+    ).values()
+  );
+
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (pendingTermOptions.length === 0) {
+      if (applyTermId) {
+        setApplyTermId("");
+      }
+      return;
+    }
+    if (!applyTermId || !pendingTermOptions.some((term) => term.id === applyTermId)) {
+      setApplyTermId(pendingTermOptions[0].id);
+    }
+  }, [pendingTermOptions, applyTermId]);
 
   async function loadData() {
     try {
       setLoading(true);
       setError(null);
+       setClassChangesError(null);
 
-      const [studentsRes, classesRes] = await Promise.all([
+      const [studentsRes, classesRes, termsRes] = await Promise.all([
         apiFetch<StudentsResponse>("/admin/students"),
         apiFetch<ClassesResponse>("/admin/classes"),
+        apiFetch<TermsResponse>("/terms"),
       ]);
 
       if (studentsRes.success) {
@@ -125,6 +187,30 @@ export default function AdminStudentsPage() {
 
       if (classesRes.success) {
         setClasses(classesRes.data);
+      }
+
+      if (termsRes.success) {
+        setTerms(
+          termsRes.data.map((term) => ({
+            ...term,
+            startDate: term.startDate,
+            endDate: term.endDate,
+          }))
+        );
+      }
+
+      try {
+        const classChangesRes = await getStudentClassChangesApi();
+        if (classChangesRes.success) {
+          setClassChanges(classChangesRes.data);
+        } else {
+          setClassChanges([]);
+          setClassChangesError("Impossible de charger les changements programmés");
+        }
+      } catch (changeError: any) {
+        console.error(changeError);
+        setClassChanges([]);
+        setClassChangesError(changeError.message || "Erreur chargement changements");
       }
     } catch (err: any) {
       console.error(err);
@@ -318,6 +404,129 @@ export default function AdminStudentsPage() {
     }
   }
 
+  async function refreshClassChangesOnly() {
+    try {
+      const res = await getStudentClassChangesApi();
+      if (res.success) {
+        setClassChanges(res.data);
+        setClassChangesError(null);
+      } else {
+        setClassChangesError("Impossible de charger les changements programmés");
+      }
+    } catch (err: any) {
+      console.error(err);
+      setClassChangesError(err.message || "Erreur lors du chargement des changements programmés.");
+    }
+  }
+
+  function openScheduleModal(student: StudentItem) {
+    setScheduleTarget(student);
+    setScheduleForm({
+      new_class_id: student.class_id || "",
+      term_id: "",
+      reason: "",
+    });
+    setScheduleError(null);
+    setScheduleSuccess(null);
+    setIsScheduleModalOpen(true);
+  }
+
+  function closeScheduleModal() {
+    if (scheduleLoading) return;
+    setIsScheduleModalOpen(false);
+    setScheduleTarget(null);
+    setScheduleForm({
+      new_class_id: "",
+      term_id: "",
+      reason: "",
+    });
+    setScheduleError(null);
+    setScheduleSuccess(null);
+  }
+
+  function handleScheduleFormChange(
+    e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+  ) {
+    const { name, value } = e.target;
+    setScheduleForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  }
+
+  async function handleScheduleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!scheduleTarget) return;
+    if (!scheduleForm.new_class_id || !scheduleForm.term_id) {
+      setScheduleError("Merci de choisir la nouvelle classe et la période.");
+      return;
+    }
+
+    try {
+      setScheduleLoading(true);
+      setScheduleError(null);
+      setScheduleSuccess(null);
+
+      const payload = {
+        new_class_id: scheduleForm.new_class_id,
+        effective_term_id: scheduleForm.term_id,
+        reason: scheduleForm.reason.trim()
+          ? scheduleForm.reason.trim()
+          : undefined,
+      };
+
+      const res = await scheduleStudentClassChangeApi(scheduleTarget.user_id, payload);
+      if (!res.success) {
+        setScheduleError("Impossible de programmer ce changement.");
+        return;
+      }
+
+      setScheduleSuccess("Changement programmé avec succès.");
+      await refreshClassChangesOnly();
+    } catch (err: any) {
+      console.error(err);
+      setScheduleError(err.message || "Erreur lors de la programmation.");
+    } finally {
+      setScheduleLoading(false);
+    }
+  }
+
+  async function handleCancelClassChange(changeId: string) {
+    try {
+      setCancelLoadingId(changeId);
+      await deleteStudentClassChangeApi(changeId);
+      await refreshClassChangesOnly();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Impossible d'annuler ce changement.");
+    } finally {
+      setCancelLoadingId(null);
+    }
+  }
+
+  async function handleApplyClassChanges() {
+    if (!applyTermId) {
+      setApplyError("Merci de choisir une période.");
+      return;
+    }
+    try {
+      setApplyLoading(true);
+      setApplyError(null);
+      setApplyStatus(null);
+      const res = await applyStudentClassChangesApi(applyTermId);
+      setApplyStatus(
+        res.message ||
+          `${res.appliedCount} changement${res.appliedCount > 1 ? "s" : ""} appliqué${res.appliedCount > 1 ? "s" : ""}.`
+      );
+      await loadData();
+    } catch (err: any) {
+      console.error(err);
+      setApplyError(err.message || "Erreur lors de l'application des changements.");
+    } finally {
+      setApplyLoading(false);
+    }
+  }
+
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
       <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -380,6 +589,133 @@ export default function AdminStudentsPage() {
           <p className="text-xs text-red-600">{resendError}</p>
         )}
       </div>
+
+      <section className="mb-6 rounded-xl border bg-card shadow-sm">
+        <div className="flex flex-col gap-3 border-b px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Changements de classe programmés</h2>
+            <p className="text-sm text-muted-foreground">
+              Planifiez les passages dans les nouvelles classes et appliquez-les au début d&apos;un trimestre/semestre.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 text-xs sm:flex-row sm:items-center">
+            {pendingTermOptions.length > 0 ? (
+              <>
+                <label className="flex flex-col gap-1 font-medium text-muted-foreground sm:flex-row sm:items-center">
+                  <span className="text-[11px] uppercase tracking-wide">Période à appliquer</span>
+                  <select
+                    value={applyTermId}
+                    onChange={(e) => setApplyTermId(e.target.value)}
+                    className="rounded-md border px-2 py-1 text-xs"
+                  >
+                    {pendingTermOptions.map((term) => (
+                      <option key={term.id} value={term.id}>
+                        {term.name} • {new Date(term.start_date).toLocaleDateString("fr-FR", { month: "short", day: "numeric" })} →{" "}
+                        {new Date(term.end_date).toLocaleDateString("fr-FR", { month: "short", day: "numeric" })}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={handleApplyClassChanges}
+                  disabled={applyLoading}
+                  className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                >
+                  {applyLoading ? "Application..." : "Appliquer les changements"}
+                </button>
+              </>
+            ) : (
+              <p className="text-muted-foreground">Aucun changement en attente.</p>
+            )}
+          </div>
+        </div>
+        <div className="space-y-3 px-4 py-4 text-xs">
+          {applyStatus && <p className="text-emerald-700">{applyStatus}</p>}
+          {applyError && <p className="text-red-600">{applyError}</p>}
+          {classChangesError && <p className="text-red-600">{classChangesError}</p>}
+
+          {pendingClassChanges.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y text-xs">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">Élève</th>
+                    <th className="px-3 py-2 text-left font-medium">Passage</th>
+                    <th className="px-3 py-2 text-left font-medium">Période</th>
+                    <th className="px-3 py-2 text-right font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {pendingClassChanges.map((change) => (
+                    <tr key={change.id}>
+                      <td className="px-3 py-2">
+                        <div className="font-medium">{change.student_name}</div>
+                        <div className="text-[11px] text-muted-foreground">{change.student_email}</div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="text-[11px] text-muted-foreground">De</div>
+                        <div className="font-medium">
+                          {change.old_class
+                            ? `${change.old_class.label || "Classe"}${change.old_class.code ? ` (${change.old_class.code})` : ""}`
+                            : "Aucune classe"}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">Vers</div>
+                        <div className="font-medium text-indigo-600">
+                          {`${change.new_class.label || "Classe"}${change.new_class.code ? ` (${change.new_class.code})` : ""}`}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="font-medium">{change.term.name}</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {new Date(change.term.start_date).toLocaleDateString()} →{" "}
+                          {new Date(change.term.end_date).toLocaleDateString()}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleCancelClassChange(change.id)}
+                          disabled={cancelLoadingId === change.id}
+                          className="text-red-600 hover:underline disabled:opacity-60"
+                        >
+                          {cancelLoadingId === change.id ? "Annulation..." : "Annuler"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-muted-foreground">
+              Aucun changement programmé. Utilisez le bouton “Programmer un changement” dans la liste des élèves pour anticiper la prochaine période.
+            </p>
+          )}
+
+          {appliedClassChanges.length > 0 && (
+            <details className="rounded-lg border px-3 py-2">
+              <summary className="cursor-pointer text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Historique des changements ({appliedClassChanges.length})
+              </summary>
+              <ul className="mt-3 space-y-2">
+                {appliedClassChanges.map((change) => (
+                  <li key={change.id} className="text-[11px] text-muted-foreground">
+                    <span className="font-medium text-foreground">{change.student_name}</span> →{" "}
+                    <span className="text-indigo-600">
+                      {`${change.new_class.label || "Classe"}${change.new_class.code ? ` (${change.new_class.code})` : ""}`}
+                    </span>{" "}
+                    ({change.term.name}) – appliqué le{" "}
+                    {change.applied_at
+                      ? new Date(change.applied_at).toLocaleDateString()
+                      : "date inconnue"}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      </section>
 
       {loading && (
         <p className="text-sm text-muted-foreground">
@@ -484,6 +820,19 @@ export default function AdminStudentsPage() {
                         className="text-primary hover:underline"
                       >
                         Modifier la classe
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openScheduleModal(st)}
+                        className="text-indigo-600 hover:underline disabled:opacity-60"
+                        disabled={terms.length === 0}
+                        title={
+                          terms.length === 0
+                            ? "Ajoutez au moins une période dans l'établissement pour programmer un changement"
+                            : undefined
+                        }
+                      >
+                        Programmer un changement
                       </button>
                       {st.must_change_password && !st.last_login && (
                         <button
@@ -729,6 +1078,104 @@ export default function AdminStudentsPage() {
                   disabled={editLoading}
                 >
                   {editLoading ? "Enregistrement..." : "Enregistrer"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isScheduleModalOpen && scheduleTarget && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-xl bg-background p-6 shadow-lg">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Programmer un changement</h2>
+                <p className="text-xs text-muted-foreground">
+                  {scheduleTarget.full_name} passera dans la nouvelle classe au début de la période choisie.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeScheduleModal}
+                className="text-sm text-muted-foreground hover:text-foreground"
+              >
+                Fermer
+              </button>
+            </div>
+
+            <form className="space-y-4" onSubmit={handleScheduleSubmit}>
+              <div>
+                <label className="mb-1 block text-xs font-medium">Nouvelle classe *</label>
+                <select
+                  name="new_class_id"
+                  value={scheduleForm.new_class_id}
+                  onChange={handleScheduleFormChange}
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                  required
+                >
+                  <option value="">— Choisir une classe —</option>
+                  {classes.map((cls) => (
+                    <option key={cls.id} value={cls.id}>
+                      {cls.label} ({cls.code}) – {cls.academic_year}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium">Période d&apos;effet *</label>
+                <select
+                  name="term_id"
+                  value={scheduleForm.term_id}
+                  onChange={handleScheduleFormChange}
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                  required
+                >
+                  <option value="">— Sélectionner une période —</option>
+                  {terms.map((term) => (
+                    <option key={term.id} value={term.id}>
+                      {term.name} ({new Date(term.startDate).toLocaleDateString()} →{" "}
+                      {new Date(term.endDate).toLocaleDateString()})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium">
+                  Commentaire (optionnel)
+                </label>
+                <textarea
+                  name="reason"
+                  value={scheduleForm.reason}
+                  onChange={handleScheduleFormChange}
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                  rows={3}
+                  placeholder="Ex: passage en groupe bilingue au semestre 2"
+                />
+              </div>
+
+              {scheduleError && <p className="text-xs text-red-600">{scheduleError}</p>}
+              {scheduleSuccess && (
+                <p className="text-xs text-emerald-700">{scheduleSuccess}</p>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeScheduleModal}
+                  className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-60"
+                  disabled={scheduleLoading}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                  disabled={scheduleLoading}
+                >
+                  {scheduleLoading ? "Programmation..." : "Programmer"}
                 </button>
               </div>
             </form>

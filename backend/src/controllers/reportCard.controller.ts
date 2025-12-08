@@ -84,7 +84,14 @@ export async function validateReportCardHandler(req: Request, res: Response): Pr
       return;
     }
 
-    const establishmentId = req.user.establishmentId || '18fdec95-29be-4d71-8669-21d67f3a4587';
+    const establishmentId = req.user.establishmentId;
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé à ce compte',
+      });
+      return;
+    }
 
     // Vérifier qu'il y a des notes pour cet élève dans cette période
     // Récupérer les dates de la période
@@ -221,7 +228,14 @@ export async function validateClassReportCards(req: Request, res: Response): Pro
       return;
     }
 
-    const establishmentId = req.user.establishmentId || '18fdec95-29be-4d71-8669-21d67f3a4587';
+    const establishmentId = req.user.establishmentId;
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé à ce compte',
+      });
+      return;
+    }
 
     // Récupérer tous les élèves de la classe qui ont des notes
     const studentsResult = await pool.query(
@@ -288,7 +302,14 @@ export async function setCouncilAppreciationHandler(req: Request, res: Response)
       return;
     }
 
-    const establishmentId = req.user.establishmentId || '18fdec95-29be-4d71-8669-21d67f3a4587';
+    const establishmentId = req.user.establishmentId;
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé à ce compte',
+      });
+      return;
+    }
 
     // Vérifier que le bulletin n'est pas déjà validé
     const existingCard = await findReportCard(studentId, termId);

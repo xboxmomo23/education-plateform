@@ -10,6 +10,10 @@ import {
   updateStudentStatusHandler,
   updateStudentClassHandler,
   resendStudentInviteHandler,
+  getStudentClassChangesHandler,
+  scheduleStudentClassChangeHandler,
+  deleteStudentClassChangeHandler,
+  applyStudentClassChangesForTermHandler,
   // 👇 Professeurs
   getAdminTeachersHandler,
   createTeacherForAdminHandler,
@@ -89,6 +93,8 @@ router.patch(
 // Élèves
 router.get("/students", getAdminStudentsHandler);
 
+router.get("/student-class-changes", getStudentClassChangesHandler);
+
 router.post(
   "/students",
   [
@@ -148,8 +154,38 @@ router.patch(
   updateStudentClassHandler
 );
 
+router.post(
+  "/students/:userId/class-changes",
+  [
+    body("new_class_id")
+      .isUUID()
+      .withMessage("new_class_id doit être un UUID valide"),
+    body("effective_term_id")
+      .isUUID()
+      .withMessage("effective_term_id doit être un UUID valide"),
+    body("reason").optional().isString(),
+  ],
+  validateRequest,
+  scheduleStudentClassChangeHandler
+);
+
 router.post("/students/:userId/resend-invite", resendStudentInviteHandler);
 
+router.delete(
+  "/student-class-changes/:changeId",
+  deleteStudentClassChangeHandler
+);
+
+router.post(
+  "/student-class-changes/apply",
+  [
+    body("term_id")
+      .isUUID()
+      .withMessage("term_id doit être un UUID valide"),
+  ],
+  validateRequest,
+  applyStudentClassChangesForTermHandler
+);
 
 
 

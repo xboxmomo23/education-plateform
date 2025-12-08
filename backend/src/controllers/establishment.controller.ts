@@ -145,7 +145,14 @@ export async function updateDirectorSignature(req: Request, res: Response): Prom
     }
 
     const { directorName, directorSignature } = req.body;
-    const establishmentId = req.user.establishmentId || '18fdec95-29be-4d71-8669-21d67f3a4587';
+    const establishmentId = req.user.establishmentId;
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé à ce compte',
+      });
+      return;
+    }
 
     const result = await pool.query(
       `UPDATE establishments 
@@ -183,7 +190,14 @@ export async function getDirectorSignature(req: Request, res: Response): Promise
       return;
     }
 
-    const establishmentId = req.user.establishmentId || '18fdec95-29be-4d71-8669-21d67f3a4587';
+    const establishmentId = req.user.establishmentId;
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé à ce compte',
+      });
+      return;
+    }
 
     const result = await pool.query(
       `SELECT director_name, director_signature FROM establishments WHERE id = $1`,

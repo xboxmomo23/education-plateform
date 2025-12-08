@@ -871,6 +871,481 @@ export async function resendStudentInviteHandler(req: Request, res: Response) {
   }
 }
 
+interface StudentClassChangeRow {
+  id: string;
+  student_id: string;
+  old_class_id: string | null;
+  new_class_id: string;
+  effective_term_id: string;
+  establishment_id: string;
+  reason: string | null;
+  created_at: Date;
+  created_by: string;
+  applied_at: Date | null;
+  applied_by: string | null;
+  student_name: string;
+  student_email: string;
+  old_class_label: string | null;
+  old_class_code: string | null;
+  new_class_label: string | null;
+  new_class_code: string | null;
+  term_name: string;
+  term_start: Date;
+  term_end: Date;
+  academic_year: number;
+}
+
+function mapClassChangeRow(row: StudentClassChangeRow) {
+  return {
+    id: row.id,
+    student_id: row.student_id,
+    student_name: row.student_name,
+    student_email: row.student_email,
+    old_class: row.old_class_id
+      ? { id: row.old_class_id, label: row.old_class_label, code: row.old_class_code }
+      : null,
+    new_class: {
+      id: row.new_class_id,
+      label: row.new_class_label,
+      code: row.new_class_code,
+    },
+    term: {
+      id: row.effective_term_id,
+      name: row.term_name,
+      start_date: row.term_start,
+      end_date: row.term_end,
+      academic_year: row.academic_year,
+    },
+    reason: row.reason,
+    created_at: row.created_at,
+    created_by: row.created_by,
+    applied_at: row.applied_at,
+    applied_by: row.applied_by,
+  };
+}
+
+export async function getStudentClassChangesHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const { status, termId, studentId } = req.query;
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const clauses = ["scc.establishment_id = $1"];
+    const values: any[] = [estId];
+    let index = 2;
+
+    if (typeof status === "string") {
+      if (status === "pending") {
+        clauses.push("scc.applied_at IS NULL");
+      } else if (status === "applied") {
+        clauses.push("scc.applied_at IS NOT NULL");
+      }
+    }
+
+    if (typeof termId === "string" && termId.trim().length > 0) {
+      clauses.push(`scc.effective_term_id = $${index++}`);
+      values.push(termId.trim());
+    }
+
+    if (typeof studentId === "string" && studentId.trim().length > 0) {
+      clauses.push(`scc.student_id = $${index++}`);
+      values.push(studentId.trim());
+    }
+
+    const query = `
+      SELECT
+        scc.id,
+        scc.student_id,
+        scc.old_class_id,
+        scc.new_class_id,
+        scc.effective_term_id,
+        scc.establishment_id,
+        scc.reason,
+        scc.created_at,
+        scc.created_by,
+        scc.applied_at,
+        scc.applied_by,
+        u.full_name AS student_name,
+        u.email AS student_email,
+        old_cls.label AS old_class_label,
+        old_cls.code AS old_class_code,
+        new_cls.label AS new_class_label,
+        new_cls.code AS new_class_code,
+        t.name AS term_name,
+        t.start_date AS term_start,
+        t.end_date AS term_end,
+        t.academic_year
+      FROM student_class_changes scc
+      JOIN users u ON u.id = scc.student_id
+      LEFT JOIN classes old_cls ON old_cls.id = scc.old_class_id
+      LEFT JOIN classes new_cls ON new_cls.id = scc.new_class_id
+      JOIN terms t ON t.id = scc.effective_term_id
+      WHERE ${clauses.join(" AND ")}
+      ORDER BY
+        CASE WHEN scc.applied_at IS NULL THEN 0 ELSE 1 END,
+        t.start_date ASC,
+        scc.created_at ASC
+    `;
+
+    const result = await pool.query(query, values);
+    return res.json({
+      success: true,
+      data: result.rows.map(mapClassChangeRow),
+    });
+  } catch (error) {
+    console.error("Erreur getStudentClassChangesHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors du chargement des changements de classe programmés",
+    });
+  }
+}
+
+export async function scheduleStudentClassChangeHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const targetUserId = req.params.userId;
+    const { new_class_id, effective_term_id, reason } = req.body as {
+      new_class_id?: string;
+      effective_term_id?: string;
+      reason?: string;
+    };
+
+    if (!new_class_id || !effective_term_id) {
+      return res.status(400).json({
+        success: false,
+        error: "La nouvelle classe et la période sont obligatoires",
+      });
+    }
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const studentResult = await pool.query(
+      `
+        SELECT u.id, u.full_name, s.class_id
+        FROM users u
+        JOIN students s ON s.user_id = u.id
+        WHERE u.id = $1
+          AND u.role = 'student'
+          AND u.establishment_id = $2
+      `,
+      [targetUserId, estId]
+    );
+
+    if (studentResult.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Élève introuvable pour cet établissement",
+      });
+    }
+
+    const studentRow = studentResult.rows[0];
+
+    const classResult = await pool.query(
+      `
+        SELECT id
+        FROM classes
+        WHERE id = $1
+          AND establishment_id = $2
+      `,
+      [new_class_id, estId]
+    );
+
+    if (classResult.rowCount === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "La classe choisie n'appartient pas à votre établissement",
+      });
+    }
+
+    if (studentRow.class_id && studentRow.class_id === new_class_id) {
+      return res.status(400).json({
+        success: false,
+        error: "L'élève est déjà dans cette classe",
+      });
+    }
+
+    const termResult = await pool.query(
+      `
+        SELECT id
+        FROM terms
+        WHERE id = $1
+          AND establishment_id = $2
+      `,
+      [effective_term_id, estId]
+    );
+
+    if (termResult.rowCount === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "La période choisie n'existe pas pour votre établissement",
+      });
+    }
+
+    const existingPending = await pool.query(
+      `
+        SELECT id
+        FROM student_class_changes
+        WHERE student_id = $1
+          AND effective_term_id = $2
+          AND applied_at IS NULL
+      `,
+      [targetUserId, effective_term_id]
+    );
+
+    if ((existingPending?.rowCount ?? 0) > 0) {
+      return res.status(409).json({
+        success: false,
+        error: "Un changement est déjà programmé pour cette période",
+      });
+    }
+
+    const normalizedReason =
+      typeof reason === "string" && reason.trim().length > 0
+        ? reason.trim()
+        : null;
+
+    const insertResult = await pool.query(
+      `
+        INSERT INTO student_class_changes (
+          student_id,
+          old_class_id,
+          new_class_id,
+          effective_term_id,
+          establishment_id,
+          created_by,
+          reason
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
+      `,
+      [
+        targetUserId,
+        studentRow.class_id || null,
+        new_class_id,
+        effective_term_id,
+        estId,
+        userId,
+        normalizedReason,
+      ]
+    );
+
+    const insertedId = insertResult.rows[0].id as string;
+    const detailResult = await pool.query(
+      `
+        SELECT
+          scc.id,
+          scc.student_id,
+          scc.old_class_id,
+          scc.new_class_id,
+          scc.effective_term_id,
+          scc.establishment_id,
+          scc.reason,
+          scc.created_at,
+          scc.created_by,
+          scc.applied_at,
+          scc.applied_by,
+          u.full_name AS student_name,
+          u.email AS student_email,
+          old_cls.label AS old_class_label,
+          old_cls.code AS old_class_code,
+          new_cls.label AS new_class_label,
+          new_cls.code AS new_class_code,
+          t.name AS term_name,
+          t.start_date AS term_start,
+          t.end_date AS term_end,
+          t.academic_year
+        FROM student_class_changes scc
+        JOIN users u ON u.id = scc.student_id
+        LEFT JOIN classes old_cls ON old_cls.id = scc.old_class_id
+        LEFT JOIN classes new_cls ON new_cls.id = scc.new_class_id
+        JOIN terms t ON t.id = scc.effective_term_id
+        WHERE scc.id = $1
+      `,
+      [insertedId]
+    );
+
+    return res.status(201).json({
+      success: true,
+      data: mapClassChangeRow(detailResult.rows[0]),
+    });
+  } catch (error: any) {
+    console.error("Erreur scheduleStudentClassChangeHandler:", error);
+    if (error.code === "23505") {
+      return res.status(409).json({
+        success: false,
+        error: "Un changement est déjà programmé pour cette période",
+      });
+    }
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la programmation du changement de classe",
+    });
+  }
+}
+
+export async function deleteStudentClassChangeHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const { changeId } = req.params;
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const deleteResult = await pool.query(
+      `
+        DELETE FROM student_class_changes
+        WHERE id = $1
+          AND establishment_id = $2
+          AND applied_at IS NULL
+        RETURNING id
+      `,
+      [changeId, estId]
+    );
+
+    if (deleteResult.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Changement introuvable ou déjà appliqué",
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Changement de classe annulé",
+    });
+  } catch (error) {
+    console.error("Erreur deleteStudentClassChangeHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la suppression du changement",
+    });
+  }
+}
+
+export async function applyStudentClassChangesForTermHandler(req: Request, res: Response) {
+  const client = await pool.connect();
+  try {
+    const { userId } = req.user!;
+    const { term_id } = req.body as { term_id?: string };
+
+    if (!term_id) {
+      return res.status(400).json({
+        success: false,
+        error: "term_id est obligatoire",
+      });
+    }
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const termResult = await pool.query(
+      `
+        SELECT id
+        FROM terms
+        WHERE id = $1
+          AND establishment_id = $2
+      `,
+      [term_id, estId]
+    );
+
+    if (termResult.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Période introuvable pour votre établissement",
+      });
+    }
+
+    await client.query("BEGIN");
+
+    const pendingResult = await client.query(
+      `
+        SELECT id, student_id, new_class_id
+        FROM student_class_changes
+        WHERE establishment_id = $1
+          AND effective_term_id = $2
+          AND applied_at IS NULL
+        FOR UPDATE
+      `,
+      [estId, term_id]
+    );
+
+    if (pendingResult.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.json({
+        success: true,
+        message: "Aucun changement à appliquer pour cette période",
+        appliedCount: 0,
+      });
+    }
+
+    for (const change of pendingResult.rows) {
+      await client.query(
+        `
+          UPDATE students
+          SET class_id = $1
+          WHERE user_id = $2
+        `,
+        [change.new_class_id, change.student_id]
+      );
+    }
+
+    const changeIds = pendingResult.rows.map((row) => row.id);
+
+    await client.query(
+      `
+        UPDATE student_class_changes
+        SET applied_at = NOW(),
+            applied_by = $3
+        WHERE establishment_id = $1
+          AND effective_term_id = $2
+          AND id = ANY($4::uuid[])
+      `,
+      [estId, term_id, userId, changeIds]
+    );
+
+    await client.query("COMMIT");
+
+    return res.json({
+      success: true,
+      appliedCount: pendingResult.rowCount,
+      message: "Changements appliqués avec succès",
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Erreur applyStudentClassChangesForTermHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de l'application des changements de classe",
+    });
+  } finally {
+    client.release();
+  }
+}
+
 
 /**
  * GET /api/admin/staff

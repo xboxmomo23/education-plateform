@@ -91,7 +91,14 @@ export async function getStudentGradesSummaryHandler(req: Request, res: Response
     }
 
     const year = academicYear ? parseInt(academicYear as string) : new Date().getFullYear();
-    const establishmentId = req.user.establishmentId || '18fdec95-29be-4d71-8669-21d67f3a4587';
+    const establishmentId = req.user.establishmentId;
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé à ce compte',
+      });
+      return;
+    }
 
     // Récupérer les infos du term si spécifié
     let termInfo = null;
@@ -335,7 +342,14 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
       return;
     }
 
-    const establishmentId = req.user.establishmentId || '18fdec95-29be-4d71-8669-21d67f3a4587';
+    const establishmentId = req.user.establishmentId;
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé à ce compte',
+      });
+      return;
+    }
 
     // Récupérer les infos de l'élève
     const studentQuery = `
@@ -705,7 +719,14 @@ export async function getStudentReportDataHandler(req: Request, res: Response): 
       return;
     }
 
-    const establishmentId = req.user.establishmentId || '18fdec95-29be-4d71-8669-21d67f3a4587';
+    const establishmentId = req.user.establishmentId;
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé à ce compte',
+      });
+      return;
+    }
 
     // Récupérer les infos de l'élève
     const studentQuery = `
