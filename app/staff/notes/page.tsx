@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -30,6 +30,7 @@ interface Child {
   id: string
   name: string
   className: string
+  classId?: string | null
 }
 
 /**
@@ -90,42 +91,101 @@ interface ChildWithGrades {
 /**
  * Sélecteur d'enfant
  */
+interface ClassOption {
+  id: string
+  label: string
+}
+
 function ChildSelector({
   children,
   selectedId,
   onChange,
+  classOptions,
+  selectedClassId,
+  onClassChange,
+  searchTerm,
+  onSearchChange,
 }: {
   children: Child[]
   selectedId: string
   onChange: (id: string) => void
+  classOptions: ClassOption[]
+  selectedClassId: string
+  onClassChange: (id: string) => void
+  searchTerm: string
+  onSearchChange: (value: string) => void
 }) {
   const selectedChild = children.find((c) => c.id === selectedId)
+  const hasClasses = classOptions.length > 0
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <Users className="h-5 w-5" />
-          Sélectionner un enfant ({children.length})
+          Sélectionner un élève ({children.length})
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <select
-          className="w-full max-w-2xl rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          value={selectedId}
-          onChange={(e) => onChange(e.target.value)}
-        >
-          {children.map((child) => (
-            <option key={child.id} value={child.id}>
-              {child.name} - {child.className}
-            </option>
-          ))}
-        </select>
+        <div className="grid gap-3 md:grid-cols-2 mb-4">
+          {hasClasses && (
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-muted-foreground">
+                Filtrer par classe
+              </label>
+              <select
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={selectedClassId}
+                onChange={(e) => onClassChange(e.target.value)}
+              >
+                <option value="all">Toutes les classes</option>
+                {classOptions.map((classe) => (
+                  <option key={classe.id} value={classe.id}>
+                    {classe.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-muted-foreground">
+              Rechercher un élève
+            </label>
+            <input
+              type="text"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              placeholder="Nom ou prénom"
+              value={searchTerm}
+              onChange={(e) => onSearchChange(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {children.length === 0 ? (
+          <Alert variant="outline">
+            <AlertDescription>
+              Aucun élève ne correspond à ces filtres. Ajustez la classe ou la recherche pour voir des résultats.
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <select
+            className="w-full max-w-2xl rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={selectedId || ""}
+            onChange={(e) => onChange(e.target.value)}
+          >
+            {children.map((child) => (
+              <option key={child.id} value={child.id}>
+                {child.name} {child.className ? `- ${child.className}` : "- Classe inconnue"}
+              </option>
+            ))}
+          </select>
+        )}
 
         {selectedChild && (
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex gap-2 flex-wrap">
             <Badge variant="secondary">{selectedChild.name}</Badge>
-            <Badge variant="outline">{selectedChild.className}</Badge>
+            <Badge variant="outline">{selectedChild.className || "Classe inconnue"}</Badge>
           </div>
         )}
       </CardContent>
@@ -364,6 +424,8 @@ export default function ResponsableNotesPage() {
   // ========================================
   const [childrenData, setChildrenData] = useState<ChildWithGrades[]>([])
   const [selectedChildId, setSelectedChildId] = useState<string>("")
+  const [selectedClassId, setSelectedClassId] = useState<string>("all")
+  const [searchTerm, setSearchTerm] = useState<string>("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>("")
   const [editingGradeId, setEditingGradeId] = useState<string | null>(null)
@@ -429,13 +491,18 @@ export default function ResponsableNotesPage() {
       // ✅ Transformer les données
       const transformedData: ChildWithGrades[] = response.data.map((item: any) => {
         const grades = item.grades || []
-        const className = grades[0]?.class_name || "Classe inconnue"
+        const childClassId = item.student.classId || null
+        const childClassName =
+          item.student.className ||
+          grades.find((g: GradeData) => g.class_name)?.class_name ||
+          "Classe inconnue"
 
         return {
           child: {
             id: item.student.id,
             name: item.student.name,
-            className: className,
+            className: childClassName,
+            classId: childClassId,
           },
           grades: grades,
           moyenne: calculateMoyenne(grades),
@@ -475,6 +542,46 @@ export default function ResponsableNotesPage() {
   useEffect(() => {
     loadData()
   }, [])
+
+  const classOptions = useMemo(() => {
+    const entries = new Map<string, string>()
+    childrenData.forEach((item) => {
+      if (item.child.classId && item.child.className && item.child.className !== "Classe inconnue") {
+        entries.set(item.child.classId, item.child.className)
+      }
+    })
+    return Array.from(entries.entries()).map(([id, label]) => ({ id, label }))
+  }, [childrenData])
+
+  const filteredChildrenData = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase()
+    return childrenData.filter((item) => {
+      const matchesClass =
+        selectedClassId === "all" ||
+        (item.child.classId && item.child.classId === selectedClassId)
+      const matchesSearch =
+        normalizedSearch.length === 0 ||
+        item.child.name.toLowerCase().includes(normalizedSearch)
+      return matchesClass && matchesSearch
+    })
+  }, [childrenData, searchTerm, selectedClassId])
+
+  useEffect(() => {
+    if (filteredChildrenData.length === 0) {
+      if (selectedChildId) {
+        setSelectedChildId("")
+      }
+      return
+    }
+
+    const stillVisible = filteredChildrenData.some(
+      (item) => item.child.id === selectedChildId
+    )
+
+    if (!selectedChildId || !stillVisible) {
+      setSelectedChildId(filteredChildrenData[0].child.id)
+    }
+  }, [filteredChildrenData, selectedChildId])
 
   // ========================================
   // RENDU - CHARGEMENT
@@ -552,7 +659,7 @@ export default function ResponsableNotesPage() {
   // ========================================
 
   const selectedChild = getSelectedChild()
-  const allChildren: Child[] = childrenData.map((c) => c.child)
+  const filteredChildOptions: Child[] = filteredChildrenData.map((c) => c.child)
 
   return (
     <DashboardLayout requiredRole="staff">
@@ -588,9 +695,14 @@ export default function ResponsableNotesPage() {
         {/* SÉLECTEUR ENFANT */}
         {/* ============================================ */}
         <ChildSelector
-          children={allChildren}
+          children={filteredChildOptions}
           selectedId={selectedChildId}
           onChange={setSelectedChildId}
+          classOptions={classOptions}
+          selectedClassId={selectedClassId}
+          onClassChange={setSelectedClassId}
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
         />
 
         {/* ============================================ */}

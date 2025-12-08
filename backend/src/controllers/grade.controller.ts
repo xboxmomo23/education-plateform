@@ -843,17 +843,37 @@ export async function getStaffManagedStudentsGradesHandler(
   res: Response
 ) {
   try {
-    const { termId, courseId } = req.query;
-    const staffId = req.user?.userId;
+    if (!req.user || req.user.role !== 'staff') {
+      res.status(403).json({
+        success: false,
+        error: 'Accès réservé au personnel',
+      });
+      return;
+    }
+
+    const { termId, courseId, classId } = req.query;
+    const staffId = req.user.userId;
+    const establishmentId = req.user.establishmentId;
 
     console.log('[Staff Grades] Fetching grades for staff:', staffId);
-    console.log('[Staff Grades] Filters:', { termId, courseId });
+    console.log('[Staff Grades] Filters:', { termId, courseId, classId });
 
-    // ✅ Requête SANS class_students (qui n'existe pas)
+    if (!establishmentId) {
+      res.status(400).json({
+        success: false,
+        error: 'Établissement introuvable pour cet utilisateur',
+      });
+      return;
+    }
+
+    let paramIndex = 2;
+    const params: any[] = [establishmentId];
+
     let query = `
       SELECT 
         sp.user_id as student_id,
         u.full_name as student_name,
+        st.class_id as class_id,
         c.id as course_id,
         c.title as course_title,
         e.id as evaluation_id,
@@ -867,29 +887,38 @@ export async function getStaffManagedStudentsGradesHandler(
         g.absent,
         g.comment as grade_comment,
         g.created_at as grade_created_at,
-        t.full_name as teacher_name
+        t.full_name as teacher_name,
+        cl.label as class_label
       FROM student_profiles sp
       INNER JOIN users u ON sp.user_id = u.id
+      LEFT JOIN students st ON st.user_id = u.id
+      LEFT JOIN classes cl ON st.class_id = cl.id
       LEFT JOIN grades g ON g.student_id = sp.user_id
       LEFT JOIN evaluations e ON g.evaluation_id = e.id
       LEFT JOIN courses c ON e.course_id = c.id
       LEFT JOIN teacher_profiles tp ON c.teacher_id = tp.user_id
       LEFT JOIN users t ON tp.user_id = t.id
       WHERE u.active = true
+        AND u.role = 'student'
+        AND u.establishment_id = $1
     `;
 
-    const params: any[] = [];
-
-    // Filtre par trimestre (optionnel)
     if (termId) {
       params.push(termId);
-      query += ` AND e.term_id = $${params.length}`;
+      query += ` AND e.term_id = $${paramIndex}`;
+      paramIndex++;
     }
 
-    // Filtre par cours (optionnel)
     if (courseId) {
       params.push(courseId);
-      query += ` AND c.id = $${params.length}`;
+      query += ` AND c.id = $${paramIndex}`;
+      paramIndex++;
+    }
+
+    if (classId) {
+      params.push(classId);
+      query += ` AND (c.class_id = $${paramIndex} OR st.class_id = $${paramIndex})`;
+      paramIndex++;
     }
 
     query += ` ORDER BY u.full_name ASC, e.eval_date DESC, c.title ASC LIMIT 100`;
@@ -911,6 +940,8 @@ export async function getStaffManagedStudentsGradesHandler(
           student: {
             id: studentId,
             name: row.student_name,
+            classId: row.class_id || null,
+            className: row.class_label || null,
           },
           grades: [],
         });
@@ -930,7 +961,7 @@ export async function getStaffManagedStudentsGradesHandler(
           max_scale: parseFloat(row.max_scale) || 20,
           eval_date: row.eval_date,
           comment: row.grade_comment,
-          class_name: '', 
+          class_name: row.class_label || '',
           absent: row.absent || false,
           student_name: row.student_name,
         });
