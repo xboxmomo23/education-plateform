@@ -671,7 +671,7 @@ export default function ResponsableNotesPage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-4xl font-bold text-slate-900">
-                Notes de mes enfants
+                Notes ELEVES
               </h1>
               <p className="text-muted-foreground mt-2">
                 Suivi des résultats scolaires

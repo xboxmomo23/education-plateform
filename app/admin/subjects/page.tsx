@@ -7,6 +7,7 @@ import { teachersApi, type AdminTeacher } from "@/lib/api/teachers";
 import { classesApi, type AdminClass } from "@/lib/api/classes"; // ✅ utilisation de l'API existante
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { AdminBackButton } from "@/components/admin/AdminBackButton";
 import {
   Tabs,
   TabsContent,
@@ -150,6 +151,7 @@ export default function AdminSubjectsPage() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
+      <AdminBackButton className="mb-4" />
       <header className="mb-6">
         <h1 className="text-2xl font-bold">Matières & Cours</h1>
         <p className="text-sm text-muted-foreground">

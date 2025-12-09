@@ -5,6 +5,7 @@ import { apiFetch } from "@/lib/api/api-client";
 import { getUserSession, User } from "@/lib/auth-new";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { AdminBackButton } from "@/components/admin/AdminBackButton";
 import {
   Dialog,
   DialogContent,
@@ -412,6 +413,7 @@ export default function AdminStaffPage() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
+      <AdminBackButton className="mb-4" />
       <header className="mb-6 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">

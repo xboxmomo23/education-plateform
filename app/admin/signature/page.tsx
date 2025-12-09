@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { AdminBackButton } from "@/components/admin/AdminBackButton"
 import {
   Save,
   Upload,
@@ -15,7 +16,6 @@ import {
   Trash2,
   FileSignature,
   User,
-  ArrowLeft,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -158,12 +158,7 @@ export default function AdminSignaturePage() {
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-2xl mx-auto py-8 px-4">
         {/* BOUTON RETOUR */}
-        <Link href="/admin">
-          <Button variant="ghost" className="mb-6">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Retour au tableau de bord
-          </Button>
-        </Link>
+        <AdminBackButton className="mb-6" />
 
         <div className="space-y-6">
           {/* HEADER */}

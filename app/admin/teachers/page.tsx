@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/api/api-client";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { AdminBackButton } from "@/components/admin/AdminBackButton";
 import { EditTeacherModal } from "@/components/admin/EditTeacherModal";
 import { CreateTeacherModal } from "@/components/admin/CreateTeacherModal";
 
@@ -168,6 +169,7 @@ export default function AdminTeachersPage() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
+      <AdminBackButton className="mb-4" />
       {/* Header */}
       <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, FormEvent, ChangeEvent } from "react";
+import { AdminBackButton } from "@/components/admin/AdminBackButton";
 import { apiFetch } from "@/lib/api/api-client";
 import type { StudentClassChange } from "@/lib/api/students";
 import {
@@ -529,6 +530,7 @@ export default function AdminStudentsPage() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
+      <AdminBackButton className="mb-4" />
       <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Gestion des élèves</h1>
