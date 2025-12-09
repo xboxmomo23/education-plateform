@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import { termsApi, type Term } from "@/lib/api/term"
 import { reportCardApi, type ClassReportCard } from "@/lib/api/reportCard"
+import { timetableApi } from "@/lib/api/timetable"
 
 // ============================================
 // TYPES
@@ -70,27 +71,21 @@ export default function StaffBulletinsPage() {
       setIsLoading(true)
       setError(null)
 
-      // Charger les classes
-      const classesResponse = await fetch(
-        `http://localhost:5000/api/classes`,
-        {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-          },
-        }
-      )
-      const classesData = await classesResponse.json()
+      // Charger les classes que le staff peut gérer
+      const classesResponse = await timetableApi.getStaffClasses()
+      if (classesResponse.success && classesResponse.data) {
+        const normalizedClasses = classesResponse.data.map((c: any) => ({
+          id: c.class_id || c.id,
+          label: c.class_label || c.label || c.name,
+          level: c.level || "",
+        }))
+        setClasses(normalizedClasses)
 
-      if (classesData.success && classesData.data) {
-        setClasses(classesData.data.map((c: any) => ({
-          id: c.id,
-          label: c.label || c.name,
-          level: c.level || '',
-        })))
-
-        if (classesData.data.length > 0) {
-          setSelectedClassId(classesData.data[0].id)
+        if (normalizedClasses.length > 0) {
+          setSelectedClassId(normalizedClasses[0].id)
         }
+      } else if (!classesResponse.success) {
+        setError(classesResponse.error || "Impossible de charger les classes")
       }
 
       // Charger les périodes

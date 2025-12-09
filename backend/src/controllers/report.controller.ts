@@ -1,13 +1,8 @@
 import { Request, Response } from 'express';
 import { pool } from '../config/database';
 import { findTermById } from '../models/term.model';
-import PDFDocument from 'pdfkit'; 
-
-// ============================================
-// NOTE: Pour la génération PDF native, installer :
-// npm install pdfkit @types/pdfkit
-// Puis décommenter les sections marquées [PDFKIT]
-// ============================================
+import { findReportCard } from '../models/reportCard.model';
+import PDFDocument from 'pdfkit';
 
 // =========================
 // Types
@@ -66,6 +61,18 @@ function generateAppreciation(average: number): string {
   return 'Travail très insuffisant';
 }
 
+// Helper pour formater les nombres
+function formatNumber(num: number | null, decimals: number = 2): string {
+  if (num === null) return '-';
+  return num.toFixed(decimals).replace('.', ',');
+}
+
+// Helper pour tronquer le texte avec ellipsis
+function truncateText(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return text.substring(0, maxLength - 3) + '...';
+}
+
 // =========================
 // GET /api/students/me/grades/summary
 // Synthèse des notes pour l'élève connecté
@@ -81,11 +88,10 @@ export async function getStudentGradesSummaryHandler(req: Request, res: Response
     const studentId = req.user.userId;
     const { academicYear, termId } = req.query;
 
-    // Vérifier que l'utilisateur est bien un élève
     if (req.user.role !== 'student') {
-      res.status(403).json({ 
-        success: false, 
-        error: 'Cet endpoint est réservé aux élèves' 
+      res.status(403).json({
+        success: false,
+        error: 'Cet endpoint est réservé aux élèves',
       });
       return;
     }
@@ -100,13 +106,25 @@ export async function getStudentGradesSummaryHandler(req: Request, res: Response
       return;
     }
 
-    // Récupérer les infos du term si spécifié
     let termInfo = null;
     if (termId) {
       termInfo = await findTermById(termId as string, establishmentId);
+      if (!termInfo) {
+        res.status(404).json({
+          success: false,
+          error: 'Période introuvable pour cet établissement',
+        });
+        return;
+      }
     }
 
-    // Construire la requête SQL pour récupérer toutes les notes
+    console.log('[Reports] getStudentGradesSummary', {
+      studentId,
+      academicYear: year,
+      termId: termId || null,
+      establishmentId,
+    });
+
     let gradesQuery = `
       SELECT 
         g.id as grade_id,
@@ -126,7 +144,6 @@ export async function getStudentGradesSummaryHandler(req: Request, res: Response
         s.code as subject_code,
         c.id as course_id,
         c.academic_year,
-        -- Stats de classe
         (
           SELECT AVG(g2.normalized_value)
           FROM grades g2
@@ -159,15 +176,10 @@ export async function getStudentGradesSummaryHandler(req: Request, res: Response
     const params: any[] = [studentId, year];
     let paramIndex = 3;
 
-    // Filtre par période si spécifié
-    // On filtre soit par term_id direct, soit par date si term_id est NULL
     if (termId && termInfo) {
-      gradesQuery += ` AND (
-        e.term_id = $${paramIndex}
-        OR (e.term_id IS NULL AND e.eval_date >= $${paramIndex + 1} AND e.eval_date <= $${paramIndex + 2})
-      )`;
-      params.push(termId, termInfo.start_date, termInfo.end_date);
-      paramIndex += 3;
+      gradesQuery += ` AND e.term_id = $${paramIndex}`;
+      params.push(termId);
+      paramIndex += 1;
     }
 
     gradesQuery += ` ORDER BY s.name ASC, e.eval_date DESC`;
@@ -175,7 +187,12 @@ export async function getStudentGradesSummaryHandler(req: Request, res: Response
     const gradesResult = await pool.query(gradesQuery, params);
     const grades = gradesResult.rows;
 
-    // Grouper par matière pour calculer les moyennes
+    console.log('[Reports] getStudentGradesSummary result', {
+      studentId,
+      termId: termId || null,
+      rows: grades.length,
+    });
+
     const subjectsMap = new Map<string, {
       subjectId: string;
       subjectName: string;
@@ -204,7 +221,6 @@ export async function getStudentGradesSummaryHandler(req: Request, res: Response
       const subject = subjectsMap.get(grade.subject_id)!;
       subject.grades.push(grade);
 
-      // Calculer la moyenne pondérée (seulement les notes valides)
       if (!grade.absent && grade.normalized_value !== null) {
         const normalizedValue = parseFloat(grade.normalized_value);
         const coefficient = parseFloat(grade.coefficient);
@@ -212,7 +228,6 @@ export async function getStudentGradesSummaryHandler(req: Request, res: Response
         subject.weightedSum += normalizedValue * coefficient;
       }
 
-      // Collecter les stats de classe
       if (grade.class_average !== null) {
         subject.classAverages.push(parseFloat(grade.class_average));
       }
@@ -224,14 +239,13 @@ export async function getStudentGradesSummaryHandler(req: Request, res: Response
       }
     });
 
-    // Construire la réponse des matières
     const subjects: SubjectSummary[] = [];
     let totalSubjectAverages = 0;
     let countSubjectsWithGrades = 0;
 
     subjectsMap.forEach((subject) => {
-      const studentAverage = subject.totalCoef > 0 
-        ? subject.weightedSum / subject.totalCoef 
+      const studentAverage = subject.totalCoef > 0
+        ? subject.weightedSum / subject.totalCoef
         : 0;
 
       const classAverage = subject.classAverages.length > 0
@@ -241,7 +255,6 @@ export async function getStudentGradesSummaryHandler(req: Request, res: Response
       const minGrade = subject.mins.length > 0 ? Math.min(...subject.mins) : null;
       const maxGrade = subject.maxs.length > 0 ? Math.max(...subject.maxs) : null;
 
-      // Compter seulement les matières avec des notes valides pour la moyenne générale
       if (subject.totalCoef > 0) {
         totalSubjectAverages += studentAverage;
         countSubjectsWithGrades++;
@@ -260,12 +273,10 @@ export async function getStudentGradesSummaryHandler(req: Request, res: Response
       });
     });
 
-    // Calculer la moyenne générale
     const overallAverage = countSubjectsWithGrades > 0
       ? totalSubjectAverages / countSubjectsWithGrades
       : 0;
 
-    // Transformer les évaluations en détails
     const evaluations: EvaluationDetail[] = grades.map((grade) => ({
       subjectId: grade.subject_id,
       subjectName: grade.subject_name,
@@ -310,6 +321,7 @@ export async function getStudentGradesSummaryHandler(req: Request, res: Response
 // =========================
 // GET /api/students/:studentId/report
 // Génère un bulletin PDF pour un élève
+// FORMAT PROFESSIONNEL INSPIRÉ DU MODÈLE ESIEE
 // =========================
 
 export async function getStudentReportHandler(req: Request, res: Response): Promise<void> {
@@ -320,14 +332,19 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
     }
 
     const { studentId } = req.params;
-    const { termId } = req.query;
+    const rawTermId = req.query.termId;
+    const termId =
+      typeof rawTermId === 'string'
+        ? rawTermId
+        : Array.isArray(rawTermId)
+        ? (rawTermId[0] as string | undefined)
+        : undefined;
 
-    // Vérification des permissions
-    const canAccess = 
+    const canAccess =
       req.user.role === 'admin' ||
       req.user.role === 'staff' ||
       (req.user.role === 'student' && req.user.userId === studentId) ||
-      req.user.role === 'parent'; // TODO: vérifier que c'est bien le parent de l'élève
+      req.user.role === 'parent';
 
     if (!canAccess) {
       res.status(403).json({ success: false, error: 'Accès refusé' });
@@ -335,23 +352,14 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
     }
 
     if (!termId) {
-      res.status(400).json({ 
-        success: false, 
-        error: 'Le paramètre termId est requis pour générer un bulletin' 
-      });
-      return;
-    }
-
-    const establishmentId = req.user.establishmentId;
-    if (!establishmentId) {
-      res.status(403).json({
+      res.status(400).json({
         success: false,
-        error: 'Aucun établissement associé à ce compte',
+        error: 'Le paramètre termId est requis pour générer un bulletin',
       });
       return;
     }
 
-    // Récupérer les infos de l'élève
+    // Récupérer les infos de l'élève avec date de naissance
     const studentQuery = `
       SELECT 
         u.id,
@@ -359,13 +367,15 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
         u.email,
         sp.student_no,
         sp.birthdate,
+        cl.id as class_id,
         cl.label as class_label,
         cl.level as class_level,
-        en.academic_year
+        cl.academic_year,
+        u.establishment_id
       FROM users u
       INNER JOIN student_profiles sp ON sp.user_id = u.id
-      INNER JOIN enrollments en ON en.student_id = u.id AND en.end_date IS NULL
-      INNER JOIN classes cl ON cl.id = en.class_id
+      INNER JOIN students st ON st.user_id = u.id
+      INNER JOIN classes cl ON cl.id = st.class_id
       WHERE u.id = $1
     `;
 
@@ -376,6 +386,35 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
     }
 
     const student = studentResult.rows[0];
+    const studentEstablishmentId = student.establishment_id;
+
+    if (!studentEstablishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Établissement élève introuvable',
+      });
+      return;
+    }
+
+    const requesterEstId = req.user.establishmentId;
+    if (requesterEstId && requesterEstId !== studentEstablishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Accès refusé pour cet établissement',
+      });
+      return;
+    }
+
+    const effectiveEstablishmentId = studentEstablishmentId;
+
+    const reportCard = await findReportCard(studentId, termId, effectiveEstablishmentId);
+    if (!reportCard || !reportCard.validatedAt) {
+      res.status(400).json({
+        success: false,
+        error: 'Le bulletin n\'a pas encore été validé.',
+      });
+      return;
+    }
 
     // Récupérer les infos de l'établissement
     const establishmentQuery = `
@@ -384,25 +423,22 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
       WHERE id = $1
     `;
 
-    const establishmentResult = await pool.query(establishmentQuery, [establishmentId]);
+    const establishmentResult = await pool.query(establishmentQuery, [effectiveEstablishmentId]);
     const establishment = establishmentResult.rows[0] || {
       name: 'Établissement',
       address: '',
       city: '',
       postal_code: '',
-      email: '',
-      phone: '',
     };
 
     // Récupérer les infos de la période
-    const term = await findTermById(termId as string, establishmentId);
+    const term = await findTermById(termId, effectiveEstablishmentId);
     if (!term) {
       res.status(404).json({ success: false, error: 'Période non trouvée' });
       return;
     }
 
-
-    // Récupérer les appréciations par matière (prof)
+    // Récupérer les appréciations par matière
     const subjectAppreciationsQuery = `
       SELECT 
         sa.appreciation,
@@ -420,16 +456,31 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
     });
 
     // Récupérer l'appréciation du conseil de classe
-    const reportCardQuery = `
-      SELECT council_appreciation
-      FROM report_cards
-      WHERE student_id = $1 AND term_id = $2
-    `;
-    const reportCardResult = await pool.query(reportCardQuery, [studentId, termId]);
-    const councilAppreciation = reportCardResult.rows[0]?.council_appreciation || null;
+    const councilAppreciation = reportCard.councilAppreciation || null;
 
-    // Récupérer les notes pour cette période
-    // Filtre par term_id direct OU par date si term_id est NULL
+    // Récupérer les noms des professeurs par matière
+    const teachersQuery = `
+      SELECT DISTINCT
+        s.name as subject_name,
+        u.full_name as teacher_name
+      FROM courses c
+      INNER JOIN subjects s ON s.id = c.subject_id
+      INNER JOIN users u ON u.id = c.teacher_id
+      INNER JOIN evaluations e ON e.course_id = c.id
+      INNER JOIN grades g ON g.evaluation_id = e.id
+      WHERE g.student_id = $1
+      AND (
+        e.term_id = $2
+        OR (e.term_id IS NULL AND e.eval_date >= $3 AND e.eval_date <= $4)
+      )
+    `;
+    const teachersResult = await pool.query(teachersQuery, [studentId, termId, term.start_date, term.end_date]);
+    const teachersMap = new Map<string, string>();
+    teachersResult.rows.forEach((row) => {
+      teachersMap.set(row.subject_name, row.teacher_name);
+    });
+
+    // Récupérer les notes avec stats de classe (min, max)
     const gradesQuery = `
       SELECT 
         g.normalized_value,
@@ -444,7 +495,21 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
           WHERE g2.evaluation_id = e.id
           AND g2.absent = false
           AND g2.normalized_value IS NOT NULL
-        ) as class_average
+        ) as class_average,
+        (
+          SELECT MIN(g2.normalized_value)
+          FROM grades g2
+          WHERE g2.evaluation_id = e.id
+          AND g2.absent = false
+          AND g2.normalized_value IS NOT NULL
+        ) as class_min,
+        (
+          SELECT MAX(g2.normalized_value)
+          FROM grades g2
+          WHERE g2.evaluation_id = e.id
+          AND g2.absent = false
+          AND g2.normalized_value IS NOT NULL
+        ) as class_max
       FROM grades g
       INNER JOIN evaluations e ON e.id = g.evaluation_id
       INNER JOIN courses c ON c.id = e.course_id
@@ -460,6 +525,39 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
     const gradesResult = await pool.query(gradesQuery, [studentId, termId, term.start_date, term.end_date]);
     const grades = gradesResult.rows;
 
+    // Calculer le rang de l'élève dans la classe
+    const rankQuery = `
+      WITH student_averages AS (
+        SELECT 
+          g.student_id,
+          AVG(g.normalized_value) as average
+        FROM grades g
+        INNER JOIN evaluations e ON e.id = g.evaluation_id
+        INNER JOIN enrollments en ON en.student_id = g.student_id AND en.end_date IS NULL
+        WHERE en.class_id = $1
+        AND g.absent = false
+        AND g.normalized_value IS NOT NULL
+        AND (
+          e.term_id = $2
+          OR (e.term_id IS NULL AND e.eval_date >= $3 AND e.eval_date <= $4)
+        )
+        GROUP BY g.student_id
+      ),
+      ranked AS (
+        SELECT 
+          student_id,
+          average,
+          RANK() OVER (ORDER BY average DESC) as rank
+        FROM student_averages
+      )
+      SELECT rank, (SELECT COUNT(*) FROM student_averages) as total
+      FROM ranked
+      WHERE student_id = $5
+    `;
+    const rankResult = await pool.query(rankQuery, [student.class_id, termId, term.start_date, term.end_date, studentId]);
+    const studentRank = rankResult.rows[0]?.rank || '-';
+    const totalStudents = rankResult.rows[0]?.total || '-';
+
     // Grouper par matière et calculer les moyennes
     const subjectsMap = new Map<string, {
       name: string;
@@ -467,6 +565,8 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
       totalCoef: number;
       weightedSum: number;
       classAverages: number[];
+      mins: number[];
+      maxs: number[];
     }>();
 
     grades.forEach((grade) => {
@@ -477,6 +577,8 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
           totalCoef: 0,
           weightedSum: 0,
           classAverages: [],
+          mins: [],
+          maxs: [],
         });
       }
 
@@ -493,46 +595,77 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
       if (grade.class_average !== null) {
         subject.classAverages.push(parseFloat(grade.class_average));
       }
+      if (grade.class_min !== null) {
+        subject.mins.push(parseFloat(grade.class_min));
+      }
+      if (grade.class_max !== null) {
+        subject.maxs.push(parseFloat(grade.class_max));
+      }
     });
 
     // Préparer les données du bulletin
     const reportSubjects: Array<{
       name: string;
+      teacherName: string;
       studentAverage: number;
       classAverage: number | null;
+      min: number | null;
+      max: number | null;
       coefficient: number;
       appreciation: string;
     }> = [];
 
     let totalAverages = 0;
     let subjectCount = 0;
+    let overallMin = Infinity;
+    let overallMax = -Infinity;
+    let classOverallAvg = 0;
+    let classAvgCount = 0;
 
     subjectsMap.forEach((subject) => {
       const avg = subject.totalCoef > 0 ? subject.weightedSum / subject.totalCoef : 0;
       const classAvg = subject.classAverages.length > 0
         ? subject.classAverages.reduce((a, b) => a + b, 0) / subject.classAverages.length
         : null;
+      const minGrade = subject.mins.length > 0 ? Math.min(...subject.mins) : null;
+      const maxGrade = subject.maxs.length > 0 ? Math.max(...subject.maxs) : null;
 
       if (subject.totalCoef > 0) {
         totalAverages += avg;
         subjectCount++;
       }
 
+      if (minGrade !== null && minGrade < overallMin) overallMin = minGrade;
+      if (maxGrade !== null && maxGrade > overallMax) overallMax = maxGrade;
+      if (classAvg !== null) {
+        classOverallAvg += classAvg;
+        classAvgCount++;
+      }
+
       reportSubjects.push({
         name: subject.name,
+        teacherName: teachersMap.get(subject.name) || '',
         studentAverage: parseFloat(avg.toFixed(2)),
         classAverage: classAvg !== null ? parseFloat(classAvg.toFixed(2)) : null,
+        min: minGrade !== null ? parseFloat(minGrade.toFixed(2)) : null,
+        max: maxGrade !== null ? parseFloat(maxGrade.toFixed(2)) : null,
         coefficient: subject.totalCoef,
         appreciation: subjectAppreciationsMap.get(subject.name) || generateAppreciation(avg),
       });
     });
 
     const overallAverage = subjectCount > 0 ? totalAverages / subjectCount : 0;
+    const classGeneralAverage = classAvgCount > 0 ? classOverallAvg / classAvgCount : null;
 
-    // Générer le PDF
-    const doc = new PDFDocument({ margin: 50 });
+    // ========================================
+    // GÉNÉRATION DU PDF - FORMAT PROFESSIONNEL
+    // ========================================
 
-    // Headers HTTP pour le PDF
+    const doc = new PDFDocument({
+      margin: 40,
+      size: 'A4',
+    });
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(
       'Content-Disposition',
@@ -541,137 +674,242 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
 
     doc.pipe(res);
 
-    // === EN-TÊTE DU BULLETIN ===
-    doc.fontSize(20).font('Helvetica-Bold').text(establishment.name, { align: 'center' });
-    doc.moveDown(0.3);
+    const pageWidth = 595.28;
+    const pageHeight = 841.89;
+    const margin = 40;
+    const contentWidth = pageWidth - (margin * 2);
+
+    // === EN-TÊTE ===
+    doc.fontSize(14).font('Helvetica-Bold').text(establishment.name, margin, margin, { align: 'center', width: contentWidth });
+
     if (establishment.address) {
-      doc.fontSize(10).font('Helvetica').text(
-        `${establishment.address}, ${establishment.postal_code} ${establishment.city}`,
-        { align: 'center' }
+      doc.fontSize(9).font('Helvetica').text(
+        `${establishment.address}`,
+        margin, doc.y + 2,
+        { align: 'center', width: contentWidth }
+      );
+      doc.text(
+        `${establishment.postal_code} ${establishment.city}`,
+        margin, doc.y,
+        { align: 'center', width: contentWidth }
       );
     }
+
     doc.moveDown(0.5);
 
-    // Titre du bulletin
-    doc.fontSize(16).font('Helvetica-Bold').text('BULLETIN DE NOTES', { align: 'center' });
-    doc.fontSize(12).font('Helvetica').text(term.name, { align: 'center' });
-    doc.fontSize(10).text(
-      `Du ${new Date(term.start_date).toLocaleDateString('fr-FR')} au ${new Date(term.end_date).toLocaleDateString('fr-FR')}`,
-      { align: 'center' }
+    // Titre avec année scolaire et semestre
+    doc.fontSize(10).font('Helvetica-Bold').text(
+      `${student.academic_year}-${student.academic_year + 1} - ${term.name}`,
+      margin, doc.y,
+      { align: 'center', width: contentWidth }
     );
-    doc.moveDown();
-
-    // Ligne de séparation
-    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
-    doc.moveDown(0.5);
-
-    // === INFORMATIONS ÉLÈVE ===
-    doc.fontSize(11).font('Helvetica-Bold').text('ÉLÈVE');
-    doc.fontSize(10).font('Helvetica');
-    doc.text(`Nom : ${student.full_name}`);
-    doc.text(`Classe : ${student.class_label}`);
-    doc.text(`N° Élève : ${student.student_no || 'N/A'}`);
-    doc.text(`Année scolaire : ${student.academic_year}-${student.academic_year + 1}`);
-    doc.moveDown();
-
-    // Ligne de séparation
-    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
-    doc.moveDown(0.5);
-
-    // === TABLEAU DES NOTES ===
-    const tableTop = doc.y;
-    const colWidths = [180, 80, 80, 60, 90];
-    const headers = ['Matière', 'Moy. Élève', 'Moy. Classe', 'Coef.', 'Appréciation'];
-
-    // En-tête du tableau
-    doc.font('Helvetica-Bold').fontSize(9);
-    let xPos = 50;
-    headers.forEach((header, i) => {
-      doc.text(header, xPos, tableTop, { width: colWidths[i], align: i === 0 ? 'left' : 'center' });
-      xPos += colWidths[i];
-    });
 
     doc.moveDown(0.3);
-    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+    doc.fontSize(12).font('Helvetica-Bold').text(
+      student.class_label.toUpperCase(),
+      margin, doc.y,
+      { align: 'center', width: contentWidth }
+    );
+
+    doc.moveDown(0.8);
+
+    // === INFORMATIONS ÉLÈVE (gauche) et ABSENCES (droite) ===
+    const infoY = doc.y;
+    const leftColX = margin;
+    const rightColX = pageWidth / 2 + 20;
+
+    // Colonne gauche - Infos élève
+    doc.fontSize(10).font('Helvetica-Bold');
+    doc.text(student.full_name.toUpperCase(), leftColX, infoY);
+
+    doc.fontSize(9).font('Helvetica');
+    if (student.birthdate) {
+      doc.text(`Né(e) le : ${new Date(student.birthdate).toLocaleDateString('fr-FR')}`, leftColX, doc.y + 2);
+    }
+    doc.text(`N° Élève : ${student.student_no || 'N/A'}`, leftColX, doc.y + 2);
+
+    // Colonne droite - Absences (placeholder - à implémenter avec vraies données)
+    doc.fontSize(9).font('Helvetica');
+    doc.text('Absences justifiées :', rightColX, infoY);
+    doc.text('00h00', rightColX + 100, infoY);
+
+    doc.text('Absences injustifiées :', rightColX, infoY + 12);
+    doc.text('00h00', rightColX + 100, infoY + 12);
+
+    doc.text('Retards :', rightColX, infoY + 24);
+    doc.text('00h00', rightColX + 100, infoY + 24);
+
+    doc.moveDown(2);
+
+    // === TABLEAU DES NOTES ===
+    const tableTop = doc.y + 10;
+
+    // Définition des colonnes
+    const colWidths = {
+      matiere: 150,
+      eleve: 45,
+      rang: 35,
+      classe: 45,
+      min: 35,
+      max: 35,
+      appreciation: 165,
+    };
+
+    const colX = {
+      matiere: margin,
+      eleve: margin + colWidths.matiere,
+      rang: margin + colWidths.matiere + colWidths.eleve,
+      classe: margin + colWidths.matiere + colWidths.eleve + colWidths.rang,
+      min: margin + colWidths.matiere + colWidths.eleve + colWidths.rang + colWidths.classe,
+      max: margin + colWidths.matiere + colWidths.eleve + colWidths.rang + colWidths.classe + colWidths.min,
+      appreciation: margin + colWidths.matiere + colWidths.eleve + colWidths.rang + colWidths.classe + colWidths.min + colWidths.max,
+    };
+
+    // En-tête du tableau
+    const headerHeight = 30;
+
+    // Fond gris clair pour l'en-tête
+    doc.fillColor('#e6e6e6')
+      .rect(margin, tableTop, contentWidth, headerHeight)
+      .fill();
+
+    doc.fillColor('#000000');
+    doc.fontSize(8).font('Helvetica-Bold');
+
+    // Première ligne d'en-tête
+    doc.text('Matières', colX.matiere + 3, tableTop + 4, { width: colWidths.matiere - 6 });
+
+    // Sous-en-tête "Moyennes"
+    doc.text('Moyennes', colX.eleve, tableTop + 2, { width: colWidths.eleve + colWidths.rang + colWidths.classe + colWidths.min + colWidths.max, align: 'center' });
+
+    doc.text('Appréciations', colX.appreciation + 3, tableTop + 4, { width: colWidths.appreciation - 6, align: 'center' });
+
+    // Deuxième ligne d'en-tête
+    doc.fontSize(7).font('Helvetica');
+    const headerRow2Y = tableTop + 15;
+    doc.text('Élève', colX.eleve, headerRow2Y, { width: colWidths.eleve, align: 'center' });
+    doc.text('Rang', colX.rang, headerRow2Y, { width: colWidths.rang, align: 'center' });
+    doc.text('Classe', colX.classe, headerRow2Y, { width: colWidths.classe, align: 'center' });
+    doc.text('Min', colX.min, headerRow2Y, { width: colWidths.min, align: 'center' });
+    doc.text('Max', colX.max, headerRow2Y, { width: colWidths.max, align: 'center' });
 
     // Lignes du tableau
-    doc.font('Helvetica').fontSize(9);
-    let rowY = doc.y + 5;
+    let rowY = tableTop + headerHeight;
+    const rowHeight = 35;
 
-    reportSubjects.forEach((subject) => {
-      if (rowY > 700) {
+    reportSubjects.forEach((subject, index) => {
+      // Vérifier si on dépasse la page
+      if (rowY + rowHeight > pageHeight - 150) {
         doc.addPage();
-        rowY = 50;
+        rowY = margin;
       }
 
-      let xPos = 50;
-      doc.text(subject.name, xPos, rowY, { width: colWidths[0] });
-      xPos += colWidths[0];
-      
-      doc.text(subject.studentAverage.toFixed(2) + '/20', xPos, rowY, { width: colWidths[1], align: 'center' });
-      xPos += colWidths[1];
-      
-      doc.text(subject.classAverage !== null ? subject.classAverage.toFixed(2) + '/20' : '-', xPos, rowY, { width: colWidths[2], align: 'center' });
-      xPos += colWidths[2];
-      
-      doc.text(subject.coefficient.toFixed(1), xPos, rowY, { width: colWidths[3], align: 'center' });
-      xPos += colWidths[3];
-      
-      doc.text(subject.appreciation, xPos, rowY, { width: colWidths[4], align: 'center' });
+      // Alternance de couleurs
+      if (index % 2 === 0) {
+        doc.fillColor('#f9f9f9')
+          .rect(margin, rowY, contentWidth, rowHeight)
+          .fill();
+      }
 
-      rowY += 20;
+      doc.fillColor('#000000');
+
+      // Nom de la matière
+      doc.fontSize(8).font('Helvetica-Bold');
+      doc.text(subject.name, colX.matiere + 3, rowY + 5, { width: colWidths.matiere - 6 });
+
+      // Nom du professeur
+      if (subject.teacherName) {
+        doc.fontSize(7).font('Helvetica');
+        doc.text(subject.teacherName, colX.matiere + 3, rowY + 16, { width: colWidths.matiere - 6 });
+      }
+
+      // Moyenne élève
+      doc.fontSize(8).font('Helvetica');
+      doc.text(formatNumber(subject.studentAverage), colX.eleve, rowY + 12, { width: colWidths.eleve, align: 'center' });
+
+      // Rang (placeholder - à calculer par matière si nécessaire)
+      doc.text('-', colX.rang, rowY + 12, { width: colWidths.rang, align: 'center' });
+
+      // Moyenne classe
+      doc.text(formatNumber(subject.classAverage), colX.classe, rowY + 12, { width: colWidths.classe, align: 'center' });
+
+      // Min
+      doc.text(formatNumber(subject.min), colX.min, rowY + 12, { width: colWidths.min, align: 'center' });
+
+      // Max
+      doc.text(formatNumber(subject.max), colX.max, rowY + 12, { width: colWidths.max, align: 'center' });
+
+      // Appréciation (texte qui peut être long)
+      doc.fontSize(7).font('Helvetica');
+      doc.text(subject.appreciation, colX.appreciation + 3, rowY + 5, {
+        width: colWidths.appreciation - 6,
+        height: rowHeight - 8,
+        ellipsis: true,
+      });
+
+      rowY += rowHeight;
     });
 
-    // Ligne de séparation finale
-    doc.moveTo(50, rowY).lineTo(545, rowY).stroke();
-    rowY += 15;
+    // Ligne de moyenne générale
+    doc.fillColor('#d9e6f2')
+      .rect(margin, rowY, contentWidth, 25)
+      .fill();
 
-    // === MOYENNE GÉNÉRALE ===
-    doc.font('Helvetica-Bold').fontSize(12);
-    doc.text(`MOYENNE GÉNÉRALE : ${overallAverage.toFixed(2)}/20`, 50, rowY);
-    rowY += 20;
+    doc.fillColor('#000000');
+    doc.fontSize(9).font('Helvetica-Bold');
+    doc.text('Moyenne générale', colX.matiere + 3, rowY + 8);
+    doc.text(formatNumber(overallAverage), colX.eleve, rowY + 8, { width: colWidths.eleve, align: 'center' });
+    doc.text(`${studentRank}`, colX.rang, rowY + 8, { width: colWidths.rang, align: 'center' });
+    doc.text(formatNumber(classGeneralAverage), colX.classe, rowY + 8, { width: colWidths.classe, align: 'center' });
+    doc.text(overallMin !== Infinity ? formatNumber(overallMin) : '-', colX.min, rowY + 8, { width: colWidths.min, align: 'center' });
+    doc.text(overallMax !== -Infinity ? formatNumber(overallMax) : '-', colX.max, rowY + 8, { width: colWidths.max, align: 'center' });
 
-    doc.fontSize(11);
-    // Utiliser l'appréciation du conseil si elle existe, sinon générer automatiquement
-    const finalAppreciation = councilAppreciation || generateAppreciation(overallAverage);
-    doc.text(`Appréciation générale : ${finalAppreciation}`, 50, rowY);    
-    rowY += 30;
+    rowY += 35;
 
-    // === SIGNATURES ===
-    doc.font('Helvetica').fontSize(10);
-    doc.text('Le Chef d\'Établissement', 50, rowY);
-    rowY += 50;
+    // === APPRÉCIATION GÉNÉRALE ET SIGNATURE ===
+    const bottomSectionY = rowY + 10;
 
-    
+    // Titre appréciation
+    doc.fontSize(9).font('Helvetica-Bold');
+    doc.text('APPRÉCIATION DU CONSEIL DE CLASSE', margin, bottomSectionY, { underline: true });
 
-    // Ajouter l'image de signature si elle existe
+    // Texte appréciation (gauche)
+    doc.fontSize(9).font('Helvetica');
+    const appreciationText = councilAppreciation || generateAppreciation(overallAverage);
+    doc.text(appreciationText, margin, bottomSectionY + 18, {
+      width: contentWidth / 2 - 20,
+      height: 60,
+    });
+
+    // Section signature (droite)
+    const signatureX = pageWidth / 2 + 30;
+    doc.fontSize(9).font('Helvetica-Bold');
+    doc.text('Cachet et signature', signatureX, bottomSectionY, { align: 'center', width: contentWidth / 2 - 40 });
+
+    // Signature du directeur
+    let signatureY = bottomSectionY + 20;
+
     if (establishment.director_signature) {
       try {
-        // La signature est stockée en base64
-        const signatureBuffer = Buffer.from(establishment.director_signature.replace(/^data:image\/\w+;base64,/, ''), 'base64');
-        doc.image(signatureBuffer, 50, rowY, { width: 100, height: 50 });
-        rowY += 55;
+        const signatureBuffer = Buffer.from(
+          establishment.director_signature.replace(/^data:image\/\w+;base64,/, ''),
+          'base64'
+        );
+        doc.image(signatureBuffer, signatureX + 30, signatureY, { width: 80, height: 40 });
+        signatureY += 45;
       } catch (err) {
         console.error('Erreur chargement signature:', err);
-        rowY += 10;
       }
     }
 
     // Nom du directeur
     if (establishment.director_name) {
-      doc.text(establishment.director_name, 50, rowY);
-      rowY += 20;
+      doc.fontSize(9).font('Helvetica-Bold');
+      doc.text(establishment.director_name, signatureX, signatureY, {
+        width: contentWidth / 2 - 40,
+        align: 'center',
+      });
     }
-
-    rowY += 20;
-
-    // Date de validation
-    doc.text(`Validé le ${new Date().toLocaleDateString('fr-FR')}`, 50, rowY);
-
-
-
-    // Date et lieu
-    doc.text(`Fait le ${new Date().toLocaleDateString('fr-FR')}`, 50, rowY);
 
     // Finaliser le PDF
     doc.end();
@@ -686,7 +924,7 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
 
 // =========================
 // GET /api/students/:studentId/report/data
-// Retourne les données du bulletin en JSON (pour prévisualisation)
+// Retourne les données du bulletin en JSON
 // =========================
 
 export async function getStudentReportDataHandler(req: Request, res: Response): Promise<void> {
@@ -699,8 +937,7 @@ export async function getStudentReportDataHandler(req: Request, res: Response): 
     const { studentId } = req.params;
     const { termId } = req.query;
 
-    // Vérification des permissions
-    const canAccess = 
+    const canAccess =
       req.user.role === 'admin' ||
       req.user.role === 'staff' ||
       (req.user.role === 'student' && req.user.userId === studentId) ||
@@ -712,9 +949,9 @@ export async function getStudentReportDataHandler(req: Request, res: Response): 
     }
 
     if (!termId) {
-      res.status(400).json({ 
-        success: false, 
-        error: 'Le paramètre termId est requis' 
+      res.status(400).json({
+        success: false,
+        error: 'Le paramètre termId est requis',
       });
       return;
     }
@@ -728,7 +965,6 @@ export async function getStudentReportDataHandler(req: Request, res: Response): 
       return;
     }
 
-    // Récupérer les infos de l'élève
     const studentQuery = `
       SELECT 
         u.id,
@@ -757,9 +993,7 @@ export async function getStudentReportDataHandler(req: Request, res: Response): 
       return;
     }
 
-
-
-    // Récupérer les appréciations par matière (prof)
+    // Récupérer les appréciations par matière
     const subjectAppreciationsQuery = `
       SELECT 
         sa.appreciation,
@@ -785,8 +1019,6 @@ export async function getStudentReportDataHandler(req: Request, res: Response): 
     const reportCardResult = await pool.query(reportCardQuery, [studentId, termId]);
     const councilAppreciation = reportCardResult.rows[0]?.council_appreciation || null;
 
-    // Récupérer les notes pour cette période
-    // Filtre par term_id direct OU par date si term_id est NULL
     const gradesQuery = `
       SELECT 
         g.normalized_value,
@@ -814,7 +1046,6 @@ export async function getStudentReportDataHandler(req: Request, res: Response): 
 
     const gradesResult = await pool.query(gradesQuery, [studentId, termId, term.start_date, term.end_date]);
 
-    // Calculer les moyennes par matière
     const subjectsMap = new Map<string, { totalCoef: number; weightedSum: number; classAvgs: number[] }>();
 
     gradesResult.rows.forEach((grade) => {
@@ -857,7 +1088,6 @@ export async function getStudentReportDataHandler(req: Request, res: Response): 
         count++;
       }
 
-      // Utiliser l'appréciation du prof si elle existe, sinon générer automatiquement
       const profAppreciation = subjectAppreciationsMap.get(name);
 
       subjects.push({
@@ -888,7 +1118,7 @@ export async function getStudentReportDataHandler(req: Request, res: Response): 
         },
         subjects,
         overallAverage: parseFloat(overallAverage.toFixed(2)),
-        overallAppreciation: councilAppreciation || generateAppreciation(overallAverage),      
+        overallAppreciation: councilAppreciation || generateAppreciation(overallAverage),
       },
     });
   } catch (error) {

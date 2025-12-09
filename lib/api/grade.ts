@@ -42,7 +42,7 @@ export const gradesApi = {
   // EVALUATIONS
   // ============================================
   
-  createEvaluation: (data: Partial<Evaluation>) => 
+  createEvaluation: (data: Partial<Evaluation> & { termId: string }) => 
     api.post('/grades/evaluations', data),
     
   getEvaluations: (filters?: any) => 

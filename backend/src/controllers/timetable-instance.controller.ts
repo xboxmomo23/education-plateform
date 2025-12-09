@@ -2,6 +2,32 @@ import { Request, Response } from 'express';
 import { TimetableInstanceModel } from '../models/timetable-instance.model';
 import pool from '../config/database';
 
+async function staffCanManageClass(req: Request, classId: string): Promise<boolean> {
+  const user = req.user!;
+  if (user.role !== 'staff') {
+    return true;
+  }
+
+  const assignments = (user.assignedClassIds ?? []).filter(
+    (id): id is string => Boolean(id)
+  );
+
+  if (assignments.length > 0) {
+    return assignments.includes(classId);
+  }
+
+  if (!user.establishmentId) {
+    return false;
+  }
+
+  const check = await pool.query(
+    `SELECT 1 FROM classes WHERE id = $1 AND establishment_id = $2`,
+    [classId, user.establishmentId]
+  );
+
+  return (check?.rowCount ?? 0) > 0;
+}
+
 /**
  * GET /api/timetable/instances/class/:classId/week/:weekStartDate
  * Récupérer les instances d'une semaine
@@ -65,8 +91,8 @@ export async function createInstanceHandler(req: Request, res: Response) {
 
     // Si staff, vérifier qu'il gère cette classe
     if (role === 'staff') {
-      const assignments = req.user?.assignedClassIds ?? [];
-      if (!assignments.includes(class_id)) {
+      const canManage = await staffCanManageClass(req, class_id);
+      if (!canManage) {
         return res.status(403).json({
           success: false,
           error: 'Vous ne gérez pas cette classe',
@@ -138,8 +164,8 @@ export async function generateFromTemplateHandler(req: Request, res: Response) {
     }
 
     if (role === 'staff') {
-      const assignments = req.user?.assignedClassIds ?? [];
-      if (!assignments.includes(class_id)) {
+      const canManage = await staffCanManageClass(req, class_id);
+      if (!canManage) {
         return res.status(403).json({
           success: false,
           error: 'Vous ne gérez pas cette classe',
@@ -187,8 +213,8 @@ export async function generateFromTemplateBulkHandler(req: Request, res: Respons
     }
 
     if (role === 'staff') {
-      const assignments = req.user?.assignedClassIds ?? [];
-      if (!assignments.includes(class_id)) {
+      const canManage = await staffCanManageClass(req, class_id);
+      if (!canManage) {
         return res.status(403).json({
           success: false,
           error: 'Vous ne gérez pas cette classe',
@@ -279,8 +305,8 @@ export async function copyWeekHandler(req: Request, res: Response) {
     }
 
     if (role === 'staff') {
-      const assignments = req.user?.assignedClassIds ?? [];
-      if (!assignments.includes(class_id)) {
+      const canManage = await staffCanManageClass(req, class_id);
+      if (!canManage) {
         return res.status(403).json({
           success: false,
           error: 'Vous ne gérez pas cette classe',
@@ -330,8 +356,8 @@ export async function updateInstanceHandler(req: Request, res: Response) {
     }
 
     if (role === 'staff') {
-      const assignments = req.user?.assignedClassIds ?? [];
-      if (!assignments.includes(instance.class_id)) {
+      const canManage = await staffCanManageClass(req, instance.class_id);
+      if (!canManage) {
         return res.status(403).json({
           success: false,
           error: 'Vous ne gérez pas cette classe',
@@ -408,8 +434,8 @@ export async function deleteInstanceHandler(req: Request, res: Response) {
     }
 
     if (role === 'staff') {
-      const assignments = req.user?.assignedClassIds ?? [];
-      if (!assignments.includes(instance.class_id)) {
+      const canManage = await staffCanManageClass(req, instance.class_id);
+      if (!canManage) {
         return res.status(403).json({
           success: false,
           error: 'Vous ne gérez pas cette classe',

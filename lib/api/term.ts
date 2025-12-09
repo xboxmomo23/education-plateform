@@ -195,7 +195,23 @@ downloadReport: async (studentId: string, termId: string, token: string) => {
   );
 
   if (!response.ok) {
-    throw new Error('Erreur lors du téléchargement du bulletin');
+    let errorMessage = 'Erreur lors du téléchargement du bulletin';
+    try {
+      const errorData = await response.clone().json();
+      if (errorData?.error) {
+        errorMessage = errorData.error;
+      }
+    } catch {
+      try {
+        const text = await response.text();
+        if (text) {
+          errorMessage = text;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    throw new Error(errorMessage);
   }
 
   const blob = await response.blob();

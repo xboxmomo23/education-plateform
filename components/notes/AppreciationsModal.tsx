@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { reportCardApi } from "@/lib/api/reportCard"
-// import { gradesApi } from "@/lib/api/grade"
+import { gradesApi } from "@/lib/api/grade"
 
 interface Student {
   id: string
@@ -43,55 +43,48 @@ export function AppreciationsModal({
         setIsLoading(true)
         setError(null)
 
-        // Utiliser l'API client
-        const response = await fetch(
-          `http://localhost:5000/api/courses/${courseId}/students`,   
-        {
-            headers: {
-            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-            'Content-Type': 'application/json',
-            },
-        }
-        )
+        const response = await gradesApi.getCourseStudents(courseId)
 
-        const data = await response.json()
-
-        if (!response.ok || !data.success) {
-        setError(data.error || "Erreur lors du chargement des élèves")
-        return
+        if (!response.success || !response.data) {
+          setError(response.error || "Erreur lors du chargement des élèves")
+          setStudents([])
+          return
         }
 
-        // Mapper les élèves
-        const studentsList: Student[] = (data.data || []).map((s: any) => ({
-        id: s.id || s.student_id,
-        fullName: s.full_name || s.fullName || s.name,
-        appreciation: "",
+        const studentsList: Student[] = (response.data || []).map((s: any) => ({
+          id: s.student_id || s.id,
+          fullName: s.student_name || s.full_name || s.fullName || "Élève",
+          appreciation: "",
         }))
 
-        // Charger les appréciations existantes pour chaque élève
-        for (const student of studentsList) {
-        try {
-            const appreciationsResponse = await reportCardApi.getStudentAppreciations(
-            student.id,
-            termId
-            )
-            if (appreciationsResponse.success && appreciationsResponse.data) {
-            const subjectApp = appreciationsResponse.data.subjectAppreciations.find(
-                (a) => a.courseId === courseId
-            )
-            if (subjectApp) {
-                student.appreciation = subjectApp.appreciation
+        const withAppreciations = await Promise.all(
+          studentsList.map(async (student) => {
+            try {
+              const appreciationsResponse = await reportCardApi.getStudentAppreciations(
+                student.id,
+                termId
+              )
+              if (appreciationsResponse.success && appreciationsResponse.data) {
+                const subjectApp = appreciationsResponse.data.subjectAppreciations.find(
+                  (a) => a.courseId === courseId
+                )
+                if (subjectApp) {
+                  return { ...student, appreciation: subjectApp.appreciation }
+                }
+              }
+            } catch (err) {
+              console.warn(
+                "Erreur chargement appréciations élève",
+                student.id,
+                err
+              )
             }
-            }
-        } catch (err) {
-            // Ignorer les erreurs d'appréciation
-        }
-        }
+            return student
+          })
+        )
 
-        // Trier par nom
-        studentsList.sort((a, b) => a.fullName.localeCompare(b.fullName))
-
-        setStudents(studentsList)
+        withAppreciations.sort((a, b) => a.fullName.localeCompare(b.fullName))
+        setStudents(withAppreciations)
     } catch (err) {
         console.error("Erreur chargement élèves:", err)
         setError("Impossible de charger les élèves")

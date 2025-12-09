@@ -35,8 +35,17 @@ export interface SubjectAppreciation {
 
 export async function findReportCard(
   studentId: string,
-  termId: string
+  termId: string,
+  establishmentId?: string
 ): Promise<ReportCard | null> {
+  const params: any[] = [studentId, termId];
+  let where = 'student_id = $1 AND term_id = $2';
+
+  if (establishmentId) {
+    params.push(establishmentId);
+    where += ' AND establishment_id = $3';
+  }
+
   const result = await pool.query(
     `SELECT 
       id,
@@ -51,8 +60,8 @@ export async function findReportCard(
       created_at as "createdAt",
       updated_at as "updatedAt"
     FROM report_cards
-    WHERE student_id = $1 AND term_id = $2`,
-    [studentId, termId]
+    WHERE ${where}`,
+    params
   );
 
   return result.rows[0] || null;
@@ -174,7 +183,8 @@ export async function setCouncilAppreciation(
 
 export async function getClassReportCards(
   classId: string,
-  termId: string
+  termId: string,
+  establishmentId: string
 ): Promise<any[]> {
   const result = await pool.query(
     `SELECT 
@@ -185,13 +195,18 @@ export async function getClassReportCards(
       rc.validated_at,
       rc.validated_by,
       validator.full_name as validated_by_name
-    FROM users u
-    INNER JOIN enrollments e ON e.student_id = u.id AND e.end_date IS NULL
+    FROM classes cl
+    INNER JOIN students st ON st.class_id = cl.id
+    INNER JOIN users u ON u.id = st.user_id
+      AND u.role = 'student'
+      AND u.active = TRUE
+      AND u.establishment_id = $3
     LEFT JOIN report_cards rc ON rc.student_id = u.id AND rc.term_id = $2
     LEFT JOIN users validator ON validator.id = rc.validated_by
-    WHERE e.class_id = $1
+    WHERE cl.id = $1
+      AND cl.establishment_id = $3
     ORDER BY u.full_name`,
-    [classId, termId]
+    [classId, termId, establishmentId]
   );
 
   return result.rows;

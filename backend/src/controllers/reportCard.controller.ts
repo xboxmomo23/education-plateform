@@ -38,7 +38,43 @@ export async function getReportCardStatus(req: Request, res: Response): Promise<
       return;
     }
 
-    const reportCard = await findReportCard(studentId, termId);
+    const studentResult = await pool.query(
+      `SELECT establishment_id FROM users WHERE id = $1 AND role = 'student'`,
+      [studentId]
+    );
+
+    if (studentResult.rowCount === 0) {
+      res.status(404).json({ success: false, error: 'Élève introuvable' });
+      return;
+    }
+
+    const studentEstablishmentId = studentResult.rows[0].establishment_id;
+
+    if (!studentEstablishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Établissement élève non défini',
+      });
+      return;
+    }
+
+    const rolesRequiringMatch = ['admin', 'staff', 'teacher'];
+    if (rolesRequiringMatch.includes(req.user.role)) {
+      if (!req.user.establishmentId || req.user.establishmentId !== studentEstablishmentId) {
+        res.status(403).json({
+          success: false,
+          error: 'Accès refusé pour cet établissement',
+        });
+        return;
+      }
+    }
+
+    if (req.user.role === 'student' && req.user.userId !== studentId) {
+      res.status(403).json({ success: false, error: 'Accès refusé' });
+      return;
+    }
+
+    const reportCard = await findReportCard(studentId, termId, studentEstablishmentId);
 
     res.json({
       success: true,
@@ -312,7 +348,7 @@ export async function setCouncilAppreciationHandler(req: Request, res: Response)
     }
 
     // Vérifier que le bulletin n'est pas déjà validé
-    const existingCard = await findReportCard(studentId, termId);
+    const existingCard = await findReportCard(studentId, termId, establishmentId);
     if (existingCard?.validatedAt) {
       res.status(400).json({
         success: false,
@@ -361,8 +397,17 @@ export async function getClassReportCardsHandler(req: Request, res: Response): P
     }
 
     const { classId, termId } = req.params;
+    const establishmentId = req.user.establishmentId;
 
-    const reportCards = await getClassReportCards(classId, termId);
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé à votre compte',
+      });
+      return;
+    }
+
+    const reportCards = await getClassReportCards(classId, termId, establishmentId);
 
     res.json({
       success: true,
@@ -404,8 +449,17 @@ export async function setSubjectAppreciationHandler(req: Request, res: Response)
       return;
     }
 
+    const establishmentId = req.user.establishmentId;
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé à votre compte',
+      });
+      return;
+    }
+
     // Vérifier que le bulletin n'est pas déjà validé
-    const existingCard = await findReportCard(studentId, termId);
+    const existingCard = await findReportCard(studentId, termId, establishmentId);
     if (existingCard?.validatedAt) {
       res.status(400).json({
         success: false,
@@ -473,8 +527,9 @@ export async function getStudentAppreciationsHandler(req: Request, res: Response
       return;
     }
 
+    const establishmentId = req.user.establishmentId;
     const appreciations = await getStudentAppreciations(studentId, termId);
-    const reportCard = await findReportCard(studentId, termId);
+    const reportCard = await findReportCard(studentId, termId, establishmentId || undefined);
 
     res.json({
       success: true,

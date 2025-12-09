@@ -25,6 +25,7 @@ import {
   getClassAverages,
   getChildrenGrades,
 } from '../models/grade.model';
+import { findTermById } from '../models/term.model';
 import { UserRole } from '../types';
 
 // =========================
@@ -52,16 +53,54 @@ export async function createEvaluationHandler(req: Request, res: Response): Prom
       evalDate,
       description,
     } = req.body;
+    const establishmentId = req.user.establishmentId;
 
     // Validation
-    if (!courseId || !title || !type || !coefficient || !evalDate) {
+    if (!courseId || !title || !type || !coefficient || !evalDate || !termId) {
       res.status(400).json({
         success: false,
         error: 'Données manquantes',
-        required: ['courseId', 'title', 'type', 'coefficient', 'evalDate'],
+        required: ['courseId', 'termId', 'title', 'type', 'coefficient', 'evalDate'],
       });
       return;
     }
+
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé à ce compte',
+      });
+      return;
+    }
+
+    const term = await findTermById(termId, establishmentId);
+    if (!term) {
+      res.status(404).json({
+        success: false,
+        error: 'Période introuvable pour votre établissement',
+      });
+      return;
+    }
+
+    const evalDateObj = new Date(evalDate);
+    const termStart = new Date(term.start_date);
+    const termEnd = new Date(term.end_date);
+
+    if (evalDateObj < termStart || evalDateObj > termEnd) {
+      res.status(400).json({
+        success: false,
+        error: 'La date de l\'évaluation doit se situer dans la période sélectionnée',
+      });
+      return;
+    }
+
+    console.log('[Grades] createEvaluation', {
+      courseId,
+      termId,
+      evalDate,
+      teacherId: req.user.userId,
+      establishmentId,
+    });
 
     // Créer l'évaluation
     const evaluation = await createEvaluation({
@@ -74,7 +113,7 @@ export async function createEvaluationHandler(req: Request, res: Response): Prom
       evalDate: new Date(evalDate),
       description,
       createdBy: req.user.userId,
-      establishmentId: req.user.establishmentId,
+      establishmentId,
     });
 
     res.status(201).json({
@@ -113,6 +152,12 @@ export async function getTeacherEvaluationsHandler(req: Request, res: Response):
       establishmentId: req.user.establishmentId,
     };
 
+    console.log('[Grades] getTeacherEvaluations', {
+      userId: req.user.userId,
+      role: req.user.role,
+      filters,
+    });
+
     let evaluations;
     
     if (req.user.role === 'teacher') {
@@ -139,6 +184,12 @@ export async function getTeacherEvaluationsHandler(req: Request, res: Response):
       createdAt: evaluation.created_at,
       establishmentId: evaluation.establishment_id
     }));
+
+    console.log('[Grades] getTeacherEvaluations result', {
+      count: mappedEvaluations.length,
+      courseId,
+      termId,
+    });
 
     res.json({
       success: true,
@@ -1038,6 +1089,22 @@ export async function getCourseStudentsWithGrades(req: Request, res: Response): 
 
     const { courseId } = req.params;
     const { evaluationId } = req.query;
+    const establishmentId = req.user.establishmentId;
+
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé au compte',
+      });
+      return;
+    }
+
+    console.log('[Grades] getCourseStudentsWithGrades', {
+      courseId,
+      evaluationId,
+      establishmentId,
+      teacherId: req.user.userId,
+    });
 
     // Récupérer tous les élèves inscrits dans la classe du cours
     const query = `
@@ -1051,15 +1118,28 @@ export async function getCourseStudentsWithGrades(req: Request, res: Response): 
         g.comment
       FROM courses c
       INNER JOIN classes cl ON cl.id = c.class_id
-      INNER JOIN enrollments enr ON enr.class_id = cl.id AND enr.end_date IS NULL
-      INNER JOIN users u ON u.id = enr.student_id AND u.role = 'student' AND u.active = TRUE
+      INNER JOIN students st ON st.class_id = cl.id
+      INNER JOIN users u ON u.id = st.user_id
+        AND u.role = 'student'
+        AND u.active = TRUE
+        AND u.establishment_id = $3
       INNER JOIN student_profiles sp ON sp.user_id = u.id
       LEFT JOIN grades g ON g.student_id = u.id AND g.evaluation_id = $2
       WHERE c.id = $1
+        AND (c.establishment_id = $3 OR c.establishment_id IS NULL)
+        AND cl.establishment_id = $3
       ORDER BY u.full_name ASC
     `;
 
-    const result = await pool.query(query, [courseId, evaluationId || null]);
+    const result = await pool.query(query, [courseId, evaluationId || null, establishmentId]);
+
+    if (result.rowCount === 0) {
+      console.log('[Grades] Aucun élève trouvé pour ce cours', {
+        courseId,
+        evaluationId,
+        establishmentId,
+      });
+    }
 
     res.json({
       success: true,

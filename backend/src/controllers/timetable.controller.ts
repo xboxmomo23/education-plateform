@@ -613,11 +613,34 @@ export async function getStaffClassesHandler(req: Request, res: Response) {
       });
     }
 
-    const assignments = assignedClassIds ?? [];
+    const assignments = (assignedClassIds ?? []).filter(Boolean);
+
     if (assignments.length === 0) {
+      if (!establishmentId) {
+        return res.status(403).json({
+          success: false,
+          error: 'Aucun établissement associé à votre compte staff',
+        });
+      }
+
+      const result = await pool.query(
+        `
+          SELECT
+            id AS class_id,
+            label AS class_label,
+            code AS class_code,
+            level
+          FROM classes
+          WHERE establishment_id = $1
+            AND archived = false
+          ORDER BY level, label
+        `,
+        [establishmentId]
+      );
+
       return res.json({
         success: true,
-        data: [],
+        data: result.rows,
       });
     }
 
@@ -869,13 +892,24 @@ export async function deleteCourseForStaffHandler(req: Request, res: Response) {
 // 🔹 Récupérer les matières visibles par un staff (en fonction de ses classes)
 export async function getSubjectsForStaffHandler(req: Request, res: Response) {
   try {
-    // ⚠️ MODE DEBUG : on ignore l'établissement, on renvoie toutes les matières
+    const { establishmentId } = req.user!;
+
+    if (!establishmentId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé à votre compte staff',
+      });
+    }
+
     const subjectsRes = await pool.query(
       `
       SELECT id, name, short_code, color, level, establishment_id
       FROM subjects
+      WHERE establishment_id = $1
+         OR establishment_id IS NULL
       ORDER BY name ASC
-      `
+      `,
+      [establishmentId]
     );
 
     return res.json({
@@ -883,7 +917,7 @@ export async function getSubjectsForStaffHandler(req: Request, res: Response) {
       data: subjectsRes.rows,
     });
   } catch (error) {
-    console.error("Erreur getSubjectsForStaff (DEBUG):", error);
+    console.error("Erreur getSubjectsForStaff:", error);
     return res.status(500).json({
       success: false,
       error: "Erreur lors de la récupération des matières",
@@ -926,7 +960,7 @@ export async function getTeachersForStaffHandler(req: Request, res: Response) {
 // 🔹 Création d'un cours par le STAFF
 export async function createCourseForStaffHandler(req: Request, res: Response) {
   try {
-    const { userId, role, assignedClassIds } = req.user!;
+    const { userId, role, assignedClassIds, establishmentId } = req.user!;
     const { class_id, subject_id, teacher_id, default_room } = req.body;
 
     if (role !== 'staff' && role !== 'admin') {
@@ -936,9 +970,17 @@ export async function createCourseForStaffHandler(req: Request, res: Response) {
       });
     }
 
+    const sanitizedAssignments = (assignedClassIds ?? []).filter(Boolean);
+
     if (role === 'staff') {
-      const assignments = assignedClassIds ?? [];
-      if (!assignments.includes(class_id)) {
+      if (!establishmentId) {
+        return res.status(403).json({
+          success: false,
+          error: "Aucun établissement associé à ce compte",
+        });
+      }
+
+      if (sanitizedAssignments.length > 0 && !sanitizedAssignments.includes(class_id)) {
         return res.status(403).json({
           success: false,
           error: "Vous ne gérez pas cette classe",
@@ -950,13 +992,6 @@ export async function createCourseForStaffHandler(req: Request, res: Response) {
       return res.status(403).json({
         success: false,
         error: "Aucun établissement associé à ce compte",
-      });
-    }
-
-    if (role === 'staff' && (!assignedClassIds || assignedClassIds.length === 0)) {
-      return res.status(403).json({
-        success: false,
-        error: "Vous ne gérez pas cette classe",
       });
     }
 
@@ -990,7 +1025,7 @@ export async function createCourseForStaffHandler(req: Request, res: Response) {
 
     // Vérifier que la matière appartient bien à l'établissement
     const subjRes = await pool.query(
-      `SELECT id FROM subjects WHERE id = $1 AND establishment_id = $2`,
+      `SELECT id FROM subjects WHERE id = $1 AND (establishment_id = $2 OR establishment_id IS NULL)`,
       [subject_id, establishment_id]
     );
     if (subjRes.rows.length === 0) {

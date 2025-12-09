@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Plus, Edit2, Calendar, BookOpen, MessageSquare } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { CreateEvaluationModal } from "@/components/notes/CreateEvaluationModal"
 import { GradeEntryModal } from "@/components/notes/GradeEntryModal"
 import { gradesApi } from "@/lib/api/grade"
@@ -47,12 +47,12 @@ export default function ProfesseurNotesPage() {
     loadTerms()
   }, [])
 
-  // Charger les évaluations quand le cours change
+  // Charger les évaluations quand le cours ou la période change
   useEffect(() => {
-    if (selectedCourseId) {
+    if (selectedCourseId && selectedTermId) {
       loadEvaluations()
     }
-  }, [selectedCourseId])
+  }, [selectedCourseId, selectedTermId])
 
   const loadCourses = async () => {
     try {
@@ -98,13 +98,16 @@ export default function ProfesseurNotesPage() {
   }
 
   const loadEvaluations = async () => {
-    if (!selectedCourseId) return
+    if (!selectedCourseId || !selectedTermId) return
 
     try {
       setIsLoading(true)
       setError(null)
 
-      const response = await gradesApi.getEvaluations({ courseId: selectedCourseId })
+      const response = await gradesApi.getEvaluations({
+        courseId: selectedCourseId,
+        termId: selectedTermId,
+      })
 
       if (response.success) {
         setEvaluations(response.data || [])
@@ -120,10 +123,11 @@ export default function ProfesseurNotesPage() {
   }
 
   const handleCreateEvaluation = () => {
-    if (!selectedCourseId) {
-      alert("Veuillez sélectionner un cours")
+    if (!selectedCourseId || !selectedTermId) {
+      alert("Veuillez sélectionner un cours et une période")
       return
     }
+
     setShowCreateEvalModal(true)
   }
 
@@ -175,7 +179,29 @@ export default function ProfesseurNotesPage() {
   }
 
   // Trouver le cours sélectionné
-  const selectedCourse = courses.find(c => c.id === selectedCourseId)
+  const selectedCourse = useMemo(
+    () => courses.find((c) => c.id === selectedCourseId) || null,
+    [courses, selectedCourseId]
+  )
+
+  const availableTerms = useMemo(() => {
+    if (!selectedCourse) return []
+    return terms.filter((term) => term.academicYear === selectedCourse.academic_year)
+  }, [terms, selectedCourse])
+
+  useEffect(() => {
+    if (!selectedCourse) {
+      setSelectedTermId(null)
+      return
+    }
+
+    // Si la période actuelle n'appartient pas à l'année du cours, on choisit la première période correspondante
+    if (!selectedTermId || !availableTerms.some((term) => term.id === selectedTermId)) {
+      const preferredTerm =
+        availableTerms.find((term) => term.isCurrent) || availableTerms[0] || null
+      setSelectedTermId(preferredTerm ? preferredTerm.id : null)
+    }
+  }, [selectedCourse, availableTerms, selectedTermId])
 
   if (isLoading && courses.length === 0) {
     return (
@@ -268,18 +294,23 @@ export default function ProfesseurNotesPage() {
               </div>
 
               {/* Sélecteur de période */}
-              <div className="sm:w-48">
+              <div className="sm:w-56">
                 <label className="text-sm font-medium mb-2 block">Période</label>
                 <select
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   value={selectedTermId || ""}
                   onChange={(e) => setSelectedTermId(e.target.value)}
+                  disabled={!availableTerms.length}
                 >
-                  {terms.map((term) => (
-                    <option key={term.id} value={term.id}>
-                      {term.name}
-                    </option>
-                  ))}
+                  {availableTerms.length === 0 ? (
+                    <option value="">Aucune période pour cette année</option>
+                  ) : (
+                    availableTerms.map((term) => (
+                      <option key={term.id} value={term.id}>
+                        {term.name} — {term.academicYear}
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
 
@@ -375,9 +406,10 @@ export default function ProfesseurNotesPage() {
         </div>
 
         {/* Modal de création d'évaluation */}
-        {showCreateEvalModal && selectedCourseId && (
+        {showCreateEvalModal && selectedCourseId && selectedTermId && (
           <CreateEvaluationModal
             courseId={selectedCourseId}
+            termId={selectedTermId}
             onClose={() => setShowCreateEvalModal(false)}
             onSuccess={handleEvaluationCreated}
           />

@@ -60,6 +60,9 @@ const createEvaluationValidation = [
   body('evalDate')
     .isISO8601()
     .withMessage('Date d\'évaluation invalide'),
+  body('termId')
+    .isUUID()
+    .withMessage('ID de période invalide'),
   body('description')
     .optional()
     .trim()

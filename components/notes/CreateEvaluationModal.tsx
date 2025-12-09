@@ -10,11 +10,12 @@ import { gradesApi } from "@/lib/api/grade"
 
 interface CreateEvaluationModalProps {
   courseId: string
+  termId: string
   onClose: () => void
   onSuccess: (evaluationId: string) => void
 }
 
-export function CreateEvaluationModal({ courseId, onClose, onSuccess }: CreateEvaluationModalProps) {
+export function CreateEvaluationModal({ courseId, termId, onClose, onSuccess }: CreateEvaluationModalProps) {
   const [formData, setFormData] = useState({
     title: "",
     type: "controle" as "controle" | "devoir" | "participation" | "examen",
@@ -34,12 +35,18 @@ export function CreateEvaluationModal({ courseId, onClose, onSuccess }: CreateEv
       return
     }
 
+    if (!termId) {
+      setError("Veuillez sélectionner une période valide avant de créer une évaluation")
+      return
+    }
+
     try {
       setIsSaving(true)
       setError(null)
 
       const response = await gradesApi.createEvaluation({
         courseId,
+        termId,
         title: formData.title,
         type: formData.type,
         coefficient: parseFloat(formData.coefficient),

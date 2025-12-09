@@ -278,18 +278,18 @@ export default function StudentNotesPage() {
 
 
   const canDownloadReport = (term: Term): { canDownload: boolean; reason: string } => {
-    const isPast = new Date(term.endDate) < new Date()
     const status = reportCardStatuses[term.id]
 
+    if (status?.validated) {
+      return { canDownload: true, reason: "Télécharger" }
+    }
+
+    const isPast = new Date(term.endDate) < new Date()
     if (!isPast) {
       return { canDownload: false, reason: "À venir" }
     }
 
-    if (!status?.validated) {
-      return { canDownload: false, reason: "En attente" }
-    }
-
-    return { canDownload: true, reason: "Télécharger" }
+    return { canDownload: false, reason: "En attente" }
   }
 
   // ============================================
@@ -506,7 +506,15 @@ export default function StudentNotesPage() {
                             {new Date(term.startDate).toLocaleDateString('fr-FR')} - {new Date(term.endDate).toLocaleDateString('fr-FR')}
                           </p>
                           {/* Afficher le statut */}
-                          {new Date(term.endDate) < new Date() && !status?.validated && (
+                          {status?.validated ? (
+                            <p className="text-xs text-emerald-600 mt-1">
+                              Bulletin validé
+                            </p>
+                          ) : new Date(term.endDate) >= new Date() ? (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              À venir
+                            </p>
+                          ) : (
                             <p className="text-xs text-orange-600 mt-1">
                               En cours de préparation
                             </p>
