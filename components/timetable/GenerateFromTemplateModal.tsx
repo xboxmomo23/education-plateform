@@ -16,6 +16,7 @@ import {
   formatDateRange,
   calculateTotalCourses,
 } from "@/lib/date-utils"
+import { getWeekStart } from "@/lib/date"
 
 interface GenerateFromTemplateModalProps {
   classId: string
@@ -51,7 +52,7 @@ export function GenerateFromTemplateModal({
   // Calculer les semaines cibles selon le mode
   const targetWeeks = useMemo(() => {
     if (mode === 'single') {
-      return [singleDate]
+      return singleDate ? [getWeekStart(singleDate)] : []
     } else if (mode === 'range') {
       if (!rangeStart || !rangeEnd) return []
       return generateWeeksBetween(rangeStart, rangeEnd)
@@ -87,22 +88,43 @@ export function GenerateFromTemplateModal({
       setLoading(true)
 
       if (mode === 'single') {
-        // Mode simple : une seule semaine (utiliser l'ancien endpoint)
-        const result = await timetableInstanceApi.generateFromTemplate(classId, singleDate)
-        alert(`✅ ${result.data.count} cours générés avec succès`)
+        const [targetWeek] = targetWeeks
+        const result = await timetableInstanceApi.generateFromTemplate(
+          classId,
+          weekStartDate,
+          targetWeek
+        )
+        const created = result.data?.count ?? 0
+        if (created > 0) {
+          alert(`✅ ${created} cours générés pour la semaine du ${targetWeek}`)
+        } else {
+          alert(
+            `⚠ Aucun cours généré. Vérifiez que la semaine modèle (${weekStartDate}) contient bien des cours.`
+          )
+        }
       } else {
-        // Mode bulk : plusieurs semaines (utiliser le nouvel endpoint)
-        const result = await timetableInstanceApi.generateFromTemplateBulk(classId, targetWeeks)
-        
+        const result = await timetableInstanceApi.generateFromTemplateBulk(
+          classId,
+          weekStartDate,
+          targetWeeks
+        )
+
         const successCount = result.data.details.filter(d => d.success).length
         const errorCount = result.data.details.filter(d => !d.success).length
-        
+        const totalCreated = result.data.totalCreated
+
         if (errorCount === 0) {
-          alert(`✅ ${result.data.totalCreated} cours générés dans ${successCount} semaines`)
+          if (totalCreated > 0) {
+            alert(`✅ ${totalCreated} cours générés dans ${successCount} semaines`)
+          } else {
+            alert(
+              `⚠ Aucun cours généré. Assurez-vous que la semaine modèle (${weekStartDate}) contient des cours.`
+            )
+          }
         } else {
           alert(
             `⚠️ Génération partielle\n\n` +
-            `✅ ${result.data.totalCreated} cours créés dans ${successCount} semaines\n` +
+            `✅ ${totalCreated} cours créés dans ${successCount} semaines\n` +
             `❌ ${errorCount} semaines en erreur\n\n` +
             `Vérifiez la console pour plus de détails.`
           )

@@ -154,7 +154,7 @@ export async function createInstanceHandler(req: Request, res: Response) {
 export async function generateFromTemplateHandler(req: Request, res: Response) {
   try {
     const { userId, role } = req.user!;
-    const { class_id, week_start_date } = req.body;
+    const { class_id, source_week_start, target_week_start } = req.body;
 
     if (role !== 'staff' && role !== 'admin') {
       return res.status(403).json({
@@ -173,11 +173,23 @@ export async function generateFromTemplateHandler(req: Request, res: Response) {
       }
     }
 
-    const count = await TimetableInstanceModel.generateFromTemplate(class_id, week_start_date, userId);
+    if (!source_week_start || !target_week_start) {
+      return res.status(400).json({
+        success: false,
+        error: 'source_week_start et target_week_start sont requis',
+      });
+    }
+
+    const count = await TimetableInstanceModel.generateFromTemplate(
+      class_id,
+      source_week_start,
+      target_week_start,
+      userId
+    );
 
     return res.json({
       success: true,
-      message: `${count} cours générés depuis le template`,
+      message: `${count} cours générés pour la semaine du ${target_week_start}`,
       data: { count },
     });
   } catch (error) {
@@ -196,11 +208,11 @@ export async function generateFromTemplateHandler(req: Request, res: Response) {
 export async function generateFromTemplateBulkHandler(req: Request, res: Response) {
   try {
     const { userId, role } = req.user!;
-    const { class_id, target_weeks } = req.body;
+    const { class_id, source_week_start, target_weeks } = req.body;
 
     console.log('🚀 Génération bulk démarrée:', {
       class_id,
-      target_weeks_count: target_weeks.length,
+      target_weeks_count: Array.isArray(target_weeks) ? target_weeks.length : 0,
       user_id: userId,
     });
 
@@ -222,7 +234,13 @@ export async function generateFromTemplateBulkHandler(req: Request, res: Respons
       }
     }
 
-    // Valider que target_weeks est un tableau
+    if (!source_week_start) {
+      return res.status(400).json({
+        success: false,
+        error: 'source_week_start est requis',
+      });
+    }
+
     if (!Array.isArray(target_weeks) || target_weeks.length === 0) {
       return res.status(400).json({
         success: false,
@@ -230,27 +248,27 @@ export async function generateFromTemplateBulkHandler(req: Request, res: Respons
       });
     }
 
-    // Générer pour chaque semaine
     let totalCreated = 0;
     const details: Array<{ week: string; count: number; success: boolean; error?: string }> = [];
 
     for (const weekStart of target_weeks) {
       try {
         console.log(`  📅 Génération pour la semaine: ${weekStart}`);
-        
+
         const count = await TimetableInstanceModel.generateFromTemplate(
           class_id,
+          source_week_start,
           weekStart,
           userId
         );
-        
+
         totalCreated += count;
         details.push({
           week: weekStart,
-          count: count,
+          count,
           success: true,
         });
-        
+
         console.log(`  ✅ ${count} cours créés pour ${weekStart}`);
       } catch (error: any) {
         console.error(`  ❌ Erreur pour ${weekStart}:`, error.message);
@@ -266,8 +284,8 @@ export async function generateFromTemplateBulkHandler(req: Request, res: Respons
     console.log('✅ Génération bulk terminée:', {
       totalCreated,
       weeksAffected: target_weeks.length,
-      successCount: details.filter(d => d.success).length,
-      errorCount: details.filter(d => !d.success).length,
+      successCount: details.filter((d) => d.success).length,
+      errorCount: details.filter((d) => !d.success).length,
     });
 
     return res.json({

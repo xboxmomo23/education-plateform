@@ -54,7 +54,8 @@ router.post(
   authenticate,
   authorize('staff', 'admin'),
   body('class_id').isUUID(),
-  body('week_start_date').isDate(),
+  body('source_week_start').isDate(),
+  body('target_week_start').isDate(),
   validateRequest,
   generateFromTemplateHandler
 );
@@ -68,6 +69,7 @@ router.post(
   authenticate,
   authorize('staff', 'admin'),
   body('class_id').isUUID().withMessage('ID de classe invalide'),
+  body('source_week_start').isDate().withMessage('source_week_start invalide'),
   body('target_weeks')
     .isArray({ min: 1 })
     .withMessage('target_weeks doit être un tableau non vide'),

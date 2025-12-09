@@ -67,12 +67,13 @@ export const timetableInstanceApi = {
   /**
    * Générer les instances depuis le template (UNE SEULE SEMAINE)
    */
-  async generateFromTemplate(classId: string, weekStartDate: string) {
+  async generateFromTemplate(classId: string, sourceWeekStart: string, targetWeekStart: string) {
     return apiCall<{ count: number }>('/timetable/instances/generate-from-template', {
       method: 'POST',
       body: JSON.stringify({
         class_id: classId,
-        week_start_date: weekStartDate,
+        source_week_start: sourceWeekStart,
+        target_week_start: targetWeekStart,
       }),
     });
   },
@@ -83,11 +84,12 @@ export const timetableInstanceApi = {
    * @param targetWeeks - Liste des semaines cibles (format 'yyyy-MM-dd')
    * @returns Résultat détaillé de la génération
    */
-  async generateFromTemplateBulk(classId: string, targetWeeks: string[]) {
+  async generateFromTemplateBulk(classId: string, sourceWeekStart: string, targetWeeks: string[]) {
     return apiCall<BulkGenerateResult>('/timetable/instances/generate-bulk', {
       method: 'POST',
       body: JSON.stringify({
         class_id: classId,
+        source_week_start: sourceWeekStart,
         target_weeks: targetWeeks,
       }),
     });
