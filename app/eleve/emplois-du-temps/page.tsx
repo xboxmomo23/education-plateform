@@ -7,10 +7,13 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { timetableApi, type TimetableCourse } from "@/lib/api/timetable"
 import { Calendar, ChevronLeft, ChevronRight, Download, AlertCircle } from "lucide-react"
+import { addDays, format } from "date-fns"
+import { fr } from "date-fns/locale"
 
 // Configuration Algérienne : Dimanche à Jeudi
 const DAYS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi']
 const HOURS = Array.from({ length: 11 }, (_, i) => 8 + i) // 8h à 18h
+const WEEK_DAY_INDICES = [1, 2, 3, 4, 5]
 
 // Helper pour obtenir le dimanche d'une semaine donnée
 function getSundayOfWeek(date: Date): Date {
@@ -147,6 +150,26 @@ export default function EleveEmploiDuTempsPage() {
     return courses.filter(c => c.day_of_week === dayOfWeek)
   }
 
+  const formatDayLabel = (date: Date) => {
+    const label = format(date, "EEEE d MMMM yyyy", { locale: fr })
+    return label.charAt(0).toUpperCase() + label.slice(1)
+  }
+
+  const mobileDayGroups = React.useMemo(() => {
+    return WEEK_DAY_INDICES.map((day) => {
+      const date = addDays(currentWeekStart, day - 1)
+      const sessions = courses
+        .filter((course) => course.day_of_week === day)
+        .sort((a, b) => a.start_time.localeCompare(b.start_time))
+      return {
+        key: `${day}-${format(date, "yyyy-MM-dd")}`,
+        date,
+        label: formatDayLabel(date),
+        sessions,
+      }
+    })
+  }, [courses, currentWeekStart])
+
   const getCoursePosition = (startTime: string) => {
     const [hours, minutes] = startTime.split(':').map(Number)
     const totalMinutes = (hours - 8) * 60 + minutes
@@ -228,76 +251,138 @@ export default function EleveEmploiDuTempsPage() {
               </div>
             ) : (
               <>
-                {/* Grille emploi du temps */}
-                <div className="overflow-x-auto">
-                  <div className="grid grid-cols-[80px_repeat(5,1fr)] gap-2 min-w-[800px]">
-                    {/* En-tête */}
-                    <div className="text-sm font-medium text-muted-foreground">Heures</div>
-                    {DAYS.map(day => (
-                      <div key={day} className="text-sm font-medium text-center">
-                        {day}
-                      </div>
-                    ))}
-
-                    {/* Grille horaire */}
-                    {HOURS.map(hour => (
-                      <React.Fragment key={hour}>
-                        <div className="text-sm text-muted-foreground py-2">
-                          {hour}:00
+                {/* Vue mobile */}
+                <div className="block md:hidden">
+                  <div className="mt-4 flex flex-col gap-6">
+                    {mobileDayGroups.map((day) => (
+                      <section key={day.key}>
+                        <div className="bg-muted px-4 py-2 text-sm font-semibold">
+                          {day.label}
                         </div>
-                        {[1, 2, 3, 4, 5].map(day => {
-                          const dayCourses = getCoursesForDay(day)
-                          const hourCourses = dayCourses.filter(c => {
-                            const [h] = c.start_time.split(':').map(Number)
-                            return h === hour
-                          })
 
-                          return (
-                            <div key={day} className="border border-gray-200 rounded p-1 min-h-[80px] relative">
-                              {hourCourses.map(course => (
+                        <div className="mt-2 flex flex-col gap-3 px-4">
+                          {day.sessions.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">
+                              Aucun cours ce jour-là.
+                            </p>
+                          ) : (
+                            day.sessions.map((session) => {
+                              const displayRoom =
+                                session.status === "modified" && session.modifications?.new_room
+                                  ? session.modifications.new_room
+                                  : session.room
+
+                              return (
                                 <div
-                                  key={course.id}
-                                  className={`absolute left-1 right-1 rounded px-2 py-1 text-xs overflow-hidden ${
-                                    course.status === 'cancelled' ? 'opacity-50' : ''
-                                  }`}
-                                  style={{
-                                    top: `${getCoursePosition(course.start_time) % 80}px`,
-                                    height: `${getCourseHeight(course.start_time, course.end_time)}px`,
-                                    backgroundColor: course.subject_color || '#3b82f6',
-                                    color: 'white',
-                                  }}
+                                  key={session.id}
+                                  className="rounded-lg border bg-background px-3 py-2 shadow-sm space-y-1"
                                 >
-                                  <div className="font-semibold truncate">{course.subject_name}</div>
-                                  <div className="truncate text-[10px]">{course.teacher_name}</div>
-                                  <div className="truncate text-[10px]">
-                                    {course.status === 'modified' && course.modifications?.new_room
-                                      ? course.modifications.new_room
-                                      : course.room}
+                                  <div className="text-sm font-semibold">
+                                    {session.start_time} - {session.end_time} · {session.subject_name}
                                   </div>
-                                  <div className="text-[10px]">
-                                    {course.start_time} - {course.end_time}
+                                  <div className="text-xs text-muted-foreground">
+                                    {session.notes || "Cours"}
                                   </div>
-                                  
-                                  {/* Badge annulé */}
-                                  {course.status === 'cancelled' && (
-                                    <Badge variant="destructive" className="mt-1 text-[10px] px-1 py-0">
-                                      🚫 ANNULÉ
-                                    </Badge>
+                                  {session.teacher_name && (
+                                    <div className="text-xs">
+                                      Avec {session.teacher_name}
+                                    </div>
                                   )}
-                                  
-                                  {/* Badge modifié */}
-                                  {course.status === 'modified' && (
-                                    <Badge variant="secondary" className="mt-1 text-[10px] px-1 py-0 bg-orange-500 text-white">
-                                      ⚠️ MODIFIÉ
+                                  {displayRoom && (
+                                    <div className="text-xs text-muted-foreground">
+                                      Salle {displayRoom}
+                                    </div>
+                                  )}
+                                  {session.status !== "normal" && (
+                                    <Badge
+                                      variant={session.status === "cancelled" ? "destructive" : "secondary"}
+                                      className="text-[10px] px-1 py-0"
+                                    >
+                                      {session.status === "cancelled" ? "Annulé" : "Modifié"}
                                     </Badge>
                                   )}
                                 </div>
-                              ))}
-                            </div>
-                          )
-                        })}
-                      </React.Fragment>
+                              )
+                            })
+                          )}
+                        </div>
+                      </section>
                     ))}
+                  </div>
+                </div>
+
+                {/* Grille emploi du temps */}
+                <div className="hidden md:block">
+                  <div className="overflow-x-auto">
+                    <div className="grid grid-cols-[80px_repeat(5,1fr)] gap-2 min-w-[800px]">
+                      {/* En-tête */}
+                      <div className="text-sm font-medium text-muted-foreground">Heures</div>
+                      {DAYS.map(day => (
+                        <div key={day} className="text-sm font-medium text-center">
+                          {day}
+                        </div>
+                      ))}
+
+                      {/* Grille horaire */}
+                      {HOURS.map(hour => (
+                        <React.Fragment key={hour}>
+                          <div className="text-sm text-muted-foreground py-2">
+                            {hour}:00
+                          </div>
+                          {WEEK_DAY_INDICES.map(day => {
+                            const dayCourses = getCoursesForDay(day)
+                            const hourCourses = dayCourses.filter(c => {
+                              const [h] = c.start_time.split(':').map(Number)
+                              return h === hour
+                            })
+
+                            return (
+                              <div key={day} className="border border-gray-200 rounded p-1 min-h-[80px] relative">
+                                {hourCourses.map(course => (
+                                  <div
+                                    key={course.id}
+                                    className={`absolute left-1 right-1 rounded px-2 py-1 text-xs overflow-hidden ${
+                                      course.status === 'cancelled' ? 'opacity-50' : ''
+                                    }`}
+                                    style={{
+                                      top: `${getCoursePosition(course.start_time) % 80}px`,
+                                      height: `${getCourseHeight(course.start_time, course.end_time)}px`,
+                                      backgroundColor: course.subject_color || '#3b82f6',
+                                      color: 'white',
+                                    }}
+                                  >
+                                    <div className="font-semibold truncate">{course.subject_name}</div>
+                                    <div className="truncate text-[10px]">{course.teacher_name}</div>
+                                    <div className="truncate text-[10px]">
+                                      {course.status === 'modified' && course.modifications?.new_room
+                                        ? course.modifications.new_room
+                                        : course.room}
+                                    </div>
+                                    <div className="text-[10px]">
+                                      {course.start_time} - {course.end_time}
+                                    </div>
+                                    
+                                    {/* Badge annulé */}
+                                    {course.status === 'cancelled' && (
+                                      <Badge variant="destructive" className="mt-1 text-[10px] px-1 py-0">
+                                        🚫 ANNULÉ
+                                      </Badge>
+                                    )}
+                                    
+                                    {/* Badge modifié */}
+                                    {course.status === 'modified' && (
+                                      <Badge variant="secondary" className="mt-1 text-[10px] px-1 py-0 bg-orange-500 text-white">
+                                        ⚠️ MODIFIÉ
+                                      </Badge>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )
+                          })}
+                        </React.Fragment>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
