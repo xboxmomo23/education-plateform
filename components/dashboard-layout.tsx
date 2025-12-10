@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { getUserSession, clearUserSession, type User, type UserRole } from "@/lib/auth-new"
 import { messagesApi } from "@/lib/api/messages"
 import {
@@ -22,7 +23,8 @@ import {
   UserCog,
   AlertCircle,
   Layers,
-  Mail,  // ✨ Import icône Mail
+  Mail,
+  Menu,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -38,6 +40,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)  // ✨ NOUVEAU: compteur messages non lus
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
     const currentUser = getUserSession()
@@ -184,6 +187,60 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
   }
 
   const menuItems = getMenuItems()
+  const isResponsiveRole = requiredRole === "student" || requiredRole === "teacher"
+
+  const SidebarContent = ({ onNavigate }: { onNavigate?: () => void }) => (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-2 border-b p-6">
+        {getRoleIcon()}
+        <h1 className="text-lg font-semibold">{getRoleLabel()}</h1>
+      </div>
+
+      <nav className="flex-1 space-y-1 p-4">
+        {menuItems.map((item) => {
+          const isActive = pathname === item.href
+          return (
+            <Link
+              key={item.label}
+              href={item.href}
+              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              }`}
+              onClick={() => onNavigate?.()}
+            >
+              <item.icon className="h-4 w-4" />
+              <span className="flex-1">{item.label}</span>
+              {item.badge !== undefined && item.badge > 0 && (
+                <Badge
+                  variant="destructive"
+                  className={`ml-auto h-5 min-w-[20px] px-1.5 text-xs ${
+                    isActive ? "bg-white text-primary" : ""
+                  }`}
+                >
+                  {item.badge > 99 ? "99+" : item.badge}
+                </Badge>
+              )}
+            </Link>
+          )
+        })}
+      </nav>
+
+      {user && (
+        <div className="border-t p-4">
+          <div className="mb-3 rounded-lg bg-muted p-3">
+            <p className="text-sm font-medium">{user.full_name || user.email}</p>
+            <p className="text-xs text-muted-foreground">{user.email}</p>
+          </div>
+          <Button variant="outline" className="w-full bg-transparent" onClick={handleLogout}>
+            <LogOut className="mr-2 h-4 w-4" />
+            Déconnexion
+          </Button>
+        </div>
+      )}
+    </div>
+  )
 
   if (isLoading) {
     return (
@@ -193,68 +250,54 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
     )
   }
 
+  if (!isResponsiveRole) {
+    return (
+      <div className="flex h-screen bg-background">
+        <aside className="w-64 border-r bg-card">
+          <SidebarContent />
+        </aside>
+        <main className="flex-1 overflow-auto">
+          <div className="container py-8">{children}</div>
+        </main>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex h-screen bg-background">
-      {/* Sidebar */}
-      <aside className="w-64 border-r bg-card">
-        <div className="flex h-full flex-col">
-          <div className="flex items-center gap-2 border-b p-6">
-            {getRoleIcon()}
-            <h1 className="text-lg font-semibold">{getRoleLabel()}</h1>
-          </div>
-
-          <nav className="flex-1 space-y-1 p-4">
-            {menuItems.map((item) => {
-              const isActive = pathname === item.href
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                  }`}
-                >
-                  <item.icon className="h-4 w-4" />
-                  <span className="flex-1">{item.label}</span>
-                  {/* ✨ NOUVEAU: Badge pour les messages non lus */}
-                  {item.badge !== undefined && item.badge > 0 && (
-                    <Badge 
-                      variant="destructive" 
-                      className={`ml-auto h-5 min-w-[20px] px-1.5 text-xs ${
-                        isActive ? 'bg-white text-primary' : ''
-                      }`}
-                    >
-                      {item.badge > 99 ? '99+' : item.badge}
-                    </Badge>
-                  )}
-                </Link>
-              )
-            })}
-          </nav>
-
-          {user && (
-            <div className="border-t p-4">
-              <div className="mb-3 rounded-lg bg-muted p-3">
-                <p className="text-sm font-medium">
-                  {user.full_name || user.email}
-                </p>
-                <p className="text-xs text-muted-foreground">{user.email}</p>
-              </div>
-              <Button variant="outline" className="w-full bg-transparent" onClick={handleLogout}>
-                <LogOut className="mr-2 h-4 w-4" />
-                Déconnexion
-              </Button>
-            </div>
-          )}
-        </div>
+    <div className="flex min-h-screen flex-col bg-background md:flex-row">
+      <aside className="hidden w-64 border-r bg-card md:block md:flex-shrink-0">
+        <SidebarContent />
       </aside>
 
-      {/* Main content */}
-      <main className="flex-1 overflow-auto">
-        <div className="container py-8">{children}</div>
-      </main>
+      <div className="flex flex-1 flex-col">
+        <header className="flex items-center justify-between gap-3 border-b bg-background px-4 py-3 md:hidden">
+          <div className="flex flex-1 items-center gap-3">
+            {getRoleIcon()}
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">{getRoleLabel()}</p>
+              <p className="truncate text-sm font-semibold">
+                {user?.full_name || user?.email || "Mon espace"}
+              </p>
+            </div>
+          </div>
+
+          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+            <SheetTrigger asChild>
+              <Button variant="outline" size="icon">
+                <Menu className="h-5 w-5" />
+                <span className="sr-only">Ouvrir le menu</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-64 p-0">
+              <SidebarContent onNavigate={() => setMobileMenuOpen(false)} />
+            </SheetContent>
+          </Sheet>
+        </header>
+
+        <main className="flex-1 overflow-y-auto">
+          <div className="container py-6 md:py-8">{children}</div>
+        </main>
+      </div>
     </div>
   )
 }

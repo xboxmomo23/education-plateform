@@ -32,24 +32,26 @@ export function NotesSummaryCard({
   return (
     <Card className="border-2 shadow-lg bg-gradient-to-br from-slate-50 to-white">
       <CardContent className="p-6">
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           {/* Left: Icon & Title */}
-          <div className="flex items-start gap-4">
-            <div className="rounded-full bg-primary/10 p-3">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-4">
+            <div className="rounded-full bg-primary/10 p-3 self-start">
               <Award className="h-8 w-8 text-primary" />
             </div>
             <div>
               <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
                 Moyenne générale
               </h3>
-              <div className="mt-2 flex items-baseline gap-3">
-                <span className="text-6xl font-bold text-slate-900">
-                  {generalAverage.toFixed(2)}
-                </span>
-                <span className="text-2xl text-muted-foreground font-medium">/20</span>
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-5xl font-bold text-slate-900 sm:text-6xl">
+                    {generalAverage.toFixed(2)}
+                  </span>
+                  <span className="text-2xl text-muted-foreground font-medium">/20</span>
+                </div>
                 {getTrend(generalAverage)}
               </div>
-              <div className="mt-3 flex items-center gap-2">
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Badge
                   className={`${appreciation.color} text-white px-3 py-1 text-sm font-medium`}
                 >
@@ -60,12 +62,12 @@ export function NotesSummaryCard({
           </div>
 
           {/* Right: Stats */}
-          <div className="text-right space-y-2">
-            <div className="rounded-lg bg-slate-50 px-4 py-2 border">
+          <div className="flex w-full flex-col gap-3 text-left sm:flex-row sm:items-stretch sm:gap-4 md:w-auto md:flex-col md:text-right">
+            <div className="flex-1 rounded-lg bg-slate-50 px-4 py-2 border md:flex-none">
               <p className="text-xs text-muted-foreground">Matières</p>
               <p className="text-2xl font-bold text-slate-900">{totalSubjects}</p>
             </div>
-            <div className="rounded-lg bg-slate-50 px-4 py-2 border">
+            <div className="flex-1 rounded-lg bg-slate-50 px-4 py-2 border md:flex-none">
               <p className="text-xs text-muted-foreground">Évaluations</p>
               <p className="text-2xl font-bold text-slate-900">{totalEvaluations}</p>
             </div>

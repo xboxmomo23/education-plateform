@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { 
   BookOpen, 
@@ -105,6 +106,7 @@ export default function StudentDashboardPage() {
   const [upcomingHomework, setUpcomingHomework] = useState<UpcomingHomework[]>([])
   const [feedEvents, setFeedEvents] = useState<FeedEvent[]>([])
   const [recentGrades, setRecentGrades] = useState<RecentGrade[]>([])
+  const [overdueHomeworkCount, setOverdueHomeworkCount] = useState(0)
   
   // KPIs
   const [kpis, setKpis] = useState({
@@ -183,11 +185,14 @@ export default function StudentDashboardPage() {
 
       // 3. Récupérer les devoirs
       let homeworkData: UpcomingHomework[] = []
+      let overdueCount = 0
       try {
         const homeworkRes = await assignmentsApi.getStudentAssignments()
         if (homeworkRes.success && homeworkRes.data) {
+          const now = new Date()
+          overdueCount = homeworkRes.data.filter(a => new Date(a.due_at) < now).length
           homeworkData = homeworkRes.data
-            .filter(a => new Date(a.due_at) >= new Date())
+            .filter(a => new Date(a.due_at) >= now)
             .map(transformAssignmentToHomework)
             .sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
         }
@@ -195,6 +200,7 @@ export default function StudentDashboardPage() {
         console.error('Erreur devoirs:', e)
       }
       setUpcomingHomework(homeworkData)
+      setOverdueHomeworkCount(overdueCount)
 
       // 4. Récupérer les messages non lus
       let unreadCount = 0
@@ -330,18 +336,28 @@ export default function StudentDashboardPage() {
 
   const user = getUserSession()
   const greeting = getGreeting()
+  const alertReasons = []
+  if (overdueHomeworkCount > 0) {
+    alertReasons.push(
+      `${overdueHomeworkCount} devoir${overdueHomeworkCount > 1 ? 's' : ''} en retard`
+    )
+  }
+  if (kpis.absencesCount > 0) {
+    alertReasons.push(
+      `${kpis.absencesCount} absence${kpis.absencesCount > 1 ? 's' : ''} à justifier`
+    )
+  }
+  const showAlertBanner = alertReasons.length > 0
 
   return (
     <DashboardLayout requiredRole="student">
-      <div className="container mx-auto p-4 sm:p-6 max-w-7xl space-y-6">
-        
-        {/* En-tête avec salutation */}
-        <div className="flex items-center justify-between">
+      <div className="mx-auto max-w-6xl space-y-6 px-4 sm:px-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold">
               {greeting}, {user?.full_name?.split(' ')[0] || 'Élève'} 👋
             </h1>
-            <p className="text-muted-foreground mt-1">
+            <p className="mt-1 text-muted-foreground">
               {new Date().toLocaleDateString('fr-FR', { 
                 weekday: 'long', 
                 day: 'numeric', 
@@ -350,19 +366,29 @@ export default function StudentDashboardPage() {
               })}
             </p>
           </div>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleRefresh}
-            disabled={refreshing}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-            Actualiser
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="w-full sm:w-auto"
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              Actualiser
+            </Button>
+          </div>
         </div>
 
-        {/* KPI Cards - Carrousel horizontal sur mobile */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {showAlertBanner && (
+          <Alert variant="destructive" className="md:max-w-xl">
+            <AlertCircle className="h-5 w-5" />
+            <AlertTitle>À traiter rapidement</AlertTitle>
+            <AlertDescription>{alertReasons.join(" • ")}</AlertDescription>
+          </Alert>
+        )}
+
+        <div className="hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-4">
           <KpiCard
             title="Cours aujourd'hui"
             value={kpis.coursesToday}
@@ -401,81 +427,69 @@ export default function StudentDashboardPage() {
           />
         </div>
 
-        {/* Contenu principal - 2 colonnes sur desktop */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          {/* Colonne principale (2/3) */}
-          <div className="lg:col-span-2 space-y-6">
-            
-            {/* Cours du jour */}
-            <TodayCourses
-              courses={todayCourses}
-              title="Mes cours aujourd'hui"
-              emptyMessage="Pas de cours aujourd'hui 🎉"
-              role="student"
-            />
+        <TodayCourses
+          courses={todayCourses}
+          title="Aujourd'hui"
+          emptyMessage="Pas de cours aujourd'hui 🎉"
+          role="student"
+        />
 
-            {/* Fil d'actualités */}
-            <FeedTimeline
-              events={feedEvents}
-              title="Actualités récentes"
-              emptyMessage="Aucune actualité récente"
-              maxItems={8}
-              showViewAll={feedEvents.length > 8}
-            />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="space-y-6 lg:col-span-2">
+            <div className="hidden md:block">
+              <FeedTimeline
+                events={feedEvents}
+                title="Actualités récentes"
+                emptyMessage="Aucune actualité récente"
+                maxItems={8}
+                showViewAll={feedEvents.length > 8}
+              />
+            </div>
           </div>
 
-          {/* Sidebar (1/3) */}
           <div className="space-y-6">
-            
-            {/* Travail à faire */}
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
                   <FileText className="h-4 w-4 text-muted-foreground" />
-                  Travail à faire
+                  Devoirs à rendre
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <HomeworkSummaryWidget 
                   homework={upcomingHomework}
-                  maxItems={4}
+                  maxItems={3}
                   viewAllLink="/eleve/devoirs"
                 />
               </CardContent>
             </Card>
 
-            {/* Notes récentes */}
-            {recentGrades.length > 0 && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base font-semibold flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    Dernières notes
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <RecentGradesWidget 
-                    grades={recentGrades}
-                    maxItems={3}
-                    viewAllLink="/eleve/notes"
-                  />
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Séances à venir */}
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  Dernières notes
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <RecentGradesWidget 
+                  grades={recentGrades}
+                  maxItems={3}
+                  viewAllLink="/eleve/notes"
+                />
+              </CardContent>
+            </Card>
+
+            <Card className="hidden md:block">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
                   <Clock className="h-4 w-4 text-muted-foreground" />
                   Prochaines séances
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {/* Afficher les prochains cours de la semaine */}
-                <div className="text-center py-4 text-muted-foreground text-sm">
-                  <Calendar className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                <div className="py-4 text-center text-sm text-muted-foreground">
+                  <Calendar className="mx-auto mb-2 h-6 w-6 opacity-50" />
                   <p>Consultez votre emploi du temps</p>
                   <Button 
                     variant="link" 

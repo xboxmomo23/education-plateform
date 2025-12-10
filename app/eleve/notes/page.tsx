@@ -343,7 +343,7 @@ export default function StudentNotesPage() {
         <div className="space-y-6">
           {/* Header avec sélecteur de période */}
           <div className="border-b pb-6">
-            <div className="flex items-start justify-between">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
                 <h1 className="text-4xl font-bold text-slate-900">Mes notes</h1>
                 <p className="text-muted-foreground mt-2 text-lg">
@@ -351,13 +351,13 @@ export default function StudentNotesPage() {
                 </p>
               </div>
               {/* Sélecteur de période */}
-              <div className="flex items-center gap-3">
+              <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center md:w-auto md:justify-end">
                 <PeriodSelector
                   terms={terms}
                   selectedTermId={selectedTermId}
                   onSelect={setSelectedTermId}
                 />
-                <Button onClick={loadNotes} variant="outline" size="icon">
+                <Button onClick={loadNotes} variant="outline" size="icon" className="w-full sm:w-auto">
                   <RefreshCw className="h-4 w-4" />
                 </Button>
               </div>
@@ -400,21 +400,21 @@ export default function StudentNotesPage() {
         {/* HEADER avec sélecteur de période */}
         {/* ============================================ */}
         <div className="border-b pb-6">
-          <div className="flex items-start justify-between">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
               <h1 className="text-4xl font-bold text-slate-900">Mes notes</h1>
               <p className="text-muted-foreground mt-2 text-lg">
                 Consultez vos résultats, moyennes et appréciations.
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center md:w-auto md:justify-end">
               {/* Sélecteur de période */}
               <PeriodSelector
                 terms={terms}
                 selectedTermId={selectedTermId}
                 onSelect={setSelectedTermId}
               />
-              <Button onClick={loadNotes} variant="outline" size="icon">
+              <Button onClick={loadNotes} variant="outline" size="icon" className="w-full sm:w-auto">
                 <RefreshCw className="h-4 w-4" />
               </Button>
             </div>
@@ -422,18 +422,18 @@ export default function StudentNotesPage() {
 
           {/* Badge période sélectionnée */}
           {summaryData?.term && (
-            <div className="mt-4 flex items-center gap-2">
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">
+              <span>
                 Période : <strong>{summaryData.term.name}</strong>
                 {" "}({new Date(summaryData.term.startDate).toLocaleDateString('fr-FR')} - {new Date(summaryData.term.endDate).toLocaleDateString('fr-FR')})
               </span>
             </div>
           )}
           {!selectedTermId && (
-            <div className="mt-4 flex items-center gap-2">
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">
+              <span>
                 Période : <strong>Année complète</strong>
               </span>
             </div>
@@ -452,7 +452,7 @@ export default function StudentNotesPage() {
         {/* ============================================ */}
         {/* LAYOUT: Main content + Sidebar */}
         {/* ============================================ */}
-        <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
           {/* LEFT COLUMN: Tables & Accordion */}
           <div className="space-y-6">
             {/* Synthèse par matière */}
@@ -494,13 +494,13 @@ export default function StudentNotesPage() {
                     return (
                       <div
                         key={term.id}
-                        className={`flex items-center justify-between p-3 rounded-lg border ${
+                        className={`flex flex-col gap-3 rounded-lg border p-3 ${
                           canDownload 
                             ? 'bg-white hover:bg-slate-50' 
                             : 'bg-slate-50'
-                        }`}
+                        } sm:flex-row sm:items-center sm:justify-between`}
                       >
-                        <div>
+                        <div className="space-y-1">
                           <p className="font-medium text-sm">{term.name}</p>
                           <p className="text-xs text-muted-foreground">
                             {new Date(term.startDate).toLocaleDateString('fr-FR')} - {new Date(term.endDate).toLocaleDateString('fr-FR')}
@@ -525,6 +525,7 @@ export default function StudentNotesPage() {
                           variant={canDownload ? "default" : "ghost"}
                           disabled={!canDownload || isDownloading}
                           onClick={() => handleDownloadReport(term.id)}
+                          className="w-full sm:w-auto"
                         >
                           {isDownloading ? (
                             <RefreshCw className="h-4 w-4 animate-spin" />
@@ -567,11 +568,11 @@ function PeriodSelector({ terms, selectedTermId, onSelect }: PeriodSelectorProps
   const label = selectedTerm ? selectedTerm.name : "Année complète"
 
   return (
-    <div className="relative">
+    <div className="relative w-full sm:w-auto">
       <Button
         variant="outline"
         onClick={() => setIsOpen(!isOpen)}
-        className="min-w-[180px] justify-between"
+        className="w-full justify-between sm:min-w-[200px]"
       >
         <span className="flex items-center gap-2">
           <Calendar className="h-4 w-4" />
@@ -589,7 +590,7 @@ function PeriodSelector({ terms, selectedTermId, onSelect }: PeriodSelectorProps
           />
 
           {/* Dropdown menu */}
-          <div className="absolute right-0 top-full mt-2 z-20 w-56 rounded-md border bg-white shadow-lg">
+          <div className="absolute left-0 top-full mt-2 z-20 w-full rounded-md border bg-white shadow-lg sm:left-auto sm:right-0 sm:w-56">
             <div className="py-1">
               {/* Option "Année complète" */}
               <button
