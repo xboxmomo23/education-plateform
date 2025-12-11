@@ -26,17 +26,18 @@ const query_builder_1 = require("../utils/query-builder");
 // ✅ CORRECTION : Supprimer createStaffProfile de l'import pour éviter le conflit
 const staff_model_1 = require("./staff.model");
 async function createUser(userData) {
-    const { email, password, role, full_name, establishmentId } = userData;
+    const { email, password, role, full_name, establishmentId, mustChangePassword } = userData;
     const password_hash = await (0, auth_utils_1.hashPassword)(password);
+    const must_change_password = mustChangePassword ?? true;
     const query = `
     INSERT INTO users (
-      email, password_hash, role, full_name, email_verified
+      email, password_hash, role, full_name, email_verified, must_change_password
       ${establishmentId ? ', establishment_id' : ''}
     )
-    VALUES ($1, $2, $3, $4, $5 ${establishmentId ? ', $6' : ''})
+    VALUES ($1, $2, $3, $4, $5, $6 ${establishmentId ? ', $7' : ''})
     RETURNING *
   `;
-    const values = [email, password_hash, role, full_name, false];
+    const values = [email, password_hash, role, full_name, false, must_change_password];
     if (establishmentId)
         values.push(establishmentId);
     const result = await database_1.pool.query(query, values);
@@ -46,9 +47,9 @@ async function createStudentProfile(userId, profileData) {
     const query = `
     INSERT INTO student_profiles (
       user_id, student_no, birthdate, address, phone, 
-      emergency_contact, medical_notes, photo_url
+      emergency_contact, medical_notes, photo_url, contact_email
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     RETURNING *
   `;
     const values = [
@@ -60,6 +61,7 @@ async function createStudentProfile(userId, profileData) {
         profileData.emergency_contact || null,
         profileData.medical_notes || null,
         profileData.photo_url || null,
+        profileData.contact_email || null,
     ];
     const result = await database_1.pool.query(query, values);
     return result.rows[0];
@@ -67,9 +69,9 @@ async function createStudentProfile(userId, profileData) {
 async function createTeacherProfile(userId, profileData) {
     const query = `
     INSERT INTO teacher_profiles (
-      user_id, employee_no, hire_date, specialization, phone, office_room
+      user_id, employee_no, hire_date, specialization, phone, office_room, contact_email
     )
-    VALUES ($1, $2, $3, $4, $5, $6)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     RETURNING *
   `;
     const values = [
@@ -79,6 +81,7 @@ async function createTeacherProfile(userId, profileData) {
         profileData.specialization || null,
         profileData.phone || null,
         profileData.office_room || null,
+        profileData.contact_email || null,
     ];
     const result = await database_1.pool.query(query, values);
     return result.rows[0];
@@ -87,10 +90,10 @@ async function createTeacherProfile(userId, profileData) {
 async function createStaffProfile(userId, profileData) {
     const query = `
     INSERT INTO staff_profiles (
-      user_id, phone, department, office_room, employee_no, hire_date
+      user_id, phone, department, office_room, employee_no, hire_date, contact_email
     )
-    VALUES ($1, $2, $3, $4, $5, $6)
-    RETURNING user_id, phone, department, office_room, employee_no, hire_date, created_at
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING user_id, phone, department, office_room, employee_no, hire_date, contact_email, created_at
   `;
     const values = [
         userId,
@@ -99,6 +102,7 @@ async function createStaffProfile(userId, profileData) {
         profileData.office_room || null,
         profileData.employee_no || null,
         profileData.hire_date || null,
+        profileData.contact_email || null,
     ];
     const result = await database_1.pool.query(query, values);
     return result.rows[0];
@@ -199,6 +203,8 @@ async function getUserWithProfile(userId, role, establishmentId) {
             break;
         case 'admin':
             break;
+        case 'super_admin':
+            break;
     }
     return { user, profile };
 }
@@ -269,7 +275,10 @@ async function updatePassword(userId, newPassword) {
     const password_hash = await (0, auth_utils_1.hashPassword)(newPassword);
     const query = `
     UPDATE users 
-    SET password_hash = $1, password_changed_at = NOW()
+    SET password_hash = $1, 
+        password_changed_at = NOW(),
+        must_change_password = FALSE,
+        failed_login_attempts = 0
     WHERE id = $2
   `;
     await database_1.pool.query(query, [password_hash, userId]);

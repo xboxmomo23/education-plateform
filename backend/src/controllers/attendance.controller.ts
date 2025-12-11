@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AttendanceModel, AttendanceStatus } from '../models/attendance.model';
 import pool from '../config/database';
+import { assertParentCanAccessStudent } from '../models/parent.model';
 
 // ============================================
 // HANDLERS - SEMAINE PROFESSEUR
@@ -299,14 +300,13 @@ export async function getStudentHistoryHandler(req: Request, res: Response) {
       });
     }
 
-    // Parents peuvent voir leurs enfants (à implémenter si nécessaire)
+    // Parents peuvent voir leurs enfants
     if (role === 'parent') {
-      // Vérifier le lien parent-enfant
-      const parentCheck = await pool.query(
-        'SELECT 1 FROM student_parents WHERE parent_id = $1 AND student_id = $2',
-        [userId, studentId]
-      );
-      if (parentCheck.rows.length === 0) {
+      try {
+        await assertParentCanAccessStudent(userId, studentId, {
+          requireCanViewAttendance: true,
+        });
+      } catch (error) {
         return res.status(403).json({
           success: false,
           error: 'Accès non autorisé',

@@ -53,6 +53,7 @@ export interface LoginResponse {
     profile?: any;
     must_change_password?: boolean;
   };
+  children?: ParentChildSummary[];
   error?: string;
   locked_until?: Date;
   remaining_attempts?: number;
@@ -87,7 +88,7 @@ export interface RegisterRequest {
     is_primary_contact?: boolean;
     can_view_grades?: boolean;
     can_view_attendance?: boolean;
-    is_emergency_contact?: boolean;  // ✅ CORRIGÉ : renommé pour éviter le conflit
+    emergency_contact?: boolean;
   };
 }
 
@@ -171,8 +172,35 @@ export interface ParentProfile {
   is_primary_contact?: boolean;
   can_view_grades?: boolean;
   can_view_attendance?: boolean;
-  is_emergency_contact?: boolean;  // ✅ CORRIGÉ : cohérent avec RegisterRequest
+  emergency_contact?: boolean;
   created_at?: Date;
+}
+
+export interface ParentChildSummary {
+  id: string;
+  full_name: string;
+  email?: string | null;
+  student_number?: string | null;
+  class_id?: string | null;
+  class_name?: string | null;
+  relation_type?: string | null;
+  is_primary?: boolean | null;
+  can_view_grades?: boolean | null;
+  can_view_attendance?: boolean | null;
+  receive_notifications?: boolean | null;
+}
+
+export interface ParentForStudentInput {
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  relation_type?: string;
+  is_primary?: boolean;
+  can_view_grades?: boolean;
+  can_view_attendance?: boolean;
+  receive_notifications?: boolean;
 }
 
 // ============================================

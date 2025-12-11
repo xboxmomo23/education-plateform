@@ -1,4 +1,7 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.authenticate = authenticate;
 exports.authorize = authorize;
@@ -8,6 +11,16 @@ exports.checkAccountStatus = checkAccountStatus;
 const auth_utils_1 = require("../utils/auth.utils");
 const session_model_1 = require("../models/session.model");
 const user_model_1 = require("../models/user.model");
+const database_1 = __importDefault(require("../config/database"));
+async function fetchAssignedClassIds(userId, role) {
+    if (role !== 'teacher' && role !== 'staff') {
+        return undefined;
+    }
+    const table = role === 'teacher' ? 'teacher_profiles' : 'staff_profiles';
+    const result = await database_1.default.query(`SELECT assigned_class_ids FROM ${table} WHERE user_id = $1`, [userId]);
+    const assigned = result.rows[0]?.assigned_class_ids;
+    return assigned ? assigned.filter(Boolean) : [];
+}
 // =========================
 // Middleware d'authentification
 // =========================
@@ -53,13 +66,14 @@ async function authenticate(req, res, next) {
             return;
         }
         await (0, session_model_1.updateSessionActivity)(token);
+        const assignedClassIds = await fetchAssignedClassIds(user.id, user.role);
         req.user = {
             userId: user.id,
             email: user.email,
             role: user.role,
             full_name: user.full_name,
-            // Future: Ajouter automatiquement le contexte establishment
-            // establishmentId: user.establishment_id,
+            establishmentId: user.establishment_id || undefined,
+            assignedClassIds,
         };
         next();
     }
@@ -123,13 +137,14 @@ async function optionalAuthenticate(req, res, next) {
             if (session) {
                 const user = await (0, user_model_1.findUserById)(decoded.userId);
                 if (user && user.active && !user.deleted_at) {
+                    const assignedClassIds = await fetchAssignedClassIds(user.id, user.role);
                     req.user = {
                         userId: user.id,
                         email: user.email,
                         role: user.role,
                         full_name: user.full_name,
-                        // Future
-                        // establishmentId: user.establishment_id,
+                        establishmentId: user.establishment_id || undefined,
+                        assignedClassIds,
                     };
                     await (0, session_model_1.updateSessionActivity)(token);
                 }
@@ -224,5 +239,5 @@ export async function enforceEstablishmentIsolation(
   
   next();
 }
-*/ 
+*/
 //# sourceMappingURL=auth.middleware.js.map

@@ -3,6 +3,10 @@ import { Request, Response } from 'express';
  * Authentifie un utilisateur et génère un token JWT
  */
 export declare function login(req: Request, res: Response): Promise<void>;
+export declare function changePasswordHandler(req: Request, res: Response): Promise<void>;
+export declare function requestPasswordReset(req: Request, res: Response): Promise<void>;
+export declare function resetPassword(req: Request, res: Response): Promise<void>;
+export declare function acceptInvite(req: Request, res: Response): Promise<void>;
 /**
  * Déconnecte un utilisateur en révoquant sa session
  */
@@ -23,4 +27,14 @@ export declare function getCurrentUser(req: Request, res: Response): Promise<voi
  * Crée un nouvel utilisateur (réservé aux admins)
  */
 export declare function register(req: Request, res: Response): Promise<void>;
+export declare function sendInvite(req: Request, res: Response): Promise<void>;
+export declare function buildInviteUrl(token: string): string;
+export declare function createInviteTokenForUser(user: {
+    id: string;
+    email: string;
+    full_name?: string;
+}): Promise<{
+    token: string;
+    inviteUrl: string;
+}>;
 //# sourceMappingURL=auth.controller.d.ts.map

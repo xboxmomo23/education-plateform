@@ -13,6 +13,7 @@ export interface CreateUserData {
     role: UserRole;
     full_name: string;
     establishmentId?: string;
+    mustChangePassword?: boolean;
 }
 export declare function createUser(userData: CreateUserData): Promise<User>;
 export declare function createStudentProfile(userId: string, profileData: Partial<StudentProfile>): Promise<StudentProfile>;

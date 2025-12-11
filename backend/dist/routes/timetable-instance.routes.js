@@ -18,9 +18,18 @@ router.get('/class/:classId/week/:weekStartDate', auth_middleware_1.authenticate
 router.post('/', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.body)('class_id').isUUID(), (0, express_validator_1.body)('course_id').isUUID(), (0, express_validator_1.body)('week_start_date').isDate(), (0, express_validator_1.body)('day_of_week').isInt({ min: 1, max: 7 }), (0, express_validator_1.body)('start_time').matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/), (0, express_validator_1.body)('end_time').matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/), validation_middleware_1.validateRequest, timetable_instance_controller_1.createInstanceHandler);
 /**
  * POST /api/timetable/instances/generate-from-template
- * Générer depuis template
+ * Générer depuis template (UNE SEULE SEMAINE)
  */
-router.post('/generate-from-template', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.body)('class_id').isUUID(), (0, express_validator_1.body)('week_start_date').isDate(), validation_middleware_1.validateRequest, timetable_instance_controller_1.generateFromTemplateHandler);
+router.post('/generate-from-template', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.body)('class_id').isUUID(), (0, express_validator_1.body)('source_week_start').isDate(), (0, express_validator_1.body)('target_week_start').isDate(), validation_middleware_1.validateRequest, timetable_instance_controller_1.generateFromTemplateHandler);
+/**
+ * ✨ NOUVEAU : POST /api/timetable/instances/generate-bulk
+ * Générer depuis template (PLUSIEURS SEMAINES)
+ */
+router.post('/generate-bulk', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.body)('class_id').isUUID().withMessage('ID de classe invalide'), (0, express_validator_1.body)('source_week_start').isDate().withMessage('source_week_start invalide'), (0, express_validator_1.body)('target_weeks')
+    .isArray({ min: 1 })
+    .withMessage('target_weeks doit être un tableau non vide'), (0, express_validator_1.body)('target_weeks.*')
+    .isDate()
+    .withMessage('Chaque date doit être au format valide (YYYY-MM-DD)'), validation_middleware_1.validateRequest, timetable_instance_controller_1.generateFromTemplateBulkHandler);
 /**
  * POST /api/timetable/instances/copy-week
  * Copier une semaine

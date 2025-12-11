@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "jest",
-    "db:migrate": "ts-node src/scripts/migrate.ts"
+    "db:migrate": "ts-node src/scripts/migrate.ts",
+    "seed:parent-test": "ts-node src/scripts/create-parent-test-data.ts"
   },
   "keywords": [
     "education",

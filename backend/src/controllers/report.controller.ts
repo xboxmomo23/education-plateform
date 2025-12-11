@@ -3,6 +3,7 @@ import { pool } from '../config/database';
 import { findTermById } from '../models/term.model';
 import { findReportCard } from '../models/reportCard.model';
 import PDFDocument from 'pdfkit';
+import { assertParentCanAccessStudent } from '../models/parent.model';
 
 // =========================
 // Types
@@ -349,6 +350,17 @@ export async function getStudentReportHandler(req: Request, res: Response): Prom
     if (!canAccess) {
       res.status(403).json({ success: false, error: 'Accès refusé' });
       return;
+    }
+
+    if (req.user.role === 'parent') {
+      try {
+        await assertParentCanAccessStudent(req.user.userId, studentId, {
+          requireCanViewGrades: true,
+        });
+      } catch (error) {
+        res.status(403).json({ success: false, error: 'Accès refusé' });
+        return;
+      }
     }
 
     if (!termId) {
@@ -948,6 +960,16 @@ export async function getStudentReportDataHandler(req: Request, res: Response): 
       return;
     }
 
+    if (req.user.role === 'parent') {
+      try {
+        await assertParentCanAccessStudent(req.user.userId, studentId, {
+          requireCanViewGrades: true,
+        });
+      } catch (error) {
+        res.status(403).json({ success: false, error: 'Accès refusé' });
+        return;
+      }
+    }
     if (!termId) {
       res.status(400).json({
         success: false,

@@ -111,7 +111,7 @@ const roleLabels: Record<UserRole, string> = {
 interface InviteEmailParams {
   to: string;
   loginEmail: string;
-  role: Exclude<UserRole, "admin" | "parent" | "super_admin">;
+  role: Exclude<UserRole, "admin" | "super_admin">;
   establishmentName?: string;
   inviteUrl: string;
   expiresInDays?: number;

@@ -20,6 +20,7 @@ exports.getClassAveragesHandler = getClassAveragesHandler;
 const database_1 = require("../config/database");
 const evaluation_model_1 = require("../models/evaluation.model");
 const grade_model_1 = require("../models/grade.model");
+const term_model_1 = require("../models/term.model");
 // =========================
 // EVALUATIONS - Pour Professeurs
 // =========================
@@ -34,15 +35,48 @@ async function createEvaluationHandler(req, res) {
             return;
         }
         const { courseId, termId, title, type, coefficient, maxScale, evalDate, description, } = req.body;
+        const establishmentId = req.user.establishmentId;
         // Validation
-        if (!courseId || !title || !type || !coefficient || !evalDate) {
+        if (!courseId || !title || !type || !coefficient || !evalDate || !termId) {
             res.status(400).json({
                 success: false,
                 error: 'Données manquantes',
-                required: ['courseId', 'title', 'type', 'coefficient', 'evalDate'],
+                required: ['courseId', 'termId', 'title', 'type', 'coefficient', 'evalDate'],
             });
             return;
         }
+        if (!establishmentId) {
+            res.status(403).json({
+                success: false,
+                error: 'Aucun établissement associé à ce compte',
+            });
+            return;
+        }
+        const term = await (0, term_model_1.findTermById)(termId, establishmentId);
+        if (!term) {
+            res.status(404).json({
+                success: false,
+                error: 'Période introuvable pour votre établissement',
+            });
+            return;
+        }
+        const evalDateObj = new Date(evalDate);
+        const termStart = new Date(term.start_date);
+        const termEnd = new Date(term.end_date);
+        if (evalDateObj < termStart || evalDateObj > termEnd) {
+            res.status(400).json({
+                success: false,
+                error: 'La date de l\'évaluation doit se situer dans la période sélectionnée',
+            });
+            return;
+        }
+        console.log('[Grades] createEvaluation', {
+            courseId,
+            termId,
+            evalDate,
+            teacherId: req.user.userId,
+            establishmentId,
+        });
         // Créer l'évaluation
         const evaluation = await (0, evaluation_model_1.createEvaluation)({
             courseId,
@@ -54,7 +88,7 @@ async function createEvaluationHandler(req, res) {
             evalDate: new Date(evalDate),
             description,
             createdBy: req.user.userId,
-            establishmentId: req.user.establishmentId,
+            establishmentId,
         });
         res.status(201).json({
             success: true,
@@ -89,6 +123,11 @@ async function getTeacherEvaluationsHandler(req, res) {
             endDate: endDate ? new Date(endDate) : undefined,
             establishmentId: req.user.establishmentId,
         };
+        console.log('[Grades] getTeacherEvaluations', {
+            userId: req.user.userId,
+            role: req.user.role,
+            filters,
+        });
         let evaluations;
         if (req.user.role === 'teacher') {
             evaluations = await (0, evaluation_model_1.findTeacherEvaluations)(req.user.userId, filters);
@@ -115,6 +154,11 @@ async function getTeacherEvaluationsHandler(req, res) {
             createdAt: evaluation.created_at,
             establishmentId: evaluation.establishment_id
         }));
+        console.log('[Grades] getTeacherEvaluations result', {
+            count: mappedEvaluations.length,
+            courseId,
+            termId,
+        });
         res.json({
             success: true,
             data: mappedEvaluations,
@@ -704,15 +748,32 @@ async function getChildrenGradesHandler(req, res) {
  */
 async function getStaffManagedStudentsGradesHandler(req, res) {
     try {
-        const { termId, courseId } = req.query;
-        const staffId = req.user?.userId;
+        if (!req.user || req.user.role !== 'staff') {
+            res.status(403).json({
+                success: false,
+                error: 'Accès réservé au personnel',
+            });
+            return;
+        }
+        const { termId, courseId, classId } = req.query;
+        const staffId = req.user.userId;
+        const establishmentId = req.user.establishmentId;
         console.log('[Staff Grades] Fetching grades for staff:', staffId);
-        console.log('[Staff Grades] Filters:', { termId, courseId });
-        // ✅ Requête SANS class_students (qui n'existe pas)
+        console.log('[Staff Grades] Filters:', { termId, courseId, classId });
+        if (!establishmentId) {
+            res.status(400).json({
+                success: false,
+                error: 'Établissement introuvable pour cet utilisateur',
+            });
+            return;
+        }
+        let paramIndex = 2;
+        const params = [establishmentId];
         let query = `
       SELECT 
         sp.user_id as student_id,
         u.full_name as student_name,
+        st.class_id as class_id,
         c.id as course_id,
         c.title as course_title,
         e.id as evaluation_id,
@@ -726,26 +787,35 @@ async function getStaffManagedStudentsGradesHandler(req, res) {
         g.absent,
         g.comment as grade_comment,
         g.created_at as grade_created_at,
-        t.full_name as teacher_name
+        t.full_name as teacher_name,
+        cl.label as class_label
       FROM student_profiles sp
       INNER JOIN users u ON sp.user_id = u.id
+      LEFT JOIN students st ON st.user_id = u.id
+      LEFT JOIN classes cl ON st.class_id = cl.id
       LEFT JOIN grades g ON g.student_id = sp.user_id
       LEFT JOIN evaluations e ON g.evaluation_id = e.id
       LEFT JOIN courses c ON e.course_id = c.id
       LEFT JOIN teacher_profiles tp ON c.teacher_id = tp.user_id
       LEFT JOIN users t ON tp.user_id = t.id
       WHERE u.active = true
+        AND u.role = 'student'
+        AND u.establishment_id = $1
     `;
-        const params = [];
-        // Filtre par trimestre (optionnel)
         if (termId) {
             params.push(termId);
-            query += ` AND e.term_id = $${params.length}`;
+            query += ` AND e.term_id = $${paramIndex}`;
+            paramIndex++;
         }
-        // Filtre par cours (optionnel)
         if (courseId) {
             params.push(courseId);
-            query += ` AND c.id = $${params.length}`;
+            query += ` AND c.id = $${paramIndex}`;
+            paramIndex++;
+        }
+        if (classId) {
+            params.push(classId);
+            query += ` AND (c.class_id = $${paramIndex} OR st.class_id = $${paramIndex})`;
+            paramIndex++;
         }
         query += ` ORDER BY u.full_name ASC, e.eval_date DESC, c.title ASC LIMIT 100`;
         console.log('[Staff Grades] Executing query...');
@@ -760,6 +830,8 @@ async function getStaffManagedStudentsGradesHandler(req, res) {
                     student: {
                         id: studentId,
                         name: row.student_name,
+                        classId: row.class_id || null,
+                        className: row.class_label || null,
                     },
                     grades: [],
                 });
@@ -778,7 +850,7 @@ async function getStaffManagedStudentsGradesHandler(req, res) {
                     max_scale: parseFloat(row.max_scale) || 20,
                     eval_date: row.eval_date,
                     comment: row.grade_comment,
-                    class_name: '',
+                    class_name: row.class_label || '',
                     absent: row.absent || false,
                     student_name: row.student_name,
                 });
@@ -846,6 +918,20 @@ async function getCourseStudentsWithGrades(req, res) {
         }
         const { courseId } = req.params;
         const { evaluationId } = req.query;
+        const establishmentId = req.user.establishmentId;
+        if (!establishmentId) {
+            res.status(403).json({
+                success: false,
+                error: 'Aucun établissement associé au compte',
+            });
+            return;
+        }
+        console.log('[Grades] getCourseStudentsWithGrades', {
+            courseId,
+            evaluationId,
+            establishmentId,
+            teacherId: req.user.userId,
+        });
         // Récupérer tous les élèves inscrits dans la classe du cours
         const query = `
       SELECT 
@@ -858,14 +944,26 @@ async function getCourseStudentsWithGrades(req, res) {
         g.comment
       FROM courses c
       INNER JOIN classes cl ON cl.id = c.class_id
-      INNER JOIN enrollments enr ON enr.class_id = cl.id AND enr.end_date IS NULL
-      INNER JOIN users u ON u.id = enr.student_id AND u.role = 'student' AND u.active = TRUE
+      INNER JOIN students st ON st.class_id = cl.id
+      INNER JOIN users u ON u.id = st.user_id
+        AND u.role = 'student'
+        AND u.active = TRUE
+        AND u.establishment_id = $3
       INNER JOIN student_profiles sp ON sp.user_id = u.id
       LEFT JOIN grades g ON g.student_id = u.id AND g.evaluation_id = $2
       WHERE c.id = $1
+        AND (c.establishment_id = $3 OR c.establishment_id IS NULL)
+        AND cl.establishment_id = $3
       ORDER BY u.full_name ASC
     `;
-        const result = await database_1.pool.query(query, [courseId, evaluationId || null]);
+        const result = await database_1.pool.query(query, [courseId, evaluationId || null, establishmentId]);
+        if (result.rowCount === 0) {
+            console.log('[Grades] Aucun élève trouvé pour ce cours', {
+                courseId,
+                evaluationId,
+                establishmentId,
+            });
+        }
         res.json({
             success: true,
             data: result.rows,

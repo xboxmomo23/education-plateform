@@ -7,6 +7,7 @@ import {
   getStudentReportHandler,
   getStudentReportDataHandler,
 } from '../controllers/report.controller';
+import { assertParentCanAccessStudent } from '../models/parent.model';
 
 const router = Router();
 
@@ -53,11 +54,22 @@ router.get(
       req.user?.role === 'admin' ||
       req.user?.role === 'staff' ||
       (req.user?.role === 'student' && req.user.userId === req.params.studentId) ||
-      req.user?.role === 'parent'; // TODO: vérifier le lien parent-élève
+      req.user?.role === 'parent';
 
     if (!canAccess) {
       res.status(403).json({ success: false, error: 'Accès refusé' });
       return;
+    }
+
+    if (req.user?.role === 'parent') {
+      try {
+        await assertParentCanAccessStudent(req.user.userId, req.params.studentId, {
+          requireCanViewGrades: true,
+        });
+      } catch (error) {
+        res.status(403).json({ success: false, error: 'Accès refusé' });
+        return;
+      }
     }
 
     // Modifier temporairement le user pour réutiliser le handler

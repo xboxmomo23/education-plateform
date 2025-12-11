@@ -15,6 +15,11 @@ export declare function createInstanceHandler(req: Request, res: Response): Prom
  */
 export declare function generateFromTemplateHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 /**
+ * ✨ NOUVEAU : POST /api/timetable/instances/generate-bulk
+ * Générer les instances de PLUSIEURS semaines depuis le template
+ */
+export declare function generateFromTemplateBulkHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+/**
  * POST /api/timetable/instances/copy-week
  * Copier une semaine vers une autre
  */

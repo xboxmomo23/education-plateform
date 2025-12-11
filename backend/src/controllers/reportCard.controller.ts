@@ -10,6 +10,7 @@ import {
   deleteSubjectAppreciation,
 } from '../models/reportCard.model';
 import { pool } from '../config/database';
+import { assertParentCanAccessStudent } from '../models/parent.model';
 
 // =========================
 // GET /api/report-cards/status/:studentId/:termId
@@ -36,6 +37,28 @@ export async function getReportCardStatus(req: Request, res: Response): Promise<
     if (!canAccess) {
       res.status(403).json({ success: false, error: 'Accès refusé' });
       return;
+    }
+
+    if (req.user.role === 'parent') {
+      try {
+        await assertParentCanAccessStudent(req.user.userId, studentId, {
+          requireCanViewGrades: true,
+        });
+      } catch (error) {
+        res.status(403).json({ success: false, error: 'Accès refusé' });
+        return;
+      }
+    }
+
+    if (req.user.role === 'parent') {
+      try {
+        await assertParentCanAccessStudent(req.user.userId, studentId, {
+          requireCanViewGrades: true,
+        });
+      } catch (error) {
+        res.status(403).json({ success: false, error: 'Accès refusé' });
+        return;
+      }
     }
 
     const studentResult = await pool.query(

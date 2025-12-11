@@ -8,6 +8,8 @@ import {
   generateHumanCode,
   generateLoginEmailFromName,
 } from "../utils/identifier.utils";
+import { syncParentsForStudent, SyncParentsResult } from "../models/parent.model";
+import { ParentForStudentInput } from "../types";
 
 /**
  * Helper : récupère l'établissement de l'admin connecté
@@ -147,6 +149,125 @@ async function processInviteResend(
   }
 
   return { ok: true, inviteUrl };
+}
+
+function normalizeParentsPayload(rawParents: any): ParentForStudentInput[] {
+  if (!Array.isArray(rawParents)) {
+    return [];
+  }
+
+  const normalized: ParentForStudentInput[] = [];
+  rawParents.forEach((parent) => {
+    if (!parent || typeof parent !== "object") {
+      return;
+    }
+
+    const firstName =
+      typeof parent.firstName === "string" ? parent.firstName.trim() : "";
+    const lastName =
+      typeof parent.lastName === "string" ? parent.lastName.trim() : "";
+
+    if (!firstName && !lastName) {
+      return;
+    }
+
+    normalized.push({
+      firstName,
+      lastName,
+      email:
+        typeof parent.email === "string" && parent.email.trim().length > 0
+          ? parent.email.trim().toLowerCase()
+          : undefined,
+      phone:
+        typeof parent.phone === "string" && parent.phone.trim().length > 0
+          ? parent.phone.trim()
+          : undefined,
+      address:
+        typeof parent.address === "string" && parent.address.trim().length > 0
+          ? parent.address.trim()
+          : undefined,
+      relation_type:
+        typeof parent.relation_type === "string" &&
+        parent.relation_type.trim().length > 0
+          ? parent.relation_type.trim()
+          : undefined,
+      is_primary:
+        typeof parent.is_primary === "boolean" ? parent.is_primary : undefined,
+      can_view_grades:
+        typeof parent.can_view_grades === "boolean"
+          ? parent.can_view_grades
+          : undefined,
+      can_view_attendance:
+        typeof parent.can_view_attendance === "boolean"
+          ? parent.can_view_attendance
+          : undefined,
+      receive_notifications:
+        typeof parent.receive_notifications === "boolean"
+          ? parent.receive_notifications
+          : undefined,
+    });
+  });
+
+  return normalized;
+}
+
+async function sendParentInvitesForNewAccounts(
+  parents: SyncParentsResult[],
+  establishmentName: string | null
+): Promise<void> {
+  for (const parent of parents) {
+    if (!parent.isNewUser || !parent.email) {
+      continue;
+    }
+
+    try {
+      const invite = await createInviteTokenForUser({
+        id: parent.parentUserId,
+        email: parent.email,
+        full_name: parent.full_name,
+      });
+
+      await sendInviteEmail({
+        to: parent.email,
+        loginEmail: parent.email,
+        role: "parent",
+        establishmentName: establishmentName || undefined,
+        inviteUrl: invite.inviteUrl,
+      });
+    } catch (error) {
+      console.error("[MAIL] Erreur envoi invitation parent:", error);
+    }
+  }
+}
+
+function handleParentSyncError(res: Response, error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const email = (error as any)?.email;
+
+  if (error.message === "EMAIL_ALREADY_IN_USE") {
+    res.status(409).json({
+      success: false,
+      error: email
+        ? `L'adresse ${email} est déjà utilisée par un autre compte`
+        : "Adresse email déjà utilisée",
+    });
+    return true;
+  }
+
+  if (error.message === "PARENT_BELONGS_TO_ANOTHER_ESTABLISHMENT") {
+    res.status(400).json({
+      success: false,
+      error: email
+        ? `Le parent avec l'adresse ${email} appartient à un autre établissement`
+        : "Ce parent appartient à un autre établissement",
+    });
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -511,15 +632,16 @@ export async function getAdminStudentsHandler(req: Request, res: Response) {
 export async function createStudentForAdminHandler(req: Request, res: Response) {
   try {
     const { userId } = req.user!;
-    const {
-      full_name,
-      email,
-      login_email,
-      contact_email,
-      class_id,
-      student_number,
-      date_of_birth,
-    } = req.body;
+  const {
+    full_name,
+    email,
+    login_email,
+    contact_email,
+    class_id,
+    student_number,
+    date_of_birth,
+    parents,
+  } = req.body;
 
     if (!full_name) {
       return res.status(400).json({
@@ -536,6 +658,9 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
         error: "Établissement non trouvé pour cet admin",
       });
     }
+
+    const establishmentName = await getEstablishmentName(estId);
+    const parentsPayload = normalizeParentsPayload(parents);
 
     let normalizedClassId: string | null = null;
     if (typeof class_id === "string" && class_id.trim().length > 0) {
@@ -650,13 +775,28 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
 
     const student = studentInsert.rows[0];
 
+    let parentResults: SyncParentsResult[] = [];
+    if (parentsPayload.length > 0) {
+      try {
+        parentResults = await syncParentsForStudent({
+          studentId: user.id,
+          establishmentId: estId,
+          parents: parentsPayload,
+        });
+      } catch (error) {
+        if (handleParentSyncError(res, error)) {
+          return;
+        }
+        throw error;
+      }
+    }
+
     const invite = await createInviteTokenForUser({
       id: user.id,
       email: user.email,
       full_name: user.full_name,
     });
 
-    const establishmentName = await getEstablishmentName(estId);
     const targetEmail = contactEmail || user.email;
     if (targetEmail) {
       await sendInviteEmail({
@@ -668,6 +808,10 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
       }).catch((err) => {
         console.error("[MAIL] Erreur envoi email d'invitation élève:", err);
       });
+    }
+
+    if (parentResults.length > 0) {
+      await sendParentInvitesForNewAccounts(parentResults, establishmentName);
     }
 
     return res.status(201).json({
@@ -683,6 +827,7 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
         },
         contact_email: contactEmail,
         inviteUrl: invite.inviteUrl,
+        parents: parentResults,
       },
     });
   } catch (error: any) {
@@ -755,7 +900,11 @@ export async function updateStudentClassHandler(req: Request, res: Response) {
   try {
     const { userId } = req.user!;
     const targetUserId = req.params.userId;
-    const { class_id } = req.body as { class_id?: string | null };
+    const { class_id, parents } = req.body as {
+      class_id?: string | null;
+      parents?: any;
+    };
+    const parentsPayload = normalizeParentsPayload(parents);
 
     const estId = await getAdminEstablishmentId(userId);
     if (!estId) {
@@ -783,48 +932,90 @@ export async function updateStudentClassHandler(req: Request, res: Response) {
       });
     }
 
-    let normalizedClassId: string | null = null;
-    if (typeof class_id === "string" && class_id.trim().length > 0) {
-      normalizedClassId = class_id.trim();
-      const classResult = await pool.query(
+    const shouldUpdateClass = Object.prototype.hasOwnProperty.call(
+      req.body,
+      "class_id"
+    );
+    let normalizedClassId: string | null | undefined = undefined;
+
+    if (shouldUpdateClass) {
+      if (typeof class_id === "string" && class_id.trim().length > 0) {
+        normalizedClassId = class_id.trim();
+        const classResult = await pool.query(
+          `
+            SELECT id
+            FROM classes
+            WHERE id = $1
+              AND establishment_id = $2
+          `,
+          [normalizedClassId, estId]
+        );
+
+        if (classResult.rowCount === 0) {
+          return res.status(400).json({
+            success: false,
+            error: "La classe choisie n'appartient pas à votre établissement ou n'existe pas",
+          });
+        }
+      } else {
+        normalizedClassId = null;
+      }
+
+      const updateResult = await pool.query(
         `
-          SELECT id
-          FROM classes
-          WHERE id = $1
-            AND establishment_id = $2
+          UPDATE students
+          SET class_id = $1
+          WHERE user_id = $2
         `,
-        [normalizedClassId, estId]
+        [normalizedClassId, targetUserId]
       );
 
-      if (classResult.rowCount === 0) {
-        return res.status(400).json({
+      if (updateResult.rowCount === 0) {
+        return res.status(404).json({
           success: false,
-          error: "La classe choisie n'appartient pas à votre établissement ou n'existe pas",
+          error: "Impossible de mettre à jour la classe de cet élève",
         });
       }
     }
 
-    const updateResult = await pool.query(
-      `
-        UPDATE students
-        SET class_id = $1
-        WHERE user_id = $2
-      `,
-      [normalizedClassId, targetUserId]
-    );
+    let parentResults: SyncParentsResult[] = [];
+    if (parentsPayload.length > 0) {
+      try {
+        parentResults = await syncParentsForStudent({
+          studentId: targetUserId,
+          establishmentId: estId,
+          parents: parentsPayload,
+        });
+      } catch (error) {
+        if (handleParentSyncError(res, error)) {
+          return;
+        }
+        throw error;
+      }
 
-    if (updateResult.rowCount === 0) {
-      return res.status(404).json({
-        success: false,
-        error: "Impossible de mettre à jour la classe de cet élève",
-      });
+      const shouldInviteParents = parentResults.some(
+        (parent) => parent.isNewUser && parent.email
+      );
+      if (shouldInviteParents) {
+        const establishmentName = await getEstablishmentName(estId);
+        await sendParentInvitesForNewAccounts(parentResults, establishmentName);
+      }
+    }
+
+    const messages: string[] = [];
+    if (shouldUpdateClass) {
+      messages.push("Classe de l'élève mise à jour");
+    }
+    if (parentsPayload.length > 0) {
+      messages.push("Parents synchronisés");
     }
 
     return res.json({
       success: true,
-      message: "Classe de l'élève mise à jour",
+      message: messages.length > 0 ? messages.join(" · ") : "Aucune modification appliquée",
       data: {
-        class_id: normalizedClassId,
+        ...(shouldUpdateClass ? { class_id: normalizedClassId ?? null } : {}),
+        parents: parentResults,
       },
     });
   } catch (error) {

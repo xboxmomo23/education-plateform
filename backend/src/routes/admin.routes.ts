@@ -128,6 +128,50 @@ router.post(
       .optional()
       .isISO8601()
       .withMessage("date_of_birth doit être une date valide (YYYY-MM-DD)"),
+    body("parents")
+      .optional({ nullable: true })
+      .isArray()
+      .withMessage("parents doit être un tableau"),
+    body("parents.*.firstName")
+      .isString()
+      .withMessage("firstName est obligatoire")
+      .bail()
+      .notEmpty()
+      .withMessage("firstName est obligatoire"),
+    body("parents.*.lastName")
+      .isString()
+      .withMessage("lastName est obligatoire")
+      .bail()
+      .notEmpty()
+      .withMessage("lastName est obligatoire"),
+    body("parents.*.email")
+      .optional({ checkFalsy: true })
+      .isEmail()
+      .withMessage("Email parent invalide"),
+    body("parents.*.phone")
+      .optional({ checkFalsy: true })
+      .isString()
+      .withMessage("phone doit être une chaîne"),
+    body("parents.*.relation_type")
+      .optional({ checkFalsy: true })
+      .isString()
+      .withMessage("relation_type doit être une chaîne"),
+    body("parents.*.is_primary")
+      .optional()
+      .isBoolean()
+      .withMessage("is_primary doit être un booléen"),
+    body("parents.*.can_view_grades")
+      .optional()
+      .isBoolean()
+      .withMessage("can_view_grades doit être un booléen"),
+    body("parents.*.can_view_attendance")
+      .optional()
+      .isBoolean()
+      .withMessage("can_view_attendance doit être un booléen"),
+    body("parents.*.receive_notifications")
+      .optional()
+      .isBoolean()
+      .withMessage("receive_notifications doit être un booléen"),
   ],
   validateRequest,
   createStudentForAdminHandler
@@ -151,6 +195,50 @@ router.patch(
       .optional({ nullable: true, checkFalsy: true })
       .isUUID()
       .withMessage("class_id doit être un UUID valide"),
+    body("parents")
+      .optional({ nullable: true })
+      .isArray()
+      .withMessage("parents doit être un tableau"),
+    body("parents.*.firstName")
+      .isString()
+      .withMessage("firstName est obligatoire")
+      .bail()
+      .notEmpty()
+      .withMessage("firstName est obligatoire"),
+    body("parents.*.lastName")
+      .isString()
+      .withMessage("lastName est obligatoire")
+      .bail()
+      .notEmpty()
+      .withMessage("lastName est obligatoire"),
+    body("parents.*.email")
+      .optional({ checkFalsy: true })
+      .isEmail()
+      .withMessage("Email parent invalide"),
+    body("parents.*.phone")
+      .optional({ checkFalsy: true })
+      .isString()
+      .withMessage("phone doit être une chaîne"),
+    body("parents.*.relation_type")
+      .optional({ checkFalsy: true })
+      .isString()
+      .withMessage("relation_type doit être une chaîne"),
+    body("parents.*.is_primary")
+      .optional()
+      .isBoolean()
+      .withMessage("is_primary doit être un booléen"),
+    body("parents.*.can_view_grades")
+      .optional()
+      .isBoolean()
+      .withMessage("can_view_grades doit être un booléen"),
+    body("parents.*.can_view_attendance")
+      .optional()
+      .isBoolean()
+      .withMessage("can_view_attendance doit être un booléen"),
+    body("parents.*.receive_notifications")
+      .optional()
+      .isBoolean()
+      .withMessage("receive_notifications doit être un booléen"),
   ],
   validateRequest,
   updateStudentClassHandler

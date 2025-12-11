@@ -9,6 +9,7 @@ declare global {
                 role: UserRole;
                 full_name: string;
                 establishmentId?: string;
+                assignedClassIds?: string[];
             };
         }
     }

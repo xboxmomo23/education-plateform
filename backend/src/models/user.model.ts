@@ -146,7 +146,7 @@ export async function createParentProfile(
   const query = `
     INSERT INTO parent_profiles (
       user_id, phone, address, relation_type, is_primary_contact,
-      can_view_grades, can_view_attendance, is_emergency_contact
+      can_view_grades, can_view_attendance, emergency_contact
     )
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     RETURNING *
@@ -160,7 +160,7 @@ export async function createParentProfile(
     profileData.is_primary_contact ?? true,
     profileData.can_view_grades ?? true,
     profileData.can_view_attendance ?? true,
-    profileData.is_emergency_contact ?? false,
+    profileData.emergency_contact ?? false,
   ];
   
   const result = await pool.query(query, values);

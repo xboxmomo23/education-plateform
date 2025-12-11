@@ -1,0 +1,1 @@
+{"version":3,"file":"parentAccess.d.ts","sourceRoot":"","sources":["../../src/middleware/parentAccess.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,OAAO,EAAE,QAAQ,EAAE,YAAY,EAAE,MAAM,SAAS,CAAC;AAC1D,OAAO,EAAgC,mBAAmB,EAAE,MAAM,wBAAwB,CAAC;AAE3F,wBAAgB,4BAA4B,CAAC,OAAO,CAAC,EAAE,mBAAmB,IAC1D,KAAK,OAAO,EAAE,KAAK,QAAQ,EAAE,MAAM,YAAY,KAAG,OAAO,CAAC,IAAI,CAAC,CAiC9E"}

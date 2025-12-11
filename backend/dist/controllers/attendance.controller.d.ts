@@ -1,37 +1,42 @@
 import { Request, Response } from 'express';
 /**
- * GET /api/attendance/sessions
- * Récupérer les sessions du jour pour le professeur ou le staff
+ * GET /api/attendance/week
+ * Récupérer tous les cours d'un professeur pour une semaine avec statut présence
  */
-export declare function getSessionsHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+export declare function getTeacherWeekHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 /**
- * GET /api/attendance/sessions/:id
- * Récupérer les élèves d'une session pour faire l'appel
+ * GET /api/attendance/session/:instanceId
+ * Récupérer ou créer une session de présence pour une instance de cours
  */
-export declare function getSessionStudentsHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+export declare function getSessionHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 /**
- * POST /api/attendance/sessions/:id/records/bulk
- * Sauvegarder l'appel complet (batch)
+ * POST /api/attendance/session/:sessionId/close
+ * Fermer une session de présence
  */
-export declare function bulkCreateRecordsHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+export declare function closeSessionHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 /**
- * PUT /api/attendance/records/:id
- * Modifier une présence individuelle
+ * POST /api/attendance/mark
+ * Marquer la présence d'un seul élève
  */
-export declare function updateRecordHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+export declare function markAttendanceHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 /**
- * GET /api/attendance/students/:id/records
- * Historique des présences d'un élève
+ * POST /api/attendance/bulk
+ * Marquer la présence de plusieurs élèves en masse
  */
-export declare function getStudentRecordsHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+export declare function bulkMarkAttendanceHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 /**
- * GET /api/attendance/students/:id/stats
- * Statistiques de présence d'un élève
+ * GET /api/attendance/student/:studentId
+ * Récupérer l'historique de présence d'un élève
+ */
+export declare function getStudentHistoryHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+/**
+ * GET /api/attendance/student/:studentId/stats
+ * Récupérer les statistiques de présence d'un élève
  */
 export declare function getStudentStatsHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 /**
- * GET /api/attendance/staff/classes
- * Classes gérées par le staff
+ * GET /api/attendance/instance/:instanceId/check
+ * Vérifier si une session existe pour une instance (sans la créer)
  */
-export declare function getStaffClassesHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+export declare function checkSessionExistsHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 //# sourceMappingURL=attendance.controller.d.ts.map

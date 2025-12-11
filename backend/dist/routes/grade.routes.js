@@ -34,6 +34,9 @@ const createEvaluationValidation = [
     (0, express_validator_1.body)('evalDate')
         .isISO8601()
         .withMessage('Date d\'évaluation invalide'),
+    (0, express_validator_1.body)('termId')
+        .isUUID()
+        .withMessage('ID de période invalide'),
     (0, express_validator_1.body)('description')
         .optional()
         .trim()

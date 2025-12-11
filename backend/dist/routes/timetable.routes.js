@@ -42,6 +42,25 @@ const router = (0, express_1.Router)();
 // =========================
 // VALIDATIONS
 // =========================
+const createInstanceValidation = [
+    (0, express_validator_1.body)('course_id').isUUID().withMessage('ID de cours invalide'),
+    (0, express_validator_1.body)('class_id').isUUID().withMessage('ID de classe invalide'),
+    (0, express_validator_1.body)('week_start_date')
+        .matches(/^\d{4}-\d{2}-\d{2}$/)
+        .withMessage('Date invalide (format YYYY-MM-DD)'),
+    (0, express_validator_1.body)('day_of_week')
+        .isInt({ min: 1, max: 7 })
+        .withMessage('Jour de la semaine invalide (1-7)'),
+    (0, express_validator_1.body)('start_time')
+        .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
+        .withMessage('Heure de début invalide (format HH:MM)'),
+    (0, express_validator_1.body)('end_time')
+        .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
+        .withMessage('Heure de fin invalide (format HH:MM)'),
+    (0, express_validator_1.body)('room').optional().isString().withMessage('Salle invalide'),
+    (0, express_validator_1.body)('notes').optional().isString().withMessage('Notes invalides'),
+    (0, express_validator_1.body)('created_by').optional().isString().withMessage('Créateur invalide'), // ✅ AJOUTER CETTE LIGNE
+];
 const createEntryValidation = [
     (0, express_validator_1.body)('course_id').isUUID().withMessage('ID de cours invalide'),
     (0, express_validator_1.body)('day_of_week')
@@ -59,32 +78,109 @@ const createEntryValidation = [
         .withMessage('Semaine invalide (A ou B)'),
     (0, express_validator_1.body)('room').optional().isString().withMessage('Salle invalide'),
     (0, express_validator_1.body)('notes').optional().isString().withMessage('Notes invalides'),
+    (0, express_validator_1.body)('created_by').optional().isString().withMessage('Créateur invalide'),
 ];
+// Validation pour les templates de cours (course_templates)
 const createTemplateValidation = [
-    (0, express_validator_1.body)('course_id').isUUID().withMessage('ID de cours invalide'),
+    (0, express_validator_1.body)('course_id')
+        .isUUID()
+        .withMessage('ID de cours invalide'),
     (0, express_validator_1.body)('default_duration')
         .optional()
-        .isInt({ min: 15, max: 480 })
-        .withMessage('Durée invalide (15-480 minutes)'),
-    (0, express_validator_1.body)('default_room').optional().isString().withMessage('Salle invalide'),
+        .isInt({ min: 15, max: 600 })
+        .withMessage('Durée invalide (15–600 minutes)'),
+    (0, express_validator_1.body)('default_room')
+        .optional()
+        .isString()
+        .isLength({ max: 50 })
+        .withMessage('Salle invalide'),
     (0, express_validator_1.body)('display_order')
         .optional()
-        .isInt({ min: 0 })
+        .isInt()
         .withMessage('Ordre d\'affichage invalide'),
 ];
-const createFromTemplateValidation = [
-    (0, express_validator_1.body)('template_id').isUUID().withMessage('ID de template invalide'),
-    (0, express_validator_1.body)('day_of_week')
-        .isInt({ min: 1, max: 7 })
-        .withMessage('Jour de la semaine invalide (1-7)'),
-    (0, express_validator_1.body)('start_time')
-        .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
-        .withMessage('Heure de début invalide (format HH:MM)'),
-    (0, express_validator_1.body)('room').optional().isString().withMessage('Salle invalide'),
-    (0, express_validator_1.body)('notes').optional().isString().withMessage('Notes invalides'),
-];
 // =========================
-// ROUTES SPÉCIFIQUES (EN PREMIER)
+// ROUTES INSTANCES (MODE DYNAMIC)
+// =========================
+/**
+ * GET /api/timetable/class/:classId/week/:weekStartDate
+ * Récupérer l'emploi du temps d'une classe pour une semaine spécifique
+ * Accessible par : élèves, professeurs, staff, admin
+ */
+router.get('/class/:classId/week/:weekStartDate', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('student', 'teacher', 'staff', 'admin'), (0, express_validator_1.param)('classId').isUUID().withMessage('ID de classe invalide'), (0, express_validator_1.param)('weekStartDate')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Date invalide (format YYYY-MM-DD)'), validation_middleware_1.validateRequest, timetable_controller_1.getClassTimetableForWeekHandler);
+/**
+ * GET /api/timetable/teacher/:teacherId/week/:weekStartDate
+ * Récupérer l'emploi du temps d'un professeur pour une semaine spécifique
+ * Accessible par : professeurs, staff, admin
+ */
+router.get('/teacher/:teacherId/week/:weekStartDate', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'staff', 'admin'), (0, express_validator_1.param)('teacherId').isUUID().withMessage('ID de professeur invalide'), (0, express_validator_1.param)('weekStartDate')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Date invalide (format YYYY-MM-DD)'), validation_middleware_1.validateRequest, timetable_controller_1.getTeacherTimetableForWeekHandler);
+/**
+ * POST /api/timetable/instances
+ * Créer une instance de cours
+ */
+router.post('/instances', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), createInstanceValidation, validation_middleware_1.validateRequest, timetable_controller_1.createInstanceHandler);
+/**
+ * POST /api/timetable/instances/bulk
+ * Créer plusieurs instances en masse
+ */
+router.post('/instances/bulk', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.body)('instances').isArray({ min: 1 }).withMessage('Au moins une instance requise'), validation_middleware_1.validateRequest, timetable_controller_1.bulkCreateInstancesHandler);
+/**
+ * PUT /api/timetable/instances/:id
+ * Mettre à jour une instance
+ */
+router.put('/instances/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.param)('id').isUUID().withMessage('ID invalide'), validation_middleware_1.validateRequest, timetable_controller_1.updateInstanceHandler);
+/**
+ * DELETE /api/timetable/instances/:id
+ * Supprimer une instance
+ */
+router.delete('/instances/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.param)('id').isUUID().withMessage('ID invalide'), validation_middleware_1.validateRequest, timetable_controller_1.deleteInstanceHandler);
+/**
+ * POST /api/timetable/instances/copy-week
+ * Copier les instances d'une semaine vers une autre
+ */
+router.post('/instances/copy-week', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.body)('classId').isUUID().withMessage('ID de classe invalide'), (0, express_validator_1.body)('sourceWeekStart')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Date source invalide'), (0, express_validator_1.body)('targetWeekStart')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Date cible invalide'), validation_middleware_1.validateRequest, timetable_controller_1.copyWeekHandler);
+// =========================
+// ROUTES TEMPLATES
+// =========================
+/**
+ * GET /api/timetable/templates/class/:classId
+ * Récupérer les templates d'une classe
+ */
+router.get('/templates/class/:classId', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.param)('classId').isUUID().withMessage('ID de classe invalide'), validation_middleware_1.validateRequest, timetable_controller_1.getTemplatesByClassHandler);
+/**
+ * POST /api/timetable/templates
+ * Créer un nouveau template
+ */
+router.post('/templates', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), createTemplateValidation, validation_middleware_1.validateRequest, timetable_controller_1.createTemplateHandler);
+/**
+ * PUT /api/timetable/templates/:id
+ * Modifier un template
+ */
+router.put('/templates/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.param)('id').isUUID().withMessage('ID de template invalide'), validation_middleware_1.validateRequest, timetable_controller_1.updateTemplateHandler);
+/**
+ * DELETE /api/timetable/templates/:id
+ * Supprimer un template
+ */
+router.delete('/templates/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.param)('id').isUUID().withMessage('ID de template invalide'), validation_middleware_1.validateRequest, timetable_controller_1.deleteTemplateHandler);
+/**
+ * POST /api/timetable/templates/generate
+ * Générer des instances depuis les templates pour une période
+ */
+router.post('/templates/generate', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.body)('classId').isUUID().withMessage('ID de classe invalide'), (0, express_validator_1.body)('startDate')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Date de début invalide'), (0, express_validator_1.body)('endDate')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Date de fin invalide'), validation_middleware_1.validateRequest, timetable_controller_1.generateFromTemplatesHandler);
+// =========================
+// ROUTES STAFF & UTILITAIRES
 // =========================
 /**
  * GET /api/timetable/staff/classes
@@ -95,7 +191,8 @@ router.get('/staff/classes', auth_middleware_1.authenticate, (0, auth_middleware
  * GET /api/timetable/student/class
  * Récupérer la classe d'un élève
  */
-router.get('/student/class', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('student'), async (req, res) => {
+router.get('/student/class', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('student'), // ✅ Accepter plusieurs variantes
+async (req, res) => {
     try {
         const userId = req.user.userId;
         const pool = (await Promise.resolve().then(() => __importStar(require('../config/database')))).default;
@@ -123,46 +220,50 @@ router.get('/student/class', auth_middleware_1.authenticate, (0, auth_middleware
     }
 });
 /**
- * POST /api/timetable/duplicate
- * Dupliquer un emploi du temps
+ * GET /api/timetable/courses/:classId
+ * Récupérer les cours disponibles pour une classe
  */
-router.post('/duplicate', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.body)('sourceClassId').isUUID().withMessage('ID de classe source invalide'), (0, express_validator_1.body)('targetClassId').isUUID().withMessage('ID de classe cible invalide'), validation_middleware_1.validateRequest, timetable_controller_1.duplicateTimetableHandler);
+router.get('/courses/:classId', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.param)('classId').isUUID().withMessage('ID de classe invalide'), validation_middleware_1.validateRequest, timetable_controller_1.getAvailableCoursesHandler);
 /**
  * POST /api/timetable/check-conflicts
  * Vérifier les conflits
  */
-router.post('/check-conflicts', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.body)('course_id').isUUID().withMessage('ID de cours invalide'), (0, express_validator_1.body)('day_of_week')
+router.post('/check-conflicts', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.body)('course_id').isUUID().withMessage('ID de cours invalide'), (0, express_validator_1.body)('class_id').isUUID().withMessage('ID de classe invalide'), (0, express_validator_1.body)('week_start_date')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Date invalide'), (0, express_validator_1.body)('day_of_week')
     .isInt({ min: 1, max: 7 })
     .withMessage('Jour de la semaine invalide'), (0, express_validator_1.body)('start_time')
     .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
     .withMessage('Heure de début invalide'), (0, express_validator_1.body)('end_time')
     .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
-    .withMessage('Heure de fin invalide'), (0, express_validator_1.body)('room').optional().isString(), (0, express_validator_1.body)('exclude_entry_id').optional().isUUID(), validation_middleware_1.validateRequest, timetable_controller_1.checkConflictsHandler);
+    .withMessage('Heure de fin invalide'), (0, express_validator_1.body)('room').optional().isString(), (0, express_validator_1.body)('exclude_instance_id').optional().isUUID(), validation_middleware_1.validateRequest, timetable_controller_1.checkConflictsHandler);
+/**
+ * PUT /api/timetable/courses/:courseId
+ * Mettre à jour un cours (staff)
+ */
+router.put('/courses/:courseId', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.param)('courseId').isUUID().withMessage('ID de cours invalide'), (0, express_validator_1.body)('class_id').isUUID().withMessage('ID de classe invalide'), (0, express_validator_1.body)('subject_id').isUUID().withMessage('ID de matière invalide'), (0, express_validator_1.body)('teacher_id').isUUID().withMessage('ID de professeur invalide'), validation_middleware_1.validateRequest, timetable_controller_1.updateCourseForStaffHandler);
+/**
+ * DELETE /api/timetable/courses/:courseId
+ * Désactiver un cours (staff)
+ */
+router.delete('/courses/:courseId', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.param)('courseId').isUUID().withMessage('ID de cours invalide'), validation_middleware_1.validateRequest, timetable_controller_1.deleteCourseForStaffHandler);
+/**
+ * GET /api/timetable/staff/subjects
+ * Matières visibles par un membre du staff
+ */
+router.get('/staff/subjects', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), timetable_controller_1.getSubjectsForStaffHandler);
+/**
+ * GET /api/timetable/staff/teachers
+ * Professeurs de l'établissement du staff
+ */
+router.get('/staff/teachers', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), timetable_controller_1.getTeachersForStaffHandler);
+/**
+ * POST /api/timetable/courses
+ * Création d'un cours (classe + matière + prof) par le staff
+ */
+router.post('/courses', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.body)('class_id').isUUID().withMessage('ID de classe invalide'), (0, express_validator_1.body)('subject_id').isUUID().withMessage('ID de matière invalide'), (0, express_validator_1.body)('teacher_id').isUUID().withMessage('ID de professeur invalide'), (0, express_validator_1.body)('default_room').optional().isString().withMessage('Salle invalide'), validation_middleware_1.validateRequest, timetable_controller_1.createCourseForStaffHandler);
 // =========================
-// ROUTES TEMPLATES
-// =========================
-/**
- * GET /api/timetable/templates/class/:classId
- * Récupérer les templates d'une classe
- */
-router.get('/templates/class/:classId', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.param)('classId').isUUID().withMessage('ID de classe invalide'), validation_middleware_1.validateRequest, timetable_controller_1.getTemplatesByClassHandler);
-/**
- * POST /api/timetable/templates
- * Créer un nouveau template
- */
-router.post('/templates', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), createTemplateValidation, validation_middleware_1.validateRequest, timetable_controller_1.createTemplateHandler);
-/**
- * PUT /api/timetable/templates/:id
- * Modifier un template
- */
-router.put('/templates/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.param)('id').isUUID().withMessage('ID de template invalide'), validation_middleware_1.validateRequest, timetable_controller_1.updateTemplateHandler);
-/**
- * DELETE /api/timetable/templates/:id
- * Supprimer un template
- */
-router.delete('/templates/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.param)('id').isUUID().withMessage('ID de template invalide'), validation_middleware_1.validateRequest, timetable_controller_1.deleteTemplateHandler);
-// =========================
-// ROUTES ENTRIES
+// ROUTES ENTRIES (Templates - Compatibilité)
 // =========================
 /**
  * POST /api/timetable/entries/bulk
@@ -173,7 +274,11 @@ router.post('/entries/bulk', auth_middleware_1.authenticate, (0, auth_middleware
  * POST /api/timetable/entries/from-template
  * Créer un créneau à partir d'un template
  */
-router.post('/entries/from-template', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), createFromTemplateValidation, validation_middleware_1.validateRequest, timetable_controller_1.createEntryFromTemplateHandler);
+router.post('/entries/from-template', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.body)('template_id').isUUID().withMessage('ID de template invalide'), (0, express_validator_1.body)('day_of_week')
+    .isInt({ min: 1, max: 7 })
+    .withMessage('Jour de la semaine invalide'), (0, express_validator_1.body)('start_time')
+    .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
+    .withMessage('Heure de début invalide'), (0, express_validator_1.body)('room').optional().isString(), (0, express_validator_1.body)('notes').optional().isString(), validation_middleware_1.validateRequest, timetable_controller_1.createFromTemplateHandler);
 /**
  * POST /api/timetable/entries
  * Créer un créneau
@@ -190,22 +295,24 @@ router.put('/entries/:id', auth_middleware_1.authenticate, (0, auth_middleware_1
  */
 router.delete('/entries/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.param)('id').isUUID().withMessage('ID invalide'), validation_middleware_1.validateRequest, timetable_controller_1.deleteEntryHandler);
 // =========================
-// ROUTES AVEC PARAMÈTRES (EN DERNIER)
+// ROUTES LEGACY (Compatibilité)
 // =========================
 /**
+ * POST /api/timetable/duplicate
+ * Dupliquer un emploi du temps (DEPRECATED)
+ */
+router.post('/duplicate', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.body)('sourceClassId').isUUID().withMessage('ID de classe source invalide'), (0, express_validator_1.body)('targetClassId').isUUID().withMessage('ID de classe cible invalide'), validation_middleware_1.validateRequest, timetable_controller_1.duplicateTimetableHandler);
+/**
  * GET /api/timetable/class/:classId
- * Récupérer l'emploi du temps d'une classe
+ * Récupérer l'emploi du temps d'une classe (LEGACY)
+ * @deprecated Utiliser /class/:classId/week/:weekStartDate à la place
  */
 router.get('/class/:classId', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'staff', 'admin', 'student'), (0, express_validator_1.param)('classId').isUUID().withMessage('ID de classe invalide'), (0, express_validator_1.query)('week').optional().isIn(['A', 'B']).withMessage('Semaine invalide'), validation_middleware_1.validateRequest, timetable_controller_1.getClassTimetableHandler);
 /**
  * GET /api/timetable/teacher/:teacherId
- * Récupérer l'emploi du temps d'un professeur
+ * Récupérer l'emploi du temps d'un professeur (LEGACY)
+ * @deprecated Utiliser /teacher/:teacherId/week/:weekStartDate à la place
  */
 router.get('/teacher/:teacherId', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('teacher', 'staff', 'admin'), (0, express_validator_1.param)('teacherId').isUUID().withMessage('ID de professeur invalide'), (0, express_validator_1.query)('week').optional().isIn(['A', 'B']).withMessage('Semaine invalide'), validation_middleware_1.validateRequest, timetable_controller_1.getTeacherTimetableHandler);
-/**
- * GET /api/timetable/courses/:classId
- * Récupérer les cours disponibles pour une classe
- */
-router.get('/courses/:classId', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('staff', 'admin'), (0, express_validator_1.param)('classId').isUUID().withMessage('ID de classe invalide'), validation_middleware_1.validateRequest, timetable_controller_1.getAvailableCoursesHandler);
 exports.default = router;
 //# sourceMappingURL=timetable.routes.js.map

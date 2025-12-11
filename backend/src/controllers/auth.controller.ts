@@ -14,6 +14,7 @@ import {
   updatePassword,
   findUserById,
 } from '../models/user.model';
+import { getChildrenForParent } from '../models/parent.model';
 import {
   createSession,
   revokeSession,
@@ -161,6 +162,11 @@ export async function login(req: Request, res: Response): Promise<void> {
     };
 
     // Réponse avec les données utilisateur (sans le password_hash)
+    let parentChildren = undefined;
+    if (user.role === 'parent') {
+      parentChildren = await getChildrenForParent(user.id);
+    }
+
     const response: LoginResponse = {
       success: true,
       token: accessToken,
@@ -168,6 +174,9 @@ export async function login(req: Request, res: Response): Promise<void> {
       requiresPasswordChange,
       user: sanitizedUser,
     };
+    if (parentChildren) {
+      response.children = parentChildren;
+    }
 
     res.status(200).json(response);
   } catch (error) {

@@ -5,6 +5,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TimetableInstanceModel = void 0;
 const database_1 = __importDefault(require("../config/database"));
+function parseDate(dateStr) {
+    const date = new Date(`${dateStr}T00:00:00Z`);
+    if (Number.isNaN(date.getTime())) {
+        throw new Error(`Date invalide: ${dateStr}`);
+    }
+    return date;
+}
 exports.TimetableInstanceModel = {
     /**
      * Créer une instance
@@ -136,9 +143,79 @@ exports.TimetableInstanceModel = {
     /**
      * Générer les instances depuis le template
      */
-    async generateFromTemplate(classId, weekStartDate, createdBy) {
-        const result = await database_1.default.query('SELECT generate_instances_from_template($1, $2, $3) as count', [classId, weekStartDate, createdBy]);
-        return result.rows[0].count;
+    async generateFromTemplate(classId, sourceWeekStart, targetWeekStart, createdBy) {
+        const client = await database_1.default.connect();
+        const sourceDate = parseDate(sourceWeekStart);
+        const targetDate = parseDate(targetWeekStart);
+        // Empêcher la copie si les semaines ne commencent pas un dimanche
+        if (sourceDate.getUTCDay() !== 0 || targetDate.getUTCDay() !== 0) {
+            throw new Error('Les dates de semaine doivent être des dimanches (week start)');
+        }
+        try {
+            await client.query('BEGIN');
+            const sourceInstances = await client.query(`
+          SELECT 
+            class_id,
+            course_id,
+            day_of_week,
+            start_time,
+            end_time,
+            room,
+            notes,
+            created_from_template,
+            template_entry_id
+          FROM timetable_instances
+          WHERE class_id = $1
+            AND week_start_date = $2
+        `, [classId, sourceWeekStart]);
+            if (sourceInstances.rowCount === 0) {
+                await client.query('ROLLBACK');
+                return 0;
+            }
+            await client.query(`
+          DELETE FROM timetable_instances
+          WHERE class_id = $1
+            AND week_start_date = $2
+        `, [classId, targetWeekStart]);
+            for (const instance of sourceInstances.rows) {
+                await client.query(`
+            INSERT INTO timetable_instances (
+              class_id,
+              course_id,
+              week_start_date,
+              day_of_week,
+              start_time,
+              end_time,
+              room,
+              notes,
+              created_from_template,
+              template_entry_id,
+              created_by
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          `, [
+                    classId,
+                    instance.course_id,
+                    targetWeekStart,
+                    instance.day_of_week,
+                    instance.start_time,
+                    instance.end_time,
+                    instance.room,
+                    instance.notes,
+                    true,
+                    instance.template_entry_id,
+                    createdBy,
+                ]);
+            }
+            await client.query('COMMIT');
+            return sourceInstances.rowCount ?? 0;
+        }
+        catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        }
+        finally {
+            client.release();
+        }
     },
     /**
      * Copier une semaine vers une autre

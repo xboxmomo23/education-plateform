@@ -1,4 +1,4 @@
-export type UserRole = 'student' | 'teacher' | 'staff' | 'admin' | 'parent';
+export type UserRole = 'student' | 'teacher' | 'staff' | 'admin' | 'parent' | "super_admin";
 export interface JWTPayload {
     userId: string;
     email: string;
@@ -24,20 +24,23 @@ export interface LoginResponse {
     success: boolean;
     token: string;
     refreshToken?: string;
+    requiresPasswordChange?: boolean;
     user: {
         id: string;
         email: string;
         role: UserRole;
         full_name: string;
         profile?: any;
+        must_change_password?: boolean;
     };
+    children?: ParentChildSummary[];
     error?: string;
     locked_until?: Date;
     remaining_attempts?: number;
 }
 export interface RegisterRequest {
     email: string;
-    password: string;
+    password?: string;
     full_name: string;
     role: UserRole;
     profile_data?: {
@@ -70,11 +73,13 @@ export interface User {
     email_verified: boolean;
     last_login?: Date;
     failed_login_attempts: number;
+    must_change_password: boolean;
     account_locked_until?: Date;
     password_changed_at?: Date;
     created_at: Date;
     updated_at?: Date;
     deleted_at?: Date;
+    establishment_id?: string | null;
 }
 export interface StudentProfile {
     user_id: string;
@@ -85,6 +90,7 @@ export interface StudentProfile {
     emergency_contact?: string;
     medical_notes?: string;
     photo_url?: string;
+    contact_email?: string;
 }
 export interface TeacherProfile {
     user_id: string;
@@ -93,6 +99,8 @@ export interface TeacherProfile {
     specialization?: string;
     phone?: string;
     office_room?: string;
+    contact_email?: string;
+    assigned_class_ids?: string[] | null;
 }
 export interface StaffProfile {
     user_id: string;
@@ -102,6 +110,21 @@ export interface StaffProfile {
     department?: string;
     hire_date?: Date;
     created_at?: Date;
+    contact_email?: string;
+    assigned_class_ids?: string[] | null;
+}
+export interface StudentClassChange {
+    id: string;
+    student_id: string;
+    old_class_id?: string | null;
+    new_class_id: string;
+    effective_term_id: string;
+    establishment_id: string;
+    created_at: Date;
+    created_by: string;
+    applied_at?: Date | null;
+    applied_by?: string | null;
+    reason?: string | null;
 }
 export interface ParentProfile {
     user_id: string;
@@ -113,6 +136,31 @@ export interface ParentProfile {
     can_view_attendance?: boolean;
     is_emergency_contact?: boolean;
     created_at?: Date;
+}
+export interface ParentChildSummary {
+    id: string;
+    full_name: string;
+    email?: string | null;
+    student_number?: string | null;
+    class_id?: string | null;
+    class_name?: string | null;
+    relation_type?: string | null;
+    is_primary?: boolean | null;
+    can_view_grades?: boolean | null;
+    can_view_attendance?: boolean | null;
+    receive_notifications?: boolean | null;
+}
+export interface ParentForStudentInput {
+    firstName: string;
+    lastName: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    relation_type?: string;
+    is_primary?: boolean;
+    can_view_grades?: boolean;
+    can_view_attendance?: boolean;
+    receive_notifications?: boolean;
 }
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused' | 'remote' | 'excluded';
 export type TimetableStatus = 'confirmed' | 'cancelled' | 'changed';
@@ -179,6 +227,12 @@ export interface StudentAttendanceData {
     status: AttendanceStatus | null;
     late_minutes: number | null;
     justification: string | null;
+}
+export interface Establishment {
+    id: string;
+    name: string;
+    code?: string | null;
+    login_email_domain?: string | null;
 }
 export interface AttendanceSessionResponse {
     success: boolean;

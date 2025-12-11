@@ -60,7 +60,7 @@ export declare const TimetableInstanceModel: {
     /**
      * Générer les instances depuis le template
      */
-    generateFromTemplate(classId: string, weekStartDate: string, createdBy: string): Promise<number>;
+    generateFromTemplate(classId: string, sourceWeekStart: string, targetWeekStart: string, createdBy: string): Promise<number>;
     /**
      * Copier une semaine vers une autre
      */

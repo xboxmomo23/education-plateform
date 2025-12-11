@@ -4,4 +4,5 @@ import { Request, Response } from 'express';
  * Récupère tous les cours du professeur connecté
  */
 export declare function getMyCoursesHandler(req: Request, res: Response): Promise<void>;
+export declare function getCourseStudents(req: Request, res: Response): Promise<void>;
 //# sourceMappingURL=course.controller.d.ts.map
