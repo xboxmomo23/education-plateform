@@ -1,7 +1,21 @@
 import { api, saveToken } from './api/client';
 import { API_ENDPOINTS } from './api/config';
 
-export type UserRole = "student" | "teacher" | "admin" | "staff" | "super_admin";
+export type UserRole = "student" | "teacher" | "admin" | "staff" | "parent" | "super_admin";
+
+export interface ParentChildSummary {
+  id: string;
+  full_name: string;
+  email?: string | null;
+  student_number?: string | null;
+  class_id?: string | null;
+  class_name?: string | null;
+  relation_type?: string | null;
+  is_primary?: boolean | null;
+  can_view_grades?: boolean | null;
+  can_view_attendance?: boolean | null;
+  receive_notifications?: boolean | null;
+}
 
 export interface User {
   id: string;
@@ -10,6 +24,7 @@ export interface User {
   full_name: string;
   profile?: any;
   must_change_password?: boolean;
+  parentChildren?: ParentChildSummary[];
 }
 
 export interface BackendLoginResponse {
@@ -18,6 +33,7 @@ export interface BackendLoginResponse {
   refreshToken?: string;
   user: User;
   requiresPasswordChange?: boolean;
+  children?: ParentChildSummary[];
 }
 
 export interface AuthResult {
@@ -25,13 +41,24 @@ export interface AuthResult {
   user?: User;
   requiresPasswordChange?: boolean;
   error?: string;
+  children?: ParentChildSummary[];
+}
+
+interface AuthenticateCredentials {
+  email: string;
+  password: string;
+}
+
+interface AuthenticateOptions {
+  expectedRole?: UserRole;
 }
 
 export async function authenticateUser(
-  email: string,
-  password: string
+  credentials: AuthenticateCredentials,
+  options: AuthenticateOptions = {}
 ): Promise<AuthResult> {
   try {
+    const { email, password } = credentials;
     const response = await api.post<BackendLoginResponse>(API_ENDPOINTS.auth.login, {
       email,
       password,
@@ -42,12 +69,24 @@ export async function authenticateUser(
       const token = (response as any).token || response.data?.token;
       const refreshToken = (response as any).refreshToken || response.data?.refreshToken;
       const user = (response as any).user || response.data?.user;
+      const children = ((response as any).children ?? response.data?.children) as ParentChildSummary[] | undefined;
 
       if (!token) {
         return {
           success: false,
           error: 'Token manquant dans la réponse du serveur',
         };
+      }
+
+      if (!user) {
+        return {
+          success: false,
+          error: 'Utilisateur manquant dans la réponse du serveur',
+        };
+      }
+
+      if (options.expectedRole && user.role !== options.expectedRole) {
+        throw new Error(`Ce compte n'est pas un compte ${getRoleLabel(options.expectedRole)}`);
       }
 
       // Sauvegarder le token
@@ -58,15 +97,26 @@ export async function authenticateUser(
         localStorage.setItem('refresh_token', refreshToken);
       }
 
+      const normalizedChildren = Array.isArray(children) ? children : undefined;
+      const userForSession =
+        user.role === 'parent'
+          ? { ...user, parentChildren: normalizedChildren ?? [] }
+          : user;
+
       // Sauvegarder la session utilisateur
-      setUserSession(user);
+      setUserSession(userForSession);
 
       const requiresPasswordChange =
         (response as any).requiresPasswordChange ??
         response.data?.requiresPasswordChange ??
         false;
 
-      return { success: true, user, requiresPasswordChange: Boolean(requiresPasswordChange) };
+      return {
+        success: true,
+        user: userForSession,
+        requiresPasswordChange: Boolean(requiresPasswordChange),
+        children: normalizedChildren,
+      };
     }
 
     return {
@@ -74,10 +124,25 @@ export async function authenticateUser(
       error: response.error || 'Échec de la connexion',
     };
   } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Ce compte')) {
+      throw error;
+    }
     return {
       success: false,
       error: 'Erreur de connexion au serveur',
     };
+  }
+}
+
+function getRoleLabel(role: UserRole): string {
+  switch (role) {
+    case 'student': return 'élève';
+    case 'teacher': return 'professeur';
+    case 'admin': return 'administrateur';
+    case 'staff': return 'staff';
+    case 'parent': return 'parent';
+    case 'super_admin': return 'super administrateur';
+    default: return 'utilisateur';
   }
 }
 

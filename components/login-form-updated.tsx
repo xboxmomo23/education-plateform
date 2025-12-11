@@ -32,15 +32,12 @@ export function LoginFormUpdated({ role, title, description, redirectPath, first
     setIsLoading(true)
 
     try {
-      const result = await authenticateUser(email, password)
+      const result = await authenticateUser(
+        { email, password },
+        { expectedRole: role }
+      )
 
       if (result.success && result.user) {
-        if (result.user.role !== role) {
-          setError(`Ce compte n'est pas un compte ${getRoleLabel(role)}`)
-          setIsLoading(false)
-          return
-        }
-
         setIsLoading(false)
         if (result.requiresPasswordChange) {
           router.push(firstLoginRedirectPath)
@@ -53,7 +50,11 @@ export function LoginFormUpdated({ role, title, description, redirectPath, first
         setIsLoading(false)
       }
     } catch (err) {
-      setError("Erreur de connexion au serveur")
+      if (err instanceof Error) {
+        setError(err.message)
+      } else {
+        setError("Erreur de connexion au serveur")
+      }
       setIsLoading(false)
     }
   }
@@ -64,6 +65,7 @@ export function LoginFormUpdated({ role, title, description, redirectPath, first
       case "teacher": return "professeur"
       case "staff": return "staff"
       case "admin": return "administrateur"
+      case "parent": return "parent"
       default:
       // valeur de secours, au cas où un nouveau rôle apparaît plus tard
       return "utilisateur"

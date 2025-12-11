@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import pool from '../config/database';
 import { AssignmentModel, AssignmentFilters, AssignmentStatus } from '../models/assignment.model';
+import { assertParentCanAccessStudent } from '../models/parent.model';
 
 // ============================================
 // HANDLERS - ENSEIGNANTS (TEACHERS/STAFF)
@@ -411,6 +412,61 @@ export async function getStudentAssignmentByIdHandler(req: Request, res: Respons
     return res.status(500).json({
       success: false,
       error: 'Erreur lors de la récupération du devoir',
+    });
+  }
+}
+
+/**
+ * GET /api/students/:studentId/assignments
+ * Récupérer les devoirs d'un élève spécifique (parent/staff/admin)
+ */
+export async function getAssignmentsForSpecificStudentHandler(req: Request, res: Response) {
+  try {
+    const { studentId } = req.params;
+    const { subjectId, fromDueAt, toDueAt } = req.query;
+
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentification requise',
+      });
+    }
+
+    const role = req.user.role;
+    const requesterId = req.user.userId;
+
+    if (role === 'parent') {
+      await assertParentCanAccessStudent(requesterId, studentId);
+    } else if (role === 'student' && requesterId !== studentId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès refusé',
+      });
+    }
+
+    const filters: { subjectId?: string; fromDueAt?: string; toDueAt?: string } = {};
+
+    if (subjectId && typeof subjectId === 'string') {
+      filters.subjectId = subjectId;
+    }
+    if (fromDueAt && typeof fromDueAt === 'string') {
+      filters.fromDueAt = fromDueAt;
+    }
+    if (toDueAt && typeof toDueAt === 'string') {
+      filters.toDueAt = toDueAt;
+    }
+
+    const assignments = await AssignmentModel.getForStudent(studentId, filters);
+
+    return res.json({
+      success: true,
+      data: assignments,
+    });
+  } catch (error) {
+    console.error('❌ Erreur getAssignmentsForSpecificStudentHandler:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la récupération des devoirs',
     });
   }
 }

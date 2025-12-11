@@ -17,6 +17,7 @@ const roleRedirectMap: Record<UserRole, string> = {
   teacher: "/dashboard-professeur",
   staff: "/dashboard-staff",
   admin: "/admin",
+  parent: "/parent/dashboard",
   super_admin: "/super-admin",
 }
 

@@ -203,6 +203,22 @@ export const assignmentsApi = {
   async getStudentAssignmentById(id: string): Promise<{ success: boolean; data: Assignment }> {
     return apiCall<Assignment>(`/assignments/student/${id}`);
   },
+
+  /**
+   * Récupérer les devoirs pour un élève spécifique (accès parent/admin/staff)
+   */
+  async getAssignmentsForStudent(studentId: string, filters: StudentAssignmentFilters = {}): Promise<{ success: boolean; data: Assignment[] }> {
+    const params = new URLSearchParams();
+
+    if (filters.subjectId) params.append('subjectId', filters.subjectId);
+    if (filters.fromDueAt) params.append('fromDueAt', filters.fromDueAt);
+    if (filters.toDueAt) params.append('toDueAt', filters.toDueAt);
+
+    const queryString = params.toString();
+    const endpoint = `/students/${studentId}/assignments${queryString ? `?${queryString}` : ''}`;
+
+    return apiCall<Assignment[]>(endpoint);
+  },
 };
 
 // =========================

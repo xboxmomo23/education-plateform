@@ -121,7 +121,7 @@ const createTemplateValidation = [
 router.get(
   '/class/:classId/week/:weekStartDate',
   authenticate,
-  authorize('student', 'teacher', 'staff', 'admin'),
+  authorize('student', 'teacher', 'staff', 'admin', 'parent'),
   param('classId').isUUID().withMessage('ID de classe invalide'),
   param('weekStartDate')
     .matches(/^\d{4}-\d{2}-\d{2}$/)

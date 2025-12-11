@@ -43,6 +43,7 @@ export function useAuth() {
     userRole: user?.role,
     userEmail: user?.email,
     fullName: user?.full_name,
+    parentChildren: user?.parentChildren,
   }
 }
 

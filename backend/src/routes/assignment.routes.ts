@@ -215,4 +215,8 @@ router.get(
   getStudentAssignmentByIdHandler
 );
 
+/**
+ * GET /api/assignments/students/:studentId/assignments
+ * Accès parent/admin/staff pour consulter les devoirs d'un élève spécifique
+ */
 export default router;

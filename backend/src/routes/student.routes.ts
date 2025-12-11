@@ -8,6 +8,7 @@ import {
   getStudentReportDataHandler,
 } from '../controllers/report.controller';
 import { assertParentCanAccessStudent } from '../models/parent.model';
+import { getAssignmentsForSpecificStudentHandler } from '../controllers/assignment.controller';
 
 const router = Router();
 
@@ -279,6 +280,22 @@ router.get(
       });
     }
   }
+);
+
+/**
+ * GET /api/students/:studentId/assignments
+ * Accès parent/admin/staff (ou l'élève lui-même) pour consulter les devoirs
+ */
+router.get(
+  '/:studentId/assignments',
+  authenticate,
+  authorize('admin', 'staff', 'student', 'parent'),
+  param('studentId').isUUID(),
+  query('subjectId').optional().isUUID().withMessage('subjectId doit être un UUID valide'),
+  query('fromDueAt').optional().isISO8601().withMessage('fromDueAt doit être une date valide'),
+  query('toDueAt').optional().isISO8601().withMessage('toDueAt doit être une date valide'),
+  validateRequest,
+  getAssignmentsForSpecificStudentHandler
 );
 
 // =========================

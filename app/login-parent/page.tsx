@@ -1,17 +1,16 @@
 import { LoginFormUpdated } from "@/components/login-form-updated"
 import { LoginRoleSwitcher } from "@/components/login-role-switcher"
 
-export default function LoginElevePage() {
+export default function LoginParentPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <div className="w-full max-w-md space-y-6">
-        <LoginRoleSwitcher activeRole="student" />
+        <LoginRoleSwitcher activeRole="parent" />
         <LoginFormUpdated
-          role="student"
-          title="Connexion Élève"
-          description="Connectez-vous à votre espace élève"
-          redirectPath="/dashboard-eleve"
-          firstLoginRedirectPath="/premiere-connexion"
+          role="parent"
+          title="Connexion parent"
+          description="Connectez-vous à votre espace parent pour consulter les informations de vos enfants."
+          redirectPath="/parent/dashboard"
         />
       </div>
     </div>
