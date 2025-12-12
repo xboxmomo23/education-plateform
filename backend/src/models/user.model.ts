@@ -146,12 +146,12 @@ export async function createParentProfile(
   const query = `
     INSERT INTO parent_profiles (
       user_id, phone, address, relation_type, is_primary_contact,
-      can_view_grades, can_view_attendance, emergency_contact
+      can_view_grades, can_view_attendance, emergency_contact, contact_email
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     RETURNING *
   `;
-  
+
   const values = [
     userId,
     profileData.phone || '',
@@ -161,8 +161,9 @@ export async function createParentProfile(
     profileData.can_view_grades ?? true,
     profileData.can_view_attendance ?? true,
     profileData.emergency_contact ?? false,
+    profileData.contact_email || null,
   ];
-  
+
   const result = await pool.query(query, values);
   return result.rows[0];
 }

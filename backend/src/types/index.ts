@@ -174,6 +174,7 @@ export interface ParentProfile {
   can_view_attendance?: boolean;
   emergency_contact?: boolean;
   created_at?: Date;
+  contact_email?: string | null;
 }
 
 export interface ParentChildSummary {
@@ -201,6 +202,7 @@ export interface ParentForStudentInput {
   can_view_grades?: boolean;
   can_view_attendance?: boolean;
   receive_notifications?: boolean;
+  contact_email?: string;
 }
 
 // ============================================

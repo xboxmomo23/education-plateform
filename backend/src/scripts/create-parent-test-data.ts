@@ -100,9 +100,10 @@ async function ensureParentData(parentUser: UserRow): Promise<void> {
         is_primary_contact,
         can_view_grades,
         can_view_attendance,
-        emergency_contact
+        emergency_contact,
+        contact_email
       )
-      VALUES ($1, $2, $3, $4, TRUE, TRUE, TRUE, FALSE)
+      VALUES ($1, $2, $3, $4, TRUE, TRUE, TRUE, FALSE, $5)
       ON CONFLICT (user_id)
       DO UPDATE SET
         phone = EXCLUDED.phone,
@@ -110,9 +111,10 @@ async function ensureParentData(parentUser: UserRow): Promise<void> {
         relation_type = EXCLUDED.relation_type,
         is_primary_contact = EXCLUDED.is_primary_contact,
         can_view_grades = EXCLUDED.can_view_grades,
-        can_view_attendance = EXCLUDED.can_view_attendance
+        can_view_attendance = EXCLUDED.can_view_attendance,
+        contact_email = COALESCE(EXCLUDED.contact_email, parent_profiles.contact_email)
     `,
-    [parentUser.id, '+33600000000', '123 rue du Test 75000 Paris', 'Parent']
+    [parentUser.id, '+33600000000', '123 rue du Test 75000 Paris', 'Parent', PARENT_EMAIL]
   );
 }
 

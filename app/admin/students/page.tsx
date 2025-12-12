@@ -107,12 +107,20 @@ export default function AdminStudentsPage() {
     contact_email: string;
     class_id: string;
     date_of_birth: string;
+    parent_first_name: string;
+    parent_last_name: string;
+    parent_phone: string;
+    parent_address: string;
   }>({
     full_name: "",
     login_email: "",
     contact_email: "",
     class_id: "",
     date_of_birth: "",
+    parent_first_name: "",
+    parent_last_name: "",
+    parent_phone: "",
+    parent_address: "",
   });
   const [showOnlyNoClass, setShowOnlyNoClass] = useState(false);
   const [editingStudent, setEditingStudent] = useState<StudentItem | null>(null);
@@ -274,6 +282,29 @@ export default function AdminStudentsPage() {
       if (form.date_of_birth) {
         payload.date_of_birth = form.date_of_birth;
       }
+      const parentFirstName = form.parent_first_name.trim();
+      const parentLastName = form.parent_last_name.trim();
+      if (parentFirstName && parentLastName) {
+        const parentPayload: Record<string, unknown> = {
+          firstName: parentFirstName,
+          lastName: parentLastName,
+          relation_type: "guardian",
+          is_primary: true,
+          receive_notifications: true,
+        };
+        if (form.contact_email.trim()) {
+          parentPayload.contact_email = form.contact_email.trim();
+        }
+        if (form.parent_phone.trim()) {
+          parentPayload.phone = form.parent_phone.trim();
+        } else {
+          parentPayload.phone = "+0000000000";
+        }
+        if (form.parent_address.trim()) {
+          parentPayload.address = form.parent_address.trim();
+        }
+        payload.parents = [parentPayload];
+      }
 
       const res = await apiFetch<CreateStudentResponse>("/admin/students", {
         method: "POST",
@@ -318,6 +349,10 @@ export default function AdminStudentsPage() {
         contact_email: "",
         class_id: "",
         date_of_birth: "",
+        parent_first_name: "",
+        parent_last_name: "",
+        parent_phone: "",
+        parent_address: "",
       });
     } catch (err: any) {
       console.error(err);
@@ -916,6 +951,70 @@ export default function AdminStudentsPage() {
                   className="w-full rounded-md border px-3 py-2 text-sm"
                   placeholder="Laisser vide si identique"
                 />
+              </div>
+
+              <div className="rounded-md border border-dashed px-3 py-2">
+                <p className="text-xs font-semibold">Parent principal (optionnel)</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Renseignez ces champs pour créer automatiquement un compte parent.
+                  Laissez-les vides pour utiliser le fallback actuel.
+                </p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium">
+                      Prénom du parent
+                    </label>
+                    <input
+                      type="text"
+                      name="parent_first_name"
+                      value={form.parent_first_name}
+                      onChange={handleChange}
+                      className="w-full rounded-md border px-3 py-2 text-sm"
+                      placeholder="Prénom"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium">
+                      Nom du parent
+                    </label>
+                    <input
+                      type="text"
+                      name="parent_last_name"
+                      value={form.parent_last_name}
+                      onChange={handleChange}
+                      className="w-full rounded-md border px-3 py-2 text-sm"
+                      placeholder="Nom"
+                    />
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium">
+                      Téléphone parent (optionnel)
+                    </label>
+                    <input
+                      type="tel"
+                      name="parent_phone"
+                      value={form.parent_phone}
+                      onChange={handleChange}
+                      className="w-full rounded-md border px-3 py-2 text-sm"
+                      placeholder="+213..."
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium">
+                      Adresse parent (optionnel)
+                    </label>
+                    <input
+                      type="text"
+                      name="parent_address"
+                      value={form.parent_address}
+                      onChange={handleChange}
+                      className="w-full rounded-md border px-3 py-2 text-sm"
+                      placeholder="Adresse"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div>

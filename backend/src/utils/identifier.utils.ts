@@ -128,9 +128,26 @@ export async function generateHumanCode(params: {
 export async function generateLoginEmailFromName(params: {
   fullName: string;
   establishmentId: string;
+  domainOverride?: string | null;
+  forceDomainSuffix?: string;
 }): Promise<string> {
-  const { fullName, establishmentId } = params;
-  const domain = await getEstablishmentDomain(establishmentId);
+  const { fullName, establishmentId, domainOverride, forceDomainSuffix } = params;
+  const normalizeDomain = (value: string) =>
+    value.replace(/^\s+|\s+$/g, "").replace(/^\.+|\.+$/g, "").toLowerCase();
+  const derivedDomain =
+    domainOverride && domainOverride.trim().length > 0
+      ? domainOverride
+      : await getEstablishmentDomain(establishmentId);
+  let domain = normalizeDomain(derivedDomain);
+
+  if (forceDomainSuffix && forceDomainSuffix.trim().length > 0) {
+    const suffix = forceDomainSuffix.startsWith(".")
+      ? forceDomainSuffix.toLowerCase()
+      : `.${forceDomainSuffix.toLowerCase()}`;
+    if (!domain.endsWith(suffix)) {
+      domain = `${domain.replace(/\.+$/, "")}${suffix}`;
+    }
+  }
 
   const { lastName, firstNames } = extractNameParts(fullName);
   const cleanedLastName = cleanSegment(lastName) || "utilisateur";

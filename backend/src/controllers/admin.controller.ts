@@ -171,6 +171,17 @@ function normalizeParentsPayload(rawParents: any): ParentForStudentInput[] {
       return;
     }
 
+    const rawContactEmail =
+      typeof parent.contact_email === "string"
+        ? parent.contact_email
+        : typeof parent.contactEmail === "string"
+          ? parent.contactEmail
+          : "";
+    const contactEmail =
+      rawContactEmail && rawContactEmail.trim().length > 0
+        ? rawContactEmail.trim().toLowerCase()
+        : undefined;
+
     normalized.push({
       firstName,
       lastName,
@@ -205,6 +216,7 @@ function normalizeParentsPayload(rawParents: any): ParentForStudentInput[] {
         typeof parent.receive_notifications === "boolean"
           ? parent.receive_notifications
           : undefined,
+      contact_email: contactEmail,
     });
   });
 
@@ -213,7 +225,8 @@ function normalizeParentsPayload(rawParents: any): ParentForStudentInput[] {
 
 async function sendParentInvitesForNewAccounts(
   parents: SyncParentsResult[],
-  establishmentName: string | null
+  establishmentName: string | null,
+  toEmailOverride?: string | null
 ): Promise<void> {
   for (const parent of parents) {
     if (!parent.isNewUser || !parent.email) {
@@ -227,8 +240,13 @@ async function sendParentInvitesForNewAccounts(
         full_name: parent.full_name,
       });
 
+      const targetEmail = toEmailOverride || parent.contactEmailOverride || parent.email;
+      if (!targetEmail) {
+        continue;
+      }
+
       await sendInviteEmail({
-        to: parent.email,
+        to: targetEmail,
         loginEmail: parent.email,
         role: "parent",
         establishmentName: establishmentName || undefined,
@@ -660,7 +678,7 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
     }
 
     const establishmentName = await getEstablishmentName(estId);
-    const parentsPayload = normalizeParentsPayload(parents);
+    let parentsPayload = normalizeParentsPayload(parents);
 
     let normalizedClassId: string | null = null;
     if (typeof class_id === "string" && class_id.trim().length > 0) {
@@ -775,6 +793,21 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
 
     const student = studentInsert.rows[0];
 
+    if (parentsPayload.length === 0 && contactEmail) {
+      parentsPayload = [
+        {
+          firstName: "Parent",
+          lastName: `de ${full_name}`,
+          relation_type: "guardian",
+          is_primary: true,
+          can_view_grades: true,
+          can_view_attendance: true,
+          receive_notifications: true,
+          contact_email: contactEmail,
+        },
+      ];
+    }
+
     let parentResults: SyncParentsResult[] = [];
     if (parentsPayload.length > 0) {
       try {
@@ -811,7 +844,13 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
     }
 
     if (parentResults.length > 0) {
-      await sendParentInvitesForNewAccounts(parentResults, establishmentName);
+      for (const parentResult of parentResults) {
+        await sendParentInvitesForNewAccounts(
+          [parentResult],
+          establishmentName,
+          parentResult.contactEmailOverride || undefined
+        );
+      }
     }
 
     return res.status(201).json({
@@ -881,6 +920,53 @@ export async function updateStudentStatusHandler(req: Request, res: Response) {
         success: false,
         error: "Élève introuvable pour cet établissement",
       });
+    }
+
+    const parentIdsResult = await pool.query(
+      `
+        SELECT parent_id
+        FROM student_parents
+        WHERE student_id = $1
+      `,
+      [targetUserId]
+    );
+
+    const parentIds: string[] = parentIdsResult.rows.map((row) => row.parent_id);
+    for (const parentId of parentIds) {
+      const activeChildrenResult = await pool.query(
+        `
+          SELECT COUNT(*)::int AS count
+          FROM student_parents sp
+          JOIN users stu ON stu.id = sp.student_id
+          WHERE sp.parent_id = $1
+            AND stu.active = TRUE
+        `,
+        [parentId]
+      );
+
+      const activeChildrenCount = Number(activeChildrenResult.rows[0]?.count || 0);
+
+      if (!active && activeChildrenCount === 0) {
+        await pool.query(
+          `
+            UPDATE users
+            SET active = FALSE
+            WHERE id = $1
+              AND role = 'parent'
+          `,
+          [parentId]
+        );
+      } else if (active && activeChildrenCount > 0) {
+        await pool.query(
+          `
+            UPDATE users
+            SET active = TRUE
+            WHERE id = $1
+              AND role = 'parent'
+          `,
+          [parentId]
+        );
+      }
     }
 
     return res.json({
@@ -998,7 +1084,13 @@ export async function updateStudentClassHandler(req: Request, res: Response) {
       );
       if (shouldInviteParents) {
         const establishmentName = await getEstablishmentName(estId);
-        await sendParentInvitesForNewAccounts(parentResults, establishmentName);
+        for (const parentResult of parentResults) {
+          await sendParentInvitesForNewAccounts(
+            [parentResult],
+            establishmentName,
+            parentResult.contactEmailOverride || undefined
+          );
+        }
       }
     }
 

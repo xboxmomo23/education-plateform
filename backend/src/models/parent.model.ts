@@ -14,6 +14,7 @@ export interface SyncParentsResult {
   full_name: string;
   email: string | null;
   isNewUser: boolean;
+  contactEmailOverride?: string | null;
 }
 
 function buildFullName(firstName?: string, lastName?: string): string {
@@ -93,9 +94,13 @@ export async function assertParentCanAccessStudent(
     clauses.push('(pp.can_view_attendance IS NULL OR pp.can_view_attendance = TRUE)');
   }
 
+  clauses.push('stu.active = TRUE');
+  clauses.push("stu.role = 'student'");
+
   const query = `
     SELECT 1
     FROM student_parents sp
+    INNER JOIN users stu ON stu.id = sp.student_id
     LEFT JOIN parent_profiles pp ON pp.user_id = sp.parent_id
     WHERE ${clauses.join(' AND ')}
     LIMIT 1
@@ -109,6 +114,8 @@ export async function assertParentCanAccessStudent(
   }
 }
 
+const FALLBACK_PARENT_PHONE = '+0000000000'; // DB constraint: parent_profiles.phone NOT NULL
+
 async function upsertParentProfile(params: {
   parentId: string;
   phone?: string | null;
@@ -117,6 +124,7 @@ async function upsertParentProfile(params: {
   isPrimaryContact?: boolean;
   canViewGrades?: boolean;
   canViewAttendance?: boolean;
+  contactEmail?: string | null;
 }): Promise<void> {
   const {
     parentId,
@@ -126,7 +134,11 @@ async function upsertParentProfile(params: {
     isPrimaryContact,
     canViewGrades,
     canViewAttendance,
+    contactEmail,
   } = params;
+
+  const safePhone =
+    typeof phone === 'string' && phone.trim().length > 0 ? phone.trim() : FALLBACK_PARENT_PHONE;
 
   await pool.query(
     `
@@ -138,9 +150,10 @@ async function upsertParentProfile(params: {
         is_primary_contact,
         can_view_grades,
         can_view_attendance,
-        emergency_contact
+        emergency_contact,
+        contact_email
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, $8)
       ON CONFLICT (user_id)
       DO UPDATE SET
         phone = COALESCE(EXCLUDED.phone, parent_profiles.phone),
@@ -148,16 +161,18 @@ async function upsertParentProfile(params: {
         relation_type = COALESCE(EXCLUDED.relation_type, parent_profiles.relation_type),
         is_primary_contact = COALESCE(EXCLUDED.is_primary_contact, parent_profiles.is_primary_contact),
         can_view_grades = COALESCE(EXCLUDED.can_view_grades, parent_profiles.can_view_grades),
-        can_view_attendance = COALESCE(EXCLUDED.can_view_attendance, parent_profiles.can_view_attendance)
+        can_view_attendance = COALESCE(EXCLUDED.can_view_attendance, parent_profiles.can_view_attendance),
+        contact_email = COALESCE(EXCLUDED.contact_email, parent_profiles.contact_email)
     `,
     [
       parentId,
-      phone || null,
+      safePhone,
       address || null,
       relationType || null,
       isPrimaryContact ?? false,
       canViewGrades ?? true,
       canViewAttendance ?? true,
+      contactEmail || null,
     ]
   );
 }
@@ -258,12 +273,18 @@ export async function syncParentsForStudent(params: {
     }
 
     if (!user) {
-      const fullName = buildFullName(firstName, lastName);
+      const normalizedFirstName = firstName || '';
+      const normalizedLastName = lastName || '';
+      const fullName = buildFullName(normalizedFirstName, normalizedLastName);
+      const loginNameLast = normalizedLastName || 'parent';
+      const loginNameFirst = normalizedFirstName || 'principal';
+      const loginFullName = `${loginNameLast} ${loginNameFirst}`.trim();
       const loginEmail =
         email ||
         (await generateLoginEmailFromName({
-          fullName,
+          fullName: loginFullName || fullName,
           establishmentId,
+          forceDomainSuffix: ".dz",
         }));
       const tempPassword = generateTemporaryPassword();
 
@@ -300,6 +321,7 @@ export async function syncParentsForStudent(params: {
       isPrimaryContact: isPrimary,
       canViewGrades,
       canViewAttendance,
+      contactEmail: parentPayload.contact_email || null,
     });
 
     await upsertStudentParentRelation({
@@ -317,6 +339,7 @@ export async function syncParentsForStudent(params: {
       full_name: user.full_name,
       email: email || null,
       isNewUser,
+      contactEmailOverride: parentPayload.contact_email || null,
     });
   }
 
