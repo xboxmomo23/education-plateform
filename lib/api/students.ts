@@ -42,10 +42,27 @@ export async function updateStudentClassApi(userId: string, classId: string | nu
 }
 
 export async function resendStudentInviteApi(userId: string) {
-  return apiFetch<{ success: boolean; inviteUrl?: string; error?: string }>(
-    `/admin/students/${userId}/resend-invite`,
-    { method: "POST" }
-  );
+  return apiFetch<{
+    success: boolean;
+    inviteUrl?: string;
+    loginEmail?: string;
+    targetEmail?: string | null;
+    smtpConfigured?: boolean;
+    error?: string;
+    message?: string;
+  }>(`/admin/students/${userId}/resend-invite`, { method: "POST" });
+}
+
+export async function resendParentInviteApi(userId: string) {
+  return apiFetch<{
+    success: boolean;
+    inviteUrl?: string;
+    loginEmail?: string;
+    targetEmail?: string | null;
+    smtpConfigured?: boolean;
+    error?: string;
+    message?: string;
+  }>(`/admin/students/${userId}/resend-parent-invite`, { method: "POST" });
 }
 
 export async function getStudentClassChangesApi(params?: {

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { timetableApi, type TimetableCourse } from "@/lib/api/timetable"
+import { parentApi } from "@/lib/api/parent"
 import { Calendar, ChevronLeft, ChevronRight, Download, AlertCircle } from "lucide-react"
 import { addDays, format } from "date-fns"
 import { fr } from "date-fns/locale"
@@ -52,15 +53,68 @@ export default function ParentEmploiDuTempsPage() {
   const [courses, setCourses] = useState<TimetableCourse[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [classId, setClassId] = useState<string | null>(child?.class_id ?? null)
-  const [classLabel, setClassLabel] = useState<string>(child?.class_name ?? "")
+  const [classId, setClassId] = useState<string | null>(null)
+  const [classLabel, setClassLabel] = useState<string>("")
   const [weekOffset, setWeekOffset] = useState(0)
   const [currentWeekStart, setCurrentWeekStart] = useState<Date>(getSundayOfWeek(new Date()))
+  const [classLoading, setClassLoading] = useState(false)
+  const [classError, setClassError] = useState<string | null>(null)
 
   useEffect(() => {
-    setClassId(child?.class_id ?? null)
-    setClassLabel(child?.class_name ?? child?.class_id ?? "")
-  }, [child?.class_id, child?.class_name])
+    if (!child?.id) {
+      setClassId(null)
+      setClassLabel("")
+      setClassError(null)
+      return
+    }
+
+    const controller = new AbortController()
+    let isMounted = true
+
+    const loadChildSummary = async () => {
+      try {
+        setClassLoading(true)
+        setClassError(null)
+        const response = await parentApi.getStudentSummary(child.id, controller.signal)
+        if (!isMounted) {
+          return
+        }
+        if (response.success) {
+          setClassId(response.data.class_id ?? child.class_id ?? null)
+          setClassLabel(
+            response.data.class_label ||
+              child.class_name ||
+              response.data.class_id ||
+              child.class_id ||
+              ""
+          )
+        } else {
+          setClassId(child.class_id ?? null)
+          setClassLabel(child.class_name ?? child.class_id ?? "")
+          setClassError("Impossible de charger la classe de l'enfant.")
+        }
+      } catch (err: any) {
+        if (err.name === "AbortError") return
+        if (isMounted) {
+          console.error("Erreur chargement classe enfant (parent):", err)
+          setClassId(child.class_id ?? null)
+          setClassLabel(child.class_name ?? child.class_id ?? "")
+          setClassError("Impossible de charger la classe de l'enfant.")
+        }
+      } finally {
+        if (isMounted) {
+          setClassLoading(false)
+        }
+      }
+    }
+
+    loadChildSummary()
+
+    return () => {
+      isMounted = false
+      controller.abort()
+    }
+  }, [child?.id, child?.class_id, child?.class_name])
 
   useEffect(() => {
     const today = new Date()
@@ -161,7 +215,10 @@ export default function ParentEmploiDuTempsPage() {
       <div className="space-y-4">
         <h1 className="text-3xl font-bold">Emploi du temps de {child.full_name}</h1>
         <p className="text-muted-foreground">
-          Impossible de trouver la classe associée à cet enfant. Contactez l’établissement.
+          {classLoading
+            ? "Chargement de la classe de votre enfant..."
+            : "Impossible de trouver la classe associée à cet enfant. Contactez l’établissement."}
+          {classError && <span className="block text-sm text-red-500 mt-2">{classError}</span>}
         </p>
       </div>
     )

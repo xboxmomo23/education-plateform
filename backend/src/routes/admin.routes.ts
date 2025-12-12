@@ -10,6 +10,7 @@ import {
   updateStudentStatusHandler,
   updateStudentClassHandler,
   resendStudentInviteHandler,
+  resendParentInviteHandler,
   getStudentClassChangesHandler,
   scheduleStudentClassChangeHandler,
   deleteStudentClassChangeHandler,
@@ -260,6 +261,7 @@ router.post(
 );
 
 router.post("/students/:userId/resend-invite", resendStudentInviteHandler);
+router.post("/students/:userId/resend-parent-invite", resendParentInviteHandler);
 
 router.delete(
   "/student-class-changes/:changeId",

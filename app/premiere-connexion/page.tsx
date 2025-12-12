@@ -41,7 +41,7 @@ const PasswordRequirements = () => (
 
 export default function PremiereConnexionPage() {
   const searchParams = useSearchParams()
-  const inviteToken = searchParams.get("invite")
+  const inviteToken = (searchParams.get("invite") || "").trim()
   const [isHydrated, setIsHydrated] = useState(false)
 
   useEffect(() => {
@@ -52,7 +52,7 @@ export default function PremiereConnexionPage() {
     return <LoadingScreen />
   }
 
-  if (inviteToken) {
+  if (inviteToken.length > 0) {
     return <InviteActivationView inviteToken={inviteToken} />
   }
 

@@ -32,7 +32,7 @@ import {
   generateResetToken,
   generateTemporaryPassword,
 } from '../utils/auth.utils';
-import { LoginResponse, RegisterRequest, UserRole, User } from '../types';
+import { LoginResponse, RegisterRequest, UserRole, User, ParentChildSummary } from '../types';
 
 
 
@@ -445,9 +445,13 @@ export async function resetPassword(req: Request, res: Response): Promise<void> 
 
 export async function acceptInvite(req: Request, res: Response): Promise<void> {
   try {
-    const { token, newPassword } = req.body || {};
+    const bodyToken = typeof req.body?.token === 'string' ? req.body.token : '';
+    const queryToken = typeof req.query?.invite === 'string' ? (req.query as any).invite : '';
+    const rawToken = bodyToken || queryToken || '';
+    const trimmedToken = rawToken.trim();
+    const { newPassword } = req.body || {};
 
-    if (!token || typeof token !== 'string') {
+    if (!trimmedToken || /\s/.test(trimmedToken)) {
       res.status(400).json({
         success: false,
         error: 'Lien d\'activation invalide ou expiré',
@@ -472,7 +476,7 @@ export async function acceptInvite(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const tokenData = await getValidPasswordResetToken(token, ['invite']);
+    const tokenData = await getValidPasswordResetToken(trimmedToken, ['invite']);
     if (!tokenData) {
       res.status(400).json({
         success: false,
@@ -525,8 +529,12 @@ export async function acceptInvite(req: Request, res: Response): Promise<void> {
 
     const userWithProfile = await getUserWithProfile(user.id, user.role);
     const profile = userWithProfile?.profile || null;
+    let parentChildren: ParentChildSummary[] | undefined;
+    if (user.role === 'parent') {
+      parentChildren = await getChildrenForParent(user.id);
+    }
 
-    res.status(200).json({
+    const responseBody: any = {
       success: true,
       token: accessToken,
       refreshToken,
@@ -537,7 +545,13 @@ export async function acceptInvite(req: Request, res: Response): Promise<void> {
         full_name: user.full_name,
         profile: profile || undefined,
       },
-    });
+    };
+
+    if (parentChildren && parentChildren.length > 0) {
+      responseBody.children = parentChildren;
+    }
+
+    res.status(200).json(responseBody);
   } catch (error) {
     console.error('Erreur lors de l\'activation:', error);
   res.status(500).json({
@@ -890,7 +904,8 @@ function buildInviteUrlFromToken(token: string): string {
     process.env.FRONTEND_URL ||
     process.env.NEXT_PUBLIC_APP_URL ||
     'http://localhost:3000';
-  return `${appUrl.replace(/\/$/, '')}/premiere-connexion?invite=${encodeURIComponent(token)}`;
+  const trimmedBase = appUrl.trim().replace(/\/$/, '');
+  return `${trimmedBase}/premiere-connexion?invite=${encodeURIComponent(token)}`;
 }
 
 export function buildInviteUrl(token: string): string {
@@ -914,7 +929,7 @@ export async function createInviteTokenForUser(user: {
     [user.id, token, 'invite', expiresAt]
   );
 
-  const inviteUrl = buildInviteUrlFromToken(token);
+  const inviteUrl = buildInviteUrlFromToken(token).trim();
   console.log('[INVITE] Lien d\'activation pour', user.email, ':', inviteUrl);
   return { token, inviteUrl };
 }

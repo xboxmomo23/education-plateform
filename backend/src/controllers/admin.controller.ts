@@ -41,7 +41,7 @@ async function getEstablishmentName(establishmentId: string): Promise<string | n
   return result.rows[0]?.name || null;
 }
 
-type BasicUserRole = "student" | "teacher" | "staff";
+type BasicUserRole = "student" | "teacher" | "staff" | "parent";
 
 async function getContactEmailForRole(userId: string, role: BasicUserRole): Promise<string | null> {
   let table: string | null = null;
@@ -54,6 +54,9 @@ async function getContactEmailForRole(userId: string, role: BasicUserRole): Prom
       break;
     case "staff":
       table = "staff_profiles";
+      break;
+    case "parent":
+      table = "parent_profiles";
       break;
     default:
       table = null;
@@ -71,12 +74,22 @@ async function getContactEmailForRole(userId: string, role: BasicUserRole): Prom
   return res.rows[0]?.contact_email || null;
 }
 
+function isSmtpConfigured(): boolean {
+  return Boolean(
+    process.env.SMTP_HOST &&
+      process.env.SMTP_PORT &&
+      process.env.SMTP_USER &&
+      process.env.SMTP_PASS &&
+      process.env.EMAIL_FROM
+  );
+}
+
 async function processInviteResend(
   targetUserId: string,
   role: BasicUserRole,
   estId: string
 ): Promise<
-  | { ok: true; inviteUrl: string }
+  | { ok: true; inviteUrl: string; loginEmail: string; targetEmail: string | null; smtpConfigured: boolean }
   | { ok: false; status: number; message: string }
 > {
   const userResult = await pool.query(
@@ -136,6 +149,8 @@ async function processInviteResend(
   const establishmentName = await getEstablishmentName(estId);
   const targetEmail = contactEmail || userRow.email;
 
+  const smtpConfigured = isSmtpConfigured();
+
   if (targetEmail) {
     await sendInviteEmail({
       to: targetEmail,
@@ -148,7 +163,7 @@ async function processInviteResend(
     });
   }
 
-  return { ok: true, inviteUrl };
+  return { ok: true, inviteUrl, loginEmail: userRow.email, targetEmail, smtpConfigured };
 }
 
 function normalizeParentsPayload(rawParents: any): ParentForStudentInput[] {
@@ -634,7 +649,14 @@ export async function getAdminStudentsHandler(req: Request, res: Response) {
         c.label AS class_label,
         c.code AS class_code,
         c.level,
-        c.academic_year
+        c.academic_year,
+        (
+          SELECT COUNT(*) > 0
+          FROM student_parents sp2
+          JOIN users up ON up.id = sp2.parent_id
+          WHERE sp2.student_id = s.user_id
+            AND up.must_change_password = TRUE
+        ) AS parent_pending_activation
       FROM students s
       JOIN users u ON u.id = s.user_id
       LEFT JOIN classes c ON c.id = s.class_id
@@ -877,12 +899,7 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
 
     const parentInviteUrls = parentInvitesData.map((invite) => invite.inviteUrl);
     const parentLoginEmails = parentInvitesData.map((invite) => invite.loginEmail);
-    const smtpConfigured =
-      Boolean(process.env.SMTP_HOST) &&
-      Boolean(process.env.SMTP_PORT) &&
-      Boolean(process.env.SMTP_USER) &&
-      Boolean(process.env.SMTP_PASS) &&
-      Boolean(process.env.EMAIL_FROM);
+    const smtpConfigured = isSmtpConfigured();
 
     return res.status(201).json({
       success: true,
@@ -1177,6 +1194,9 @@ export async function resendStudentInviteHandler(req: Request, res: Response) {
     return res.json({
       success: true,
       inviteUrl: result.inviteUrl,
+      loginEmail: result.loginEmail,
+      targetEmail: result.targetEmail,
+      smtpConfigured: result.smtpConfigured,
       message: "Invitation renvoyée avec succès",
     });
   } catch (error) {
@@ -1184,6 +1204,100 @@ export async function resendStudentInviteHandler(req: Request, res: Response) {
     return res.status(500).json({
       success: false,
       error: "Erreur lors de l'envoi de la nouvelle invitation",
+    });
+  }
+}
+
+export async function resendParentInviteHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const targetStudentId = req.params.userId;
+
+    const estId = await getAdminEstablishmentId(userId);
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement non trouvé pour cet admin",
+      });
+    }
+
+    const studentExists = await pool.query(
+      `
+        SELECT id
+        FROM users
+        WHERE id = $1
+          AND role = 'student'
+          AND establishment_id = $2
+      `,
+      [targetStudentId, estId]
+    );
+
+    if (studentExists.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Élève introuvable pour cet établissement",
+      });
+    }
+
+    const parentsResult = await pool.query(
+      `
+        SELECT
+          sp.parent_id,
+          sp.is_primary,
+          u.must_change_password,
+          u.last_login
+        FROM student_parents sp
+        JOIN users u ON u.id = sp.parent_id
+        WHERE sp.student_id = $1
+          AND u.establishment_id = $2
+        ORDER BY sp.is_primary DESC, u.created_at ASC
+      `,
+      [targetStudentId, estId]
+    );
+
+    if (parentsResult.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Aucun parent lié à cet élève",
+      });
+    }
+
+    let targetParentRow: { parent_id: string } | null = null;
+    for (const parentRow of parentsResult.rows) {
+      if (parentRow.must_change_password) {
+        targetParentRow = parentRow;
+        break;
+      }
+    }
+
+    if (!targetParentRow) {
+      return res.status(400).json({
+        success: false,
+        error: "Tous les parents ont déjà activé leur compte",
+      });
+    }
+
+    const result = await processInviteResend(targetParentRow.parent_id, "parent", estId);
+    if (!result.ok) {
+      return res.status(result.status).json({
+        success: false,
+        error: result.message,
+      });
+    }
+
+    return res.json({
+      success: true,
+      inviteUrl: result.inviteUrl,
+      loginEmail: result.loginEmail,
+      targetEmail: result.targetEmail,
+      smtpConfigured: result.smtpConfigured,
+      message: "Invitation parent renvoyée avec succès",
+    });
+  } catch (error) {
+    console.error("Erreur resendParentInviteHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de l'envoi de la nouvelle invitation parent",
     });
   }
 }

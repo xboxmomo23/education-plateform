@@ -282,8 +282,9 @@ export async function acceptInvite(
   newPassword: string
 ): Promise<AuthResult> {
   try {
+    const trimmedToken = token.trim();
     const response = await api.post<BackendLoginResponse>(API_ENDPOINTS.auth.acceptInvite, {
-      token,
+      token: trimmedToken,
       newPassword,
     });
 
@@ -291,6 +292,7 @@ export async function acceptInvite(
       const tokenValue = (response as any).token || response.data?.token;
       const refreshToken = (response as any).refreshToken || response.data?.refreshToken;
       const user = (response as any).user || response.data?.user;
+      const children = ((response as any).children ?? response.data?.children) as ParentChildSummary[] | undefined;
 
       if (tokenValue) {
         saveToken(tokenValue);
@@ -300,11 +302,19 @@ export async function acceptInvite(
         localStorage.setItem('refresh_token', refreshToken);
       }
 
-      if (user) {
-        setUserSession(user);
+      const normalizedChildren = Array.isArray(children) ? children : undefined;
+      let userForSession = user;
+      if (user && user.role === 'parent') {
+        userForSession = { ...user, parentChildren: normalizedChildren ?? [] };
+      } else if (user && normalizedChildren) {
+        userForSession = { ...user, parentChildren: normalizedChildren };
       }
 
-      return { success: true, user };
+      if (userForSession) {
+        setUserSession(userForSession);
+      }
+
+      return { success: true, user: userForSession, children: normalizedChildren };
     }
 
     return {

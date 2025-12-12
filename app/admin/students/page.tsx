@@ -9,6 +9,7 @@ import {
   deleteStudentClassChangeApi,
   getStudentClassChangesApi,
   resendStudentInviteApi,
+  resendParentInviteApi,
   scheduleStudentClassChangeApi,
   updateStudentClassApi,
   updateStudentStatusApi,
@@ -37,6 +38,7 @@ interface StudentItem {
   class_code?: string | null;
   level?: string | null;
   academic_year?: number | null;
+  parent_pending_activation?: boolean | null;
 }
 
 interface StudentsResponse {
@@ -140,6 +142,12 @@ export default function AdminStudentsPage() {
   const [resendError, setResendError] = useState<string | null>(null);
   const [resendCopyFeedback, setResendCopyFeedback] = useState<string | null>(null);
   const [resendLoadingId, setResendLoadingId] = useState<string | null>(null);
+  const [parentResendSuccess, setParentResendSuccess] = useState<string | null>(null);
+  const [parentResendInviteUrl, setParentResendInviteUrl] = useState<string | null>(null);
+  const [parentResendError, setParentResendError] = useState<string | null>(null);
+  const [parentResendCopyFeedback, setParentResendCopyFeedback] = useState<string | null>(null);
+  const [parentResendLoadingId, setParentResendLoadingId] = useState<string | null>(null);
+  const [parentResendSmtpConfigured, setParentResendSmtpConfigured] = useState<boolean>(true);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [scheduleTarget, setScheduleTarget] = useState<StudentItem | null>(null);
   const [scheduleForm, setScheduleForm] = useState({
@@ -157,6 +165,8 @@ export default function AdminStudentsPage() {
   const isProduction = process.env.NODE_ENV === "production";
   const shouldShowParentInviteLinks =
     (!isProduction || !smtpConfigured) && parentInviteUrls.length > 0;
+  const shouldShowParentResendLink =
+    (!isProduction || !parentResendSmtpConfigured) && Boolean(parentResendInviteUrl);
   const [cancelLoadingId, setCancelLoadingId] = useState<string | null>(null);
 
   const displayedStudents = showOnlyNoClass
@@ -351,6 +361,9 @@ export default function AdminStudentsPage() {
         class_code: cls?.code || null,
         level: cls?.level || null,
         academic_year: cls?.academic_year ?? null,
+        parent_pending_activation: Array.isArray(created.parents)
+          ? created.parents.some((parent: any) => parent?.isNewUser)
+          : false,
       };
 
       setStudents((prev) => [newItem, ...prev]);
@@ -435,7 +448,7 @@ export default function AdminStudentsPage() {
     }
   }
 
-  async function handleResendInvite(student: StudentItem) {
+  async function handleResendStudentInvite(student: StudentItem) {
     try {
       setResendError(null);
       setResendSuccess(null);
@@ -447,7 +460,7 @@ export default function AdminStudentsPage() {
         setResendError(res.error || "Impossible de renvoyer l'invitation.");
         return;
       }
-      setResendSuccess(`Invitation renvoyée à ${student.full_name}.`);
+      setResendSuccess(`Invitation élève renvoyée à ${student.full_name}.`);
       if (res.inviteUrl) {
         setResendInviteUrl(res.inviteUrl);
       }
@@ -456,6 +469,35 @@ export default function AdminStudentsPage() {
       setResendError(err.message || "Erreur lors de l'envoi de l'invitation.");
     } finally {
       setResendLoadingId(null);
+    }
+  }
+
+  async function handleResendParentInvite(student: StudentItem) {
+    try {
+      setParentResendError(null);
+      setParentResendSuccess(null);
+      setParentResendInviteUrl(null);
+      setParentResendCopyFeedback(null);
+      setParentResendSmtpConfigured(true);
+      setParentResendLoadingId(student.user_id);
+      const res = await resendParentInviteApi(student.user_id);
+      if (!res.success) {
+        setParentResendError(res.error || "Impossible de renvoyer l'invitation parent.");
+        return;
+      }
+      const targetEmail = res.targetEmail || res.loginEmail || student.full_name;
+      setParentResendSuccess(
+        res.message || `Invitation parent renvoyée (destinataire : ${targetEmail}).`
+      );
+      if (res.inviteUrl) {
+        setParentResendInviteUrl(res.inviteUrl);
+      }
+      setParentResendSmtpConfigured(res.smtpConfigured ?? true);
+    } catch (err: any) {
+      console.error(err);
+      setParentResendError(err.message || "Erreur lors de l'envoi de l'invitation parent.");
+    } finally {
+      setParentResendLoadingId(null);
     }
   }
 
@@ -643,6 +685,39 @@ export default function AdminStudentsPage() {
         )}
         {resendError && (
           <p className="text-xs text-red-600">{resendError}</p>
+        )}
+        {parentResendSuccess && (
+          <div className="flex flex-col gap-2 rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-900">
+            <p>{parentResendSuccess}</p>
+            {shouldShowParentResendLink && parentResendInviteUrl && (
+              <>
+                <p className="break-all font-mono text-[11px]">
+                  {parentResendInviteUrl}
+                </p>
+                <button
+                  type="button"
+                  className="w-fit rounded border px-2 py-1 font-medium hover:bg-white"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(parentResendInviteUrl);
+                      setParentResendCopyFeedback("Lien parent copié dans le presse-papiers.");
+                    } catch (err) {
+                      console.error(err);
+                      setParentResendCopyFeedback("Impossible de copier le lien parent.");
+                    }
+                  }}
+                >
+                  Copier le lien parent
+                </button>
+                {parentResendCopyFeedback && (
+                  <p className="text-[11px] text-blue-700">{parentResendCopyFeedback}</p>
+                )}
+              </>
+            )}
+          </div>
+        )}
+        {parentResendError && (
+          <p className="text-xs text-red-600">{parentResendError}</p>
         )}
       </div>
 
@@ -893,14 +968,27 @@ export default function AdminStudentsPage() {
                       {st.must_change_password && !st.last_login && (
                         <button
                           type="button"
-                          onClick={() => handleResendInvite(st)}
+                          onClick={() => handleResendStudentInvite(st)}
                           className="text-blue-600 hover:underline"
                           disabled={resendLoadingId === st.user_id}
                         >
                           {resendLoadingId === st.user_id
                             ? "Envoi..."
-                            : "Renvoyer l'invitation"}
+                            : "Renvoyer invitation élève"}
                         </button>
+                      )}
+                      {st.parent_pending_activation ? (
+                        <button
+                          type="button"
+                          onClick={() => handleResendParentInvite(st)}
+                          className="text-indigo-600 hover:underline"
+                          disabled={parentResendLoadingId === st.user_id}
+                        >
+                          {parentResendLoadingId === st.user_id
+                            ? "Envoi..."
+                            : "Renvoyer invitation parent"}
+                        </button>
+                      ) : null}
                       )}
                     </div>
                   </td>
