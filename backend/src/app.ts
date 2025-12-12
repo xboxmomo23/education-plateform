@@ -20,6 +20,7 @@ import adminRoutes from './routes/admin.routes';
 import assignmentRoutes from './routes/assignment.routes';
 import messageRoutes from './routes/message.routes';  // ✨ NOUVEAU: Routes de messagerie
 import parentRoutes from './routes/parent.routes';
+import parentMessagesRoutes from './routes/parent-messages.routes';
 
 
 
@@ -95,6 +96,7 @@ app.use('/api/assignments', assignmentRoutes);
 // ✨ NOUVEAU : Routes de messagerie
 app.use('/api/messages', messageRoutes);
 app.use('/api/parent', parentRoutes);
+app.use('/api/parent', parentMessagesRoutes);
 
 
 // Route classes

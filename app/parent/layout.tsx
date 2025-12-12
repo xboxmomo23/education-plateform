@@ -12,6 +12,7 @@ const navItems = [
   { href: "/parent/notes", label: "Notes" },
   { href: "/parent/devoirs", label: "Devoirs" },
   { href: "/parent/emploi-du-temps", label: "Emploi du temps" },
+  { href: "/parent/contact", label: "Contact" },
 ]
 
 export default function ParentLayout({ children }: { children: React.ReactNode }) {
