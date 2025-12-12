@@ -223,11 +223,20 @@ function normalizeParentsPayload(rawParents: any): ParentForStudentInput[] {
   return normalized;
 }
 
+interface ParentInviteInfo {
+  parentUserId: string;
+  inviteUrl: string;
+  loginEmail: string;
+  targetEmail: string;
+}
+
 async function sendParentInvitesForNewAccounts(
   parents: SyncParentsResult[],
   establishmentName: string | null,
   toEmailOverride?: string | null
-): Promise<void> {
+): Promise<ParentInviteInfo[]> {
+  const invites: ParentInviteInfo[] = [];
+
   for (const parent of parents) {
     if (!parent.isNewUser || !parent.email) {
       continue;
@@ -252,10 +261,19 @@ async function sendParentInvitesForNewAccounts(
         establishmentName: establishmentName || undefined,
         inviteUrl: invite.inviteUrl,
       });
+
+      invites.push({
+        parentUserId: parent.parentUserId,
+        inviteUrl: invite.inviteUrl,
+        loginEmail: parent.email,
+        targetEmail,
+      });
     } catch (error) {
       console.error("[MAIL] Erreur envoi invitation parent:", error);
     }
   }
+
+  return invites;
 }
 
 function handleParentSyncError(res: Response, error: unknown): boolean {
@@ -809,6 +827,7 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
     }
 
     let parentResults: SyncParentsResult[] = [];
+    let parentInvitesData: ParentInviteInfo[] = [];
     if (parentsPayload.length > 0) {
       try {
         parentResults = await syncParentsForStudent({
@@ -845,13 +864,25 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
 
     if (parentResults.length > 0) {
       for (const parentResult of parentResults) {
-        await sendParentInvitesForNewAccounts(
+        const invites = await sendParentInvitesForNewAccounts(
           [parentResult],
           establishmentName,
           parentResult.contactEmailOverride || undefined
         );
+        if (invites.length > 0) {
+          parentInvitesData = parentInvitesData.concat(invites);
+        }
       }
     }
+
+    const parentInviteUrls = parentInvitesData.map((invite) => invite.inviteUrl);
+    const parentLoginEmails = parentInvitesData.map((invite) => invite.loginEmail);
+    const smtpConfigured =
+      Boolean(process.env.SMTP_HOST) &&
+      Boolean(process.env.SMTP_PORT) &&
+      Boolean(process.env.SMTP_USER) &&
+      Boolean(process.env.SMTP_PASS) &&
+      Boolean(process.env.EMAIL_FROM);
 
     return res.status(201).json({
       success: true,
@@ -867,6 +898,9 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
         contact_email: contactEmail,
         inviteUrl: invite.inviteUrl,
         parents: parentResults,
+        parentInviteUrls,
+        parentLoginEmails,
+        smtpConfigured,
       },
     });
   } catch (error: any) {

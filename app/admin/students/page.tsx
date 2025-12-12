@@ -82,6 +82,10 @@ interface CreateStudentResponse {
     };
     contact_email?: string | null;
     inviteUrl: string;
+    parents?: any;
+    parentInviteUrls?: string[];
+    parentLoginEmails?: string[];
+    smtpConfigured?: boolean;
   };
 }
 
@@ -100,6 +104,10 @@ export default function AdminStudentsPage() {
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [parentInviteUrls, setParentInviteUrls] = useState<string[]>([]);
+  const [parentLoginEmails, setParentLoginEmails] = useState<string[]>([]);
+  const [parentCopyFeedback, setParentCopyFeedback] = useState<string | null>(null);
+  const [smtpConfigured, setSmtpConfigured] = useState<boolean>(true);
 
   const [form, setForm] = useState<{
     full_name: string;
@@ -146,6 +154,9 @@ export default function AdminStudentsPage() {
   const [applyStatus, setApplyStatus] = useState<string | null>(null);
   const [applyError, setApplyError] = useState<string | null>(null);
   const [applyLoading, setApplyLoading] = useState(false);
+  const isProduction = process.env.NODE_ENV === "production";
+  const shouldShowParentInviteLinks =
+    (!isProduction || !smtpConfigured) && parentInviteUrls.length > 0;
   const [cancelLoadingId, setCancelLoadingId] = useState<string | null>(null);
 
   const displayedStudents = showOnlyNoClass
@@ -234,6 +245,10 @@ export default function AdminStudentsPage() {
     setSubmitSuccess(null);
     setInviteUrl(null);
     setCopyFeedback(null);
+    setParentInviteUrls([]);
+    setParentLoginEmails([]);
+    setParentCopyFeedback(null);
+    setSmtpConfigured(true);
     setIsModalOpen(true);
   }
 
@@ -342,6 +357,10 @@ export default function AdminStudentsPage() {
 
       setSubmitSuccess("Élève créé avec succès. Copiez le lien ci-dessous et envoyez-le à l'élève.");
       setInviteUrl(created.inviteUrl);
+      setParentInviteUrls(created.parentInviteUrls || []);
+      setParentLoginEmails(created.parentLoginEmails || []);
+      setSmtpConfigured(created.smtpConfigured ?? true);
+      setParentCopyFeedback(null);
 
       setForm({
         full_name: "",
@@ -1092,6 +1111,46 @@ export default function AdminStudentsPage() {
                       </button>
                       {copyFeedback && (
                         <p className="text-[11px] text-emerald-700">{copyFeedback}</p>
+                      )}
+                    </div>
+                  )}
+                  {shouldShowParentInviteLinks && (
+                    <div className="mt-3 space-y-2 rounded-md border border-emerald-200 bg-white/70 p-2 text-[11px] text-emerald-900">
+                      <p className="font-semibold text-xs text-emerald-900">
+                        Liens parent (mode dev ou SMTP absent)
+                      </p>
+                      <p className="text-[11px] text-emerald-700">
+                        À utiliser uniquement pour tester l&apos;activation parent en l&apos;absence d&apos;emails.
+                      </p>
+                      <div className="space-y-2">
+                        {parentInviteUrls.map((url, index) => (
+                          <div key={`${url}-${index}`} className="rounded border border-emerald-100 p-2">
+                            {parentLoginEmails[index] && (
+                              <p className="mb-1 font-medium text-emerald-900">
+                                Identifiant parent : {parentLoginEmails[index]}
+                              </p>
+                            )}
+                            <p className="break-all font-mono text-[11px] text-emerald-900">{url}</p>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(url)
+                                  setParentCopyFeedback("Lien parent copié.")
+                                } catch (err) {
+                                  console.error(err)
+                                  setParentCopyFeedback("Impossible de copier ce lien.")
+                                }
+                              }}
+                              className="mt-2 rounded-md border px-2 py-1 text-[11px] font-medium text-emerald-900 hover:bg-white"
+                            >
+                              Copier le lien parent
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      {parentCopyFeedback && (
+                        <p className="text-[11px] text-emerald-600">{parentCopyFeedback}</p>
                       )}
                     </div>
                   )}
