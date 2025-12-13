@@ -21,6 +21,8 @@ import assignmentRoutes from './routes/assignment.routes';
 import messageRoutes from './routes/message.routes';  // ✨ NOUVEAU: Routes de messagerie
 import parentRoutes from './routes/parent.routes';
 import parentMessagesRoutes from './routes/parent-messages.routes';
+import parentAttendanceRoutes from './routes/parent-attendance.routes';
+import parentDashboardRoutes from './routes/parent-dashboard.routes';
 
 
 
@@ -97,6 +99,8 @@ app.use('/api/assignments', assignmentRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/parent', parentRoutes);
 app.use('/api/parent', parentMessagesRoutes);
+app.use('/api/parent', parentAttendanceRoutes);
+app.use('/api/parent', parentDashboardRoutes);
 
 
 // Route classes

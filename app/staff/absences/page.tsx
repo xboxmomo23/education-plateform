@@ -104,8 +104,20 @@ export default function StaffAbsencesPage() {
       })
 
       if (absencesResponse.success) {
-        setAbsences(absencesResponse.data.absences)
-        setTotalPages(absencesResponse.data.pagination.totalPages)
+        const payload = (absencesResponse as any).data ?? absencesResponse
+        const absencesList: AbsenceRecord[] = payload?.absences ?? []
+        const pagination = payload?.pagination ?? payload?.meta ?? null
+
+        setAbsences(absencesList)
+
+        if (pagination && typeof pagination.totalPages === "number") {
+          setTotalPages(pagination.totalPages || 1)
+        } else if (typeof payload?.totalPages === "number") {
+          setTotalPages(payload.totalPages || 1)
+        } else {
+          const computedTotalPages = Math.max(1, Math.ceil((payload?.total ?? absencesList.length) / 50))
+          setTotalPages(computedTotalPages)
+        }
       } else {
         setError('Erreur lors du chargement des absences')
       }
