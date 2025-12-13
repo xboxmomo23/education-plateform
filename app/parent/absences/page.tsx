@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { useAuth } from "@/hooks/useAuth"
 import { parentAttendanceApi } from "@/lib/api/parent-attendance"
 import { type AttendanceHistoryItem, type AttendanceStats } from "@/lib/api/attendance"
 import {
@@ -17,10 +16,11 @@ import {
   ShieldCheck,
   XCircle,
 } from "lucide-react"
+import { useParentChild } from "@/components/parent/ParentChildContext"
 
 export default function ParentAbsencesPage() {
-  const { parentChildren } = useAuth()
-  const child = parentChildren && parentChildren.length > 0 ? parentChildren[0] : null
+  const { selectedChild } = useParentChild()
+  const child = selectedChild ?? null
   const studentId = child?.id ?? null
 
   const [history, setHistory] = useState<AttendanceHistoryItem[]>([])

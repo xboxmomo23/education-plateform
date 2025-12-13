@@ -9,7 +9,7 @@ import { parentApi } from "@/lib/api/parent"
 import { Calendar, ChevronLeft, ChevronRight, Download, AlertCircle } from "lucide-react"
 import { addDays, format } from "date-fns"
 import { fr } from "date-fns/locale"
-import { useAuth } from "@/hooks/useAuth"
+import { useParentChild } from "@/components/parent/ParentChildContext"
 
 const DAYS = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"]
 const HOURS = Array.from({ length: 11 }, (_, i) => 8 + i)
@@ -47,8 +47,8 @@ function formatWeekRange(startDate: Date): string {
 }
 
 export default function ParentEmploiDuTempsPage() {
-  const { parentChildren } = useAuth()
-  const child = parentChildren && parentChildren.length > 0 ? parentChildren[0] : null
+  const { selectedChild } = useParentChild()
+  const child = selectedChild ?? null
 
   const [courses, setCourses] = useState<TimetableCourse[]>([])
   const [loading, setLoading] = useState(true)

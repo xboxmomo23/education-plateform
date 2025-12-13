@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useAuth } from "@/hooks/useAuth"
-import { useParentChildSelection } from "../layout"
+import { useParentChild } from "@/components/parent/ParentChildContext"
 import { parentDashboardApi, type ParentDashboardData } from "@/lib/api/parent-dashboard"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -15,9 +15,9 @@ import { UpcomingLessons } from "@/components/dashboard/UpcomingLessons"
 import { AttendanceStats } from "@/lib/api/attendance"
 
 export default function ParentDashboardPage() {
-  const { fullName, parentChildren } = useAuth()
-  const { selectedChild } = useParentChildSelection()
-  const child = selectedChild ?? parentChildren?.[0] ?? null
+  const { fullName } = useAuth()
+  const { selectedChild, parentChildren } = useParentChild()
+  const child = selectedChild ?? null
   const studentId = child?.id ?? null
 
   const [dashboard, setDashboard] = useState<ParentDashboardData | null>(null)

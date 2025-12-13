@@ -26,13 +26,13 @@ import {
   isAssignmentDueThisMonth,
   formatDueDateShort,
 } from "@/lib/api/assignments"
-import { useAuth } from "@/hooks/useAuth"
+import { useParentChild } from "@/components/parent/ParentChildContext"
 
 type FilterPeriod = "all" | "week" | "month"
 
 export default function ParentAssignmentsPage() {
-  const { parentChildren } = useAuth()
-  const child = parentChildren && parentChildren.length > 0 ? parentChildren[0] : null
+  const { selectedChild } = useParentChild()
+  const child = selectedChild ?? null
   const studentId = child?.id
 
   const [assignments, setAssignments] = useState<Assignment[]>([])

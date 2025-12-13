@@ -9,15 +9,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useAuth } from "@/hooks/useAuth"
+import { useParentChild } from "@/components/parent/ParentChildContext"
 
-interface ParentChildSelectorProps {
-  selectedChildId?: string
-  onChildChange?: (childId: string) => void
-}
-
-export function ParentChildSelector({ selectedChildId, onChildChange }: ParentChildSelectorProps) {
-  const { parentChildren } = useAuth()
+export function ParentChildSelector() {
+  const { parentChildren, selectedChildId, setSelectedChildId } = useParentChild()
 
   const children = parentChildren ?? []
   const isEmpty = children.length === 0
@@ -49,12 +44,7 @@ export function ParentChildSelector({ selectedChildId, onChildChange }: ParentCh
   return (
     <div className="space-y-2">
       <Label>Choisir un enfant</Label>
-      <Select
-        value={selectedChildId ?? children[0]?.id}
-        onValueChange={(value) => {
-          onChildChange?.(value)
-        }}
-      >
+      <Select value={selectedChildId ?? ""} onValueChange={(value) => setSelectedChildId(value)}>
         <SelectTrigger className="w-full bg-background">
           <SelectValue placeholder="Sélectionnez un enfant" />
         </SelectTrigger>

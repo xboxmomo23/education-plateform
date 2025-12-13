@@ -1,12 +1,12 @@
 "use client"
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react"
+import { useEffect } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { ParentChildSelector } from "@/components/parent-child-selector"
 import { useAuth } from "@/hooks/useAuth"
 import { cn } from "@/lib/utils"
-import type { ParentChildSummary } from "@/lib/auth-new"
+import { ParentChildProvider } from "@/components/parent/ParentChildContext"
 
 const navItems = [
   { href: "/parent/dashboard", label: "Tableau de bord" },
@@ -17,27 +17,10 @@ const navItems = [
   { href: "/parent/contact", label: "Contact" },
 ]
 
-type ParentChildSelectionContextValue = {
-  selectedChildId?: string
-  selectedChild?: ParentChildSummary
-  setSelectedChildId: (childId?: string) => void
-}
-
-const ParentChildSelectionContext = createContext<ParentChildSelectionContextValue | undefined>(undefined)
-
-export function useParentChildSelection(): ParentChildSelectionContextValue {
-  const ctx = useContext(ParentChildSelectionContext)
-  if (!ctx) {
-    throw new Error("useParentChildSelection must be used within ParentLayout")
-  }
-  return ctx
-}
-
 export default function ParentLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
-  const { user, userRole, fullName, parentChildren } = useAuth()
-  const [selectedChildId, setSelectedChildId] = useState<string | undefined>(undefined)
+  const { user, userRole, fullName } = useAuth()
 
   useEffect(() => {
     if (!user) {
@@ -53,28 +36,6 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
     }
   }, [user, userRole, router])
 
-  useEffect(() => {
-    if (parentChildren && parentChildren.length > 0) {
-      setSelectedChildId((current) => current ?? parentChildren[0].id)
-    } else {
-      setSelectedChildId(undefined)
-    }
-  }, [parentChildren])
-
-  const selectedChild = useMemo(() => {
-    if (!parentChildren || parentChildren.length === 0) return undefined
-    return parentChildren.find((child) => child.id === selectedChildId) ?? parentChildren[0]
-  }, [parentChildren, selectedChildId])
-
-  const contextValue = useMemo<ParentChildSelectionContextValue>(
-    () => ({
-      selectedChildId,
-      selectedChild,
-      setSelectedChildId,
-    }),
-    [selectedChildId, selectedChild]
-  )
-
   const isAuthorized = Boolean(user && userRole === "parent")
 
   if (!isAuthorized) {
@@ -88,7 +49,7 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
   }
 
   return (
-    <ParentChildSelectionContext.Provider value={contextValue}>
+    <ParentChildProvider>
       <div className="min-h-screen bg-muted/20">
         <header className="border-b bg-background">
           <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-6">
@@ -114,12 +75,12 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
                 ))}
               </nav>
             </div>
-            <ParentChildSelector selectedChildId={selectedChildId} onChildChange={setSelectedChildId} />
+            <ParentChildSelector />
           </div>
         </header>
 
         <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
       </div>
-    </ParentChildSelectionContext.Provider>
+    </ParentChildProvider>
   )
 }

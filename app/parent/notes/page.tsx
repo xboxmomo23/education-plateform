@@ -13,6 +13,7 @@ import { StatsPanel } from "@/components/notes/StatsPanel"
 import { termsApi, reportsApi, type Term, type GradesSummary } from "@/lib/api/term"
 import { reportCardApi, type ReportCardStatus } from "@/lib/api/reportCard"
 import { useAuth } from "@/hooks/useAuth"
+import { useParentChild } from "@/components/parent/ParentChildContext"
 
 const getCurrentAcademicYear = (): number => {
   const now = new Date()
@@ -84,8 +85,9 @@ function transformSummaryToUI(summary: GradesSummary): StudentNotesResponse {
 }
 
 export default function ParentNotesPage() {
-  const { parentChildren, fullName } = useAuth()
-  const child = parentChildren && parentChildren.length > 0 ? parentChildren[0] : null
+  const { fullName } = useAuth()
+  const { selectedChild } = useParentChild()
+  const child = selectedChild ?? null
   const studentId = child?.id ?? null
 
   const [data, setData] = useState<StudentNotesResponse | null>(null)

@@ -30,7 +30,7 @@ import {
   Reply,
   User,
 } from "lucide-react"
-import { useAuth } from "@/hooks/useAuth"
+import { useParentChild } from "@/components/parent/ParentChildContext"
 import {
   parentMessagesApi,
   type ParentThreadSummary,
@@ -48,9 +48,8 @@ import type { SendMessagePayload } from "@/lib/api/messages"
 type FilterOption = "all" | "unread"
 
 export default function ParentContactPage() {
-  const { parentChildren } = useAuth()
-  const child = parentChildren?.[0]
-  const studentId = child?.id
+  const { selectedChild } = useParentChild()
+  const studentId = selectedChild?.id
 
   const [threads, setThreads] = useState<ParentThreadSummary[]>([])
   const [threadsLoading, setThreadsLoading] = useState(true)
