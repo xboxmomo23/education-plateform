@@ -487,6 +487,14 @@ export async function acceptInvite(req: Request, res: Response): Promise<void> {
 
     const { entry, user } = tokenData;
 
+    if (!user.active) {
+      res.status(403).json({
+        success: false,
+        error: "Compte désactivé. Contactez l'établissement.",
+      });
+      return;
+    }
+
     await updatePassword(user.id, newPassword);
     await pool.query(
       `

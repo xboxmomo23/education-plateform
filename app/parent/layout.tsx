@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { ParentChildSelector } from "@/components/parent-child-selector"
 import { useAuth } from "@/hooks/useAuth"
 import { cn } from "@/lib/utils"
-import { ParentChildProvider } from "@/components/parent/ParentChildContext"
+import { ParentChildProvider, useParentChild } from "@/components/parent/ParentChildContext"
 
 const navItems = [
   { href: "/parent/dashboard", label: "Tableau de bord" },
@@ -50,37 +50,61 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
 
   return (
     <ParentChildProvider>
-      <div className="min-h-screen bg-muted/20">
-        <header className="border-b bg-background">
-          <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-6">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm uppercase text-muted-foreground">Espace parent</p>
-                <h1 className="text-2xl font-semibold">{fullName ?? "Parent"}</h1>
-              </div>
-              <nav className="flex flex-wrap gap-2">
-                {navItems.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "rounded-md px-4 py-2 text-sm font-medium transition-colors",
-                      pathname === item.href
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground hover:bg-muted/80"
-                    )}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </nav>
-            </div>
-            <ParentChildSelector />
-          </div>
-        </header>
-
-        <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
-      </div>
+      <ParentLayoutContent fullName={fullName} pathname={pathname}>
+        {children}
+      </ParentLayoutContent>
     </ParentChildProvider>
+  )
+}
+
+function ParentLayoutContent({
+  fullName,
+  pathname,
+  children,
+}: {
+  fullName?: string | null
+  pathname: string
+  children: React.ReactNode
+}) {
+  const { accountDisabled } = useParentChild()
+
+  return (
+    <div className="min-h-screen bg-muted/20">
+      <header className="border-b bg-background">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm uppercase text-muted-foreground">Espace parent</p>
+              <h1 className="text-2xl font-semibold">{fullName ?? "Parent"}</h1>
+            </div>
+            <nav className="flex flex-wrap gap-2">
+              {navItems.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "rounded-md px-4 py-2 text-sm font-medium transition-colors",
+                    pathname === item.href
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  )}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+          {accountDisabled && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+              Votre compte parent a été désactivé car aucun enfant actif n'est associé. Contactez l'établissement pour
+              plus d'informations.
+            </div>
+          )}
+          <ParentChildSelector />
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+    </div>
   )
 }

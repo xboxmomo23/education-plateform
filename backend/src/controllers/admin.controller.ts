@@ -8,7 +8,7 @@ import {
   generateHumanCode,
   generateLoginEmailFromName,
 } from "../utils/identifier.utils";
-import { syncParentsForStudent, SyncParentsResult, linkExistingParentToStudent } from "../models/parent.model";
+import { syncParentsForStudent, SyncParentsResult, linkExistingParentToStudent, recomputeParentActiveStatus } from "../models/parent.model";
 import { ParentForStudentInput } from "../types";
 
 /**
@@ -1113,46 +1113,25 @@ export async function updateStudentStatusHandler(req: Request, res: Response) {
     );
 
     const parentIds: string[] = parentIdsResult.rows.map((row) => row.parent_id);
+    const impactedParents = new Set<string>();
+    const autoDisabledParents: string[] = [];
+
     for (const parentId of parentIds) {
-      const activeChildrenResult = await pool.query(
-        `
-          SELECT COUNT(*)::int AS count
-          FROM student_parents sp
-          JOIN users stu ON stu.id = sp.student_id
-          WHERE sp.parent_id = $1
-            AND stu.active = TRUE
-        `,
-        [parentId]
-      );
-
-      const activeChildrenCount = Number(activeChildrenResult.rows[0]?.count || 0);
-
-      if (!active && activeChildrenCount === 0) {
-        await pool.query(
-          `
-            UPDATE users
-            SET active = FALSE
-            WHERE id = $1
-              AND role = 'parent'
-          `,
-          [parentId]
-        );
-      } else if (active && activeChildrenCount > 0) {
-        await pool.query(
-          `
-            UPDATE users
-            SET active = TRUE
-            WHERE id = $1
-              AND role = 'parent'
-          `,
-          [parentId]
-        );
+      impactedParents.add(parentId);
+      const result = await recomputeParentActiveStatus(parentId);
+      if (result.deactivated) {
+        autoDisabledParents.push(parentId);
       }
     }
 
     return res.json({
       success: true,
       message: "Statut de l'élève mis à jour",
+      data: {
+        impactedParentsCount: impactedParents.size,
+        autoDisabledParentsCount: autoDisabledParents.length,
+        autoDisabledParents,
+      },
     });
   } catch (error) {
     console.error("Erreur updateStudentStatusHandler:", error);

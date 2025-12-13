@@ -487,12 +487,26 @@ export default function AdminStudentsPage() {
   async function toggleStudentStatus(student: StudentItem) {
     try {
       const newActive = !student.active;
-      await updateStudentStatusApi(student.user_id, newActive);
+      const response: any = await updateStudentStatusApi(student.user_id, newActive);
+      if (!response?.success) {
+        throw new Error(response?.error || "Erreur lors de la mise à jour du statut.");
+      }
       setStudents((prev) =>
         prev.map((s) =>
           s.student_id === student.student_id ? { ...s, active: newActive } : s
         )
       );
+      const impacted = response.data?.impactedParentsCount ?? 0;
+      const autoDisabled = response.data?.autoDisabledParentsCount ?? 0;
+      if (impacted > 0 || autoDisabled > 0) {
+        const message = [
+          impacted > 0 ? `${impacted} parent(s) impacté(s)` : null,
+          autoDisabled > 0 ? `${autoDisabled} parent(s) désactivé(s) automatiquement` : null,
+        ]
+          .filter(Boolean)
+          .join(" • ");
+        alert(message);
+      }
     } catch (err) {
       console.error(err);
       alert("Erreur lors du changement de statut de l'élève");

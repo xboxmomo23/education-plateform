@@ -37,7 +37,18 @@ function normalizeEmail(email?: string | null): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-export async function getChildrenForParent(parentId: string): Promise<ParentChildSummary[]> {
+export async function getChildrenForParent(
+  parentId: string,
+  options?: { includeInactive?: boolean }
+): Promise<ParentChildSummary[]> {
+  const includeInactive = options?.includeInactive ?? false;
+  const clauses = ['rel.parent_id = $1', "child.role = 'student'"];
+  const params: any[] = [parentId];
+
+  if (!includeInactive) {
+    clauses.push('child.active = TRUE');
+  }
+
   const result = await pool.query(
     `
       SELECT
@@ -57,10 +68,10 @@ export async function getChildrenForParent(parentId: string): Promise<ParentChil
       LEFT JOIN students stu ON stu.user_id = rel.student_id
       LEFT JOIN classes cls ON cls.id = stu.class_id
       LEFT JOIN parent_profiles pp ON pp.user_id = rel.parent_id
-      WHERE rel.parent_id = $1
+      WHERE ${clauses.join(' AND ')}
       ORDER BY child.full_name ASC
     `,
-    [parentId]
+    params
   );
 
   return result.rows.map((row) => ({
@@ -383,4 +394,44 @@ export async function linkExistingParentToStudent(params: {
     isPrimary,
     receiveNotifications,
   });
+}
+
+export async function recomputeParentActiveStatus(parentId: string): Promise<{ activeChildren: number; deactivated: boolean }> {
+  const result = await pool.query(
+    `
+      SELECT COUNT(*)::int AS count
+      FROM student_parents sp
+      JOIN users stu ON stu.id = sp.student_id
+      WHERE sp.parent_id = $1
+        AND stu.active = TRUE
+    `,
+    [parentId]
+  );
+
+  const activeChildren = Number(result.rows[0]?.count || 0);
+  let deactivated = false;
+
+  if (activeChildren === 0) {
+    const updateResult = await pool.query(
+      `
+        UPDATE users
+        SET active = FALSE
+        WHERE id = $1
+          AND role = 'parent'
+          AND active = TRUE
+        RETURNING id
+      `,
+      [parentId]
+    );
+
+    if (updateResult.rowCount > 0) {
+      deactivated = true;
+    }
+  }
+
+  console.log(
+    `[PARENT_STATUS] parent=${parentId} active_children=${activeChildren} -> ${deactivated ? 'set_active=false' : 'keep_current'}`
+  );
+
+  return { activeChildren, deactivated };
 }
