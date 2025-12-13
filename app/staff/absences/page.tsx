@@ -3,7 +3,7 @@
 import { DashboardLayout } from "@/components/dashboard-layout"
 import React, { useState, useEffect, useCallback } from "react"
 import { cn } from "@/lib/utils"
-import { 
+import {
   Search,
   Filter,
   Calendar,
@@ -25,6 +25,10 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
+import { ListSkeleton } from "@/components/ui/list-skeleton"
+import { EmptyState } from "@/components/ui/empty-state"
+import { notify } from "@/lib/toast"
+import { useEstablishmentSettings } from "@/hooks/useEstablishmentSettings"
 import {
   Select,
   SelectContent,
@@ -84,6 +88,8 @@ export default function StaffAbsencesPage() {
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
 
+  const { settings } = useEstablishmentSettings()
+
   // Charger les données
   const loadData = useCallback(async () => {
     try {
@@ -125,6 +131,7 @@ export default function StaffAbsencesPage() {
     } catch (err: any) {
       console.error('Erreur chargement absences:', err)
       setError(err.message || 'Erreur lors du chargement')
+      notify.error("Impossible de charger les absences", err.message || "Merci de réessayer.")
     } finally {
       setLoading(false)
     }
@@ -162,9 +169,11 @@ export default function StaffAbsencesPage() {
         ))
         setJustifyModalOpen(false)
         setSelectedAbsence(null)
+        notify.success("Absence justifiée", `${selectedAbsence.student_name} est désormais marqué comme justifié.`)
       }
     } catch (err) {
       console.error('Erreur justification:', err)
+      notify.error("Erreur lors de la justification", (err as Error)?.message || "Veuillez réessayer.")
     } finally {
       setJustifying(false)
     }
@@ -181,7 +190,7 @@ export default function StaffAbsencesPage() {
         newStatus
       )
 
-      if (response.success) {
+        if (response.success) {
         // Si on met "present", on retire de la liste des absences
         if (newStatus === 'present') {
           setAbsences(prev => prev.filter(a => a.id !== selectedAbsence.id))
@@ -195,9 +204,14 @@ export default function StaffAbsencesPage() {
         }
         setChangeStatusModalOpen(false)
         setSelectedAbsence(null)
+        notify.success(
+          newStatus === 'present' ? "Absent retiré" : "Statut mis à jour",
+          `${selectedAbsence.student_name} : ${getStatusLabel(newStatus)}`
+        )
       }
     } catch (err) {
       console.error('Erreur changement statut:', err)
+      notify.error("Impossible de mettre à jour le statut", (err as Error)?.message || "Réessayez plus tard.")
     } finally {
       setChangingStatus(false)
     }
@@ -251,10 +265,11 @@ export default function StaffAbsencesPage() {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 mb-1">
-                📋 Gestion des absences
+                📋 Gestion des absences {settings?.displayName ? `· ${settings.displayName}` : ""}
               </h1>
               <p className="text-gray-600">
                 Consultez et gérez toutes les absences de l'établissement
+                {settings?.schoolYear ? ` — Année scolaire ${settings.schoolYear}` : ""}
               </p>
             </div>
             <Button onClick={handleExport} variant="outline" className="gap-2">
@@ -430,9 +445,7 @@ export default function StaffAbsencesPage() {
           <Card>
             <CardContent className="p-0">
               {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-                </div>
+                <ListSkeleton rows={8} className="py-8" />
               ) : error ? (
                 <div className="text-center py-12">
                   <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
@@ -440,10 +453,16 @@ export default function StaffAbsencesPage() {
                   <Button onClick={loadData}>Réessayer</Button>
                 </div>
               ) : absences.length === 0 ? (
-                <div className="text-center py-12">
-                  <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-                  <p className="text-gray-600">Aucune absence trouvée</p>
-                </div>
+                <EmptyState
+                  icon={CheckCircle}
+                  title="Aucune absence trouvée"
+                  description="Aucun enregistrement ne correspond aux critères actuels."
+                  action={
+                    <Button variant="outline" onClick={resetFilters}>
+                      Réinitialiser les filtres
+                    </Button>
+                  }
+                />
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full">

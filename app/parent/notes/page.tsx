@@ -14,6 +14,9 @@ import { termsApi, reportsApi, type Term, type GradesSummary } from "@/lib/api/t
 import { reportCardApi, type ReportCardStatus } from "@/lib/api/reportCard"
 import { useAuth } from "@/hooks/useAuth"
 import { useParentChild } from "@/components/parent/ParentChildContext"
+import { useEstablishmentSettings } from "@/hooks/useEstablishmentSettings"
+import { PageLoader } from "@/components/ui/page-loader"
+import { ListSkeleton } from "@/components/ui/list-skeleton"
 
 const getCurrentAcademicYear = (): number => {
   const now = new Date()
@@ -87,6 +90,7 @@ function transformSummaryToUI(summary: GradesSummary): StudentNotesResponse {
 export default function ParentNotesPage() {
   const { fullName } = useAuth()
   const { selectedChild } = useParentChild()
+  const { settings } = useEstablishmentSettings()
   const child = selectedChild ?? null
   const studentId = child?.id ?? null
 
@@ -240,7 +244,10 @@ export default function ParentNotesPage() {
         <div className="border-b pb-6">
           <h1 className="text-4xl font-bold text-slate-900">Notes</h1>
           <p className="text-muted-foreground mt-2 text-lg">
-            Aucun enfant n’est associé à ce compte. Contactez l’établissement pour lier votre compte parent à un élève.
+            Aucun enfant n’est associé à ce compte.
+            {settings?.contactEmail
+              ? ` Contactez ${settings.contactEmail} pour lier votre compte parent à un élève.`
+              : " Contactez l’établissement pour lier votre compte parent à un élève."}
           </p>
         </div>
       </div>
@@ -249,11 +256,9 @@ export default function ParentNotesPage() {
 
   if (isLoading || isLoadingTerms) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="space-y-4 text-center">
-          <div className="mx-auto h-16 w-16 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <p className="font-medium text-muted-foreground">Chargement des notes de {child?.full_name ?? "votre enfant"}...</p>
-        </div>
+      <div className="space-y-6">
+        <PageLoader label={`Chargement des notes de ${child?.full_name ?? "votre enfant"}...`} />
+        <ListSkeleton rows={5} />
       </div>
     )
   }

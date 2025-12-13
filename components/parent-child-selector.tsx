@@ -10,9 +10,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useParentChild } from "@/components/parent/ParentChildContext"
+import { useEstablishmentSettings } from "@/hooks/useEstablishmentSettings"
 
 export function ParentChildSelector() {
   const { parentChildren, selectedChildId, setSelectedChildId } = useParentChild()
+  const { settings } = useEstablishmentSettings()
 
   const children = parentChildren ?? []
   const isEmpty = children.length === 0
@@ -22,7 +24,10 @@ export function ParentChildSelector() {
     return (
       <Alert>
         <AlertDescription>
-          Aucun enfant associé à ce compte. Contactez l&apos;administration si vous pensez qu&apos;il s&apos;agit d&apos;une erreur.
+          Aucun enfant associé à ce compte.
+          {settings?.contactEmail
+            ? ` Contactez ${settings.contactEmail} si vous pensez qu'il s'agit d'une erreur.`
+            : " Contactez l'administration si vous pensez qu'il s'agit d'une erreur."}
         </AlertDescription>
       </Alert>
     )

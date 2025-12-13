@@ -8,15 +8,18 @@ import { parentDashboardApi, type ParentDashboardData } from "@/lib/api/parent-d
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Loader2, RefreshCw, AlertCircle, BookOpen, ChevronRight } from "lucide-react"
+import { RefreshCw, AlertCircle, BookOpen, ChevronRight } from "lucide-react"
 import { RecentGradesWidget } from "@/components/dashboard/RecentGrades"
 import { HomeworkList } from "@/components/dashboard/HomeworkSummary"
 import { UpcomingLessons } from "@/components/dashboard/UpcomingLessons"
 import { AttendanceStats } from "@/lib/api/attendance"
+import { useEstablishmentSettings } from "@/hooks/useEstablishmentSettings"
+import { PageLoader } from "@/components/ui/page-loader"
 
 export default function ParentDashboardPage() {
   const { fullName } = useAuth()
   const { selectedChild, parentChildren } = useParentChild()
+  const { settings } = useEstablishmentSettings()
   const child = selectedChild ?? null
   const studentId = child?.id ?? null
 
@@ -61,12 +64,18 @@ export default function ParentDashboardPage() {
       <div className="space-y-6">
         <div>
           <h2 className="text-3xl font-semibold">Tableau de bord parent</h2>
-          <p className="text-muted-foreground">Bienvenue {fullName ?? "parent"}.</p>
+          <p className="text-muted-foreground">
+            Bienvenue {fullName ?? "parent"}.
+            {settings?.schoolYear && ` Année scolaire ${settings.schoolYear}.`}
+          </p>
         </div>
         <Alert>
           <AlertTitle>Enfant introuvable</AlertTitle>
           <AlertDescription>
-            Aucun enfant n&apos;est associé à ce compte. Contactez l&apos;administration si vous pensez qu&apos;il s&apos;agit d&apos;une erreur.
+            Aucun enfant n&apos;est associé à ce compte.
+            {settings?.contactEmail
+              ? ` Contactez ${settings.contactEmail} si vous pensez qu'il s'agit d'une erreur.`
+              : " Contactez l'administration si vous pensez qu'il s'agit d'une erreur."}
           </AlertDescription>
         </Alert>
       </div>
@@ -79,9 +88,12 @@ export default function ParentDashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-3xl font-semibold">Espace parent</h2>
+          <h2 className="text-3xl font-semibold">
+            {settings?.displayName ? `Espace parent · ${settings.displayName}` : "Espace parent"}
+          </h2>
           <p className="text-muted-foreground">
             Bonjour {fullName ?? "parent"} — suivi de {child?.full_name ?? "votre enfant"}.
+            {settings?.schoolYear && ` Année scolaire ${settings.schoolYear}.`}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={handleRefresh} disabled={loading}>
@@ -104,12 +116,7 @@ export default function ParentDashboardPage() {
       )}
 
       {loading ? (
-        <div className="flex min-h-[240px] items-center justify-center rounded-lg border">
-          <div className="text-center text-muted-foreground">
-            <Loader2 className="mx-auto mb-3 h-6 w-6 animate-spin" />
-            Chargement des dernières informations...
-          </div>
-        </div>
+        <PageLoader label="Chargement des dernières informations..." />
       ) : (
         <>
           <Card>

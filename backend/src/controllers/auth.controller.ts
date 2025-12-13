@@ -14,6 +14,7 @@ import {
   updatePassword,
   findUserById,
 } from '../models/user.model';
+import { getEstablishmentSettings, getDefaultEstablishmentSettings } from '../models/establishmentSettings.model';
 import { getChildrenForParent } from '../models/parent.model';
 import {
   createSession,
@@ -346,11 +347,16 @@ export async function requestPasswordReset(req: Request, res: Response): Promise
 
     const contactEmail = await getUserContactEmail(user.id, user.role);
     const targetEmail = contactEmail || user.email;
+    const establishmentSettings = user.establishment_id
+      ? await getEstablishmentSettings(user.establishment_id)
+      : getDefaultEstablishmentSettings();
     if (targetEmail) {
       sendPasswordResetEmail({
         to: targetEmail,
         loginEmail: user.email,
         resetUrl,
+        establishmentName: establishmentSettings.displayName,
+        userName: user.full_name,
       }).catch((err) => {
         console.error('[MAIL] Erreur envoi email reset:', err);
       });

@@ -13,6 +13,13 @@ export interface EstablishmentTimetableConfig {
   school_year_end_date: string | null;
 }
 
+export interface EstablishmentSettings {
+  establishmentId: string | null;
+  displayName: string;
+  contactEmail: string;
+  schoolYear: string;
+}
+
 export const establishmentApi = {
   /**
    * Récupérer la configuration de l'établissement
@@ -28,6 +35,28 @@ export const establishmentApi = {
     return apiCall<EstablishmentTimetableConfig>('/establishment/timetable-config', {
       method: 'PUT',
       body: JSON.stringify(config),
+    });
+  },
+
+  async getSettings() {
+    return apiCall<EstablishmentSettings>('/establishment/settings');
+  },
+
+  async updateSettings(settings: Partial<{ displayName: string | null; contactEmail: string | null; schoolYear: string | null }>) {
+    const payload: Record<string, string | null> = {}
+    if (settings.displayName !== undefined) {
+      payload.display_name = settings.displayName
+    }
+    if (settings.contactEmail !== undefined) {
+      payload.contact_email = settings.contactEmail
+    }
+    if (settings.schoolYear !== undefined) {
+      payload.school_year = settings.schoolYear
+    }
+
+    return apiCall<EstablishmentSettings>('/establishment/settings', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
     });
   },
 };

@@ -3,6 +3,7 @@
 import { useEffect, useState, FormEvent, ChangeEvent } from "react";
 import { AdminBackButton } from "@/components/admin/AdminBackButton";
 import { apiFetch } from "@/lib/api/api-client";
+import { notify } from "@/lib/toast";
 import type { StudentClassChange } from "@/lib/api/students";
 import {
   applyStudentClassChangesApi,
@@ -454,6 +455,7 @@ export default function AdminStudentsPage() {
       setStudents((prev) => [newItem, ...prev]);
 
       setSubmitSuccess("Élève créé avec succès. Copiez le lien ci-dessous et envoyez-le à l'élève.");
+      notify.success("Élève créé", "Les invitations ont été générées.");
       setInviteUrl(created.inviteUrl);
       setParentInviteUrls(created.parentInviteUrls || []);
       setParentLoginEmails(created.parentLoginEmails || []);
@@ -478,6 +480,7 @@ export default function AdminStudentsPage() {
       setSelectedExistingParent(null);
     } catch (err: any) {
       console.error(err);
+      notify.error("Création impossible", err.message || "Erreur lors de la création");
       setSubmitError(err.message || "Erreur lors de la création");
     } finally {
       setIsSubmitting(false);
@@ -498,6 +501,10 @@ export default function AdminStudentsPage() {
       );
       const impacted = response.data?.impactedParentsCount ?? 0;
       const autoDisabled = response.data?.autoDisabledParentsCount ?? 0;
+      notify.success(
+        newActive ? "Élève activé" : "Élève désactivé",
+        newActive ? `${student.full_name} peut à nouveau se connecter.` : `${student.full_name} est désormais suspendu.`
+      );
       if (impacted > 0 || autoDisabled > 0) {
         const message = [
           impacted > 0 ? `${impacted} parent(s) impacté(s)` : null,
@@ -505,11 +512,11 @@ export default function AdminStudentsPage() {
         ]
           .filter(Boolean)
           .join(" • ");
-        alert(message);
+        notify.info("Impact parent", message);
       }
     } catch (err) {
       console.error(err);
-      alert("Erreur lors du changement de statut de l'élève");
+      notify.error("Action impossible", (err as Error)?.message || "Erreur lors du changement de statut");
     }
   }
 
@@ -699,7 +706,7 @@ export default function AdminStudentsPage() {
       await refreshClassChangesOnly();
     } catch (err: any) {
       console.error(err);
-      alert(err.message || "Impossible d'annuler ce changement.");
+      notify.error("Annulation impossible", err.message || "Impossible d'annuler ce changement.");
     } finally {
       setCancelLoadingId(null);
     }

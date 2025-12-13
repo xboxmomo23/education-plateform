@@ -4,6 +4,8 @@ import React, { useEffect, useMemo, useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ListSkeleton } from "@/components/ui/list-skeleton"
+import { EmptyState } from "@/components/ui/empty-state"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   AlertCircle,
@@ -27,11 +29,13 @@ import {
   formatDueDateShort,
 } from "@/lib/api/assignments"
 import { useParentChild } from "@/components/parent/ParentChildContext"
+import { useEstablishmentSettings } from "@/hooks/useEstablishmentSettings"
 
 type FilterPeriod = "all" | "week" | "month"
 
 export default function ParentAssignmentsPage() {
   const { selectedChild } = useParentChild()
+  const { settings } = useEstablishmentSettings()
   const child = selectedChild ?? null
   const studentId = child?.id
 
@@ -115,7 +119,10 @@ export default function ParentAssignmentsPage() {
           Devoirs
         </h1>
         <p className="text-muted-foreground">
-          Aucun enfant n’est associé à ce compte. Contactez l’établissement pour lier votre compte parent à un élève.
+          Aucun enfant n’est associé à ce compte.
+          {settings?.contactEmail
+            ? ` Contactez ${settings.contactEmail} pour lier votre compte parent à un élève.`
+            : " Contactez l’établissement pour lier votre compte parent à un élève."}
         </p>
       </div>
     )
@@ -178,7 +185,7 @@ export default function ParentAssignmentsPage() {
       </Card>
 
       {loading ? (
-        <div className="py-12 text-center text-muted-foreground">Chargement des devoirs...</div>
+        <ListSkeleton rows={6} className="py-6" />
       ) : error ? (
         <div className="py-12 text-center">
           <AlertCircle className="mx-auto mb-4 h-12 w-12 text-red-500" />
@@ -188,15 +195,25 @@ export default function ParentAssignmentsPage() {
           </Button>
         </div>
       ) : filteredAssignments.length === 0 ? (
-        <div className="py-12 text-center">
-          <CheckCircle2 className="mx-auto mb-4 h-12 w-12 text-green-500" />
-          <p className="text-muted-foreground">Aucun devoir à afficher</p>
-          <p className="mt-2 text-sm text-gray-400">
-            {periodFilter !== "all" || subjectFilter !== "all"
-              ? "Essayez de modifier les filtres"
-              : "Votre enfant est à jour !"}
-          </p>
-        </div>
+        <EmptyState
+          icon={CheckCircle2}
+          title="Aucun devoir à afficher"
+          description={
+            periodFilter !== "all" || subjectFilter !== "all"
+              ? "Essayez de modifier les filtres pour voir plus de devoirs."
+              : "Votre enfant est à jour !"
+          }
+          action={
+            periodFilter !== "all" || subjectFilter !== "all" ? (
+              <Button variant="outline" onClick={() => {
+                setPeriodFilter("all")
+                setSubjectFilter("all")
+              }}>
+                Réinitialiser les filtres
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <div className="space-y-8">
           {overdueAssignments.length > 0 && (

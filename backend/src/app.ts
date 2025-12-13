@@ -23,6 +23,7 @@ import parentRoutes from './routes/parent.routes';
 import parentMessagesRoutes from './routes/parent-messages.routes';
 import parentAttendanceRoutes from './routes/parent-attendance.routes';
 import parentDashboardRoutes from './routes/parent-dashboard.routes';
+import { demoReadOnlyGuard, demoDataMiddleware } from './middleware/demo.middleware';
 
 
 
@@ -49,6 +50,10 @@ app.use(cors(corsOptions));
 // Parser JSON
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Demo mode guard
+app.use(demoReadOnlyGuard);
+app.use(demoDataMiddleware);
 
 // Logging des requêtes
 if (process.env.NODE_ENV === 'development') {

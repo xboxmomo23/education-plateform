@@ -1,4 +1,6 @@
 import type { UserRole } from "../types";
+import { buildInviteEmail } from "../templates/email/invite";
+import { buildResetEmail } from "../templates/email/password-reset";
 
 type MailPayload = {
   to: string;
@@ -120,32 +122,20 @@ interface InviteEmailParams {
 export async function sendInviteEmail(params: InviteEmailParams): Promise<void> {
   const label = roleLabels[params.role] || "utilisateur";
   const expiresIn = params.expiresInDays ?? 7;
-  const establishment = params.establishmentName
-    ? ` pour ${params.establishmentName}`
-    : "";
-
-  const subject = `${DEFAULT_APP_NAME} – invitation ${label}`;
-  const text = `Bonjour,
-
-Vous avez été invité à rejoindre ${DEFAULT_APP_NAME}${establishment} en tant que ${label}.
-Email de connexion : ${params.loginEmail}
-
-Cliquez sur le lien suivant pour définir votre mot de passe (valable ${expiresIn} jours) :
-${params.inviteUrl}
-
-À très vite sur ${DEFAULT_APP_NAME} !`;
-
-  const html = `<p>Bonjour,</p>
-<p>Vous avez été invité à rejoindre <strong>${DEFAULT_APP_NAME}</strong>${establishment} en tant que <strong>${label}</strong>.</p>
-<p>Email de connexion : <strong>${params.loginEmail}</strong></p>
-<p><a href="${params.inviteUrl}" target="_blank">Cliquez ici pour activer votre compte</a> (lien valable ${expiresIn} jours).</p>
-<p>À très vite sur ${DEFAULT_APP_NAME} !</p>`;
+  const inviteContent = buildInviteEmail({
+    userName: undefined,
+    establishmentName: params.establishmentName ?? DEFAULT_APP_NAME,
+    roleLabel: label,
+    loginEmail: params.loginEmail,
+    actionUrl: params.inviteUrl,
+    expiresInDays: expiresIn,
+  });
 
   await deliverEmail({
     to: params.to,
-    subject,
-    text,
-    html,
+    subject: inviteContent.subject,
+    text: inviteContent.text,
+    html: inviteContent.html,
     context: "INVITE",
   });
 }
@@ -154,28 +144,23 @@ interface ResetEmailParams {
   to: string;
   loginEmail: string;
   resetUrl: string;
+  establishmentName?: string | null;
+  userName?: string | null;
 }
 
 export async function sendPasswordResetEmail(params: ResetEmailParams): Promise<void> {
-  const subject = `${DEFAULT_APP_NAME} – réinitialisation de mot de passe`;
-  const text = `Bonjour,
-
-Une demande de réinitialisation de mot de passe a été effectuée pour le compte ${params.loginEmail}.
-Vous pouvez définir un nouveau mot de passe en suivant ce lien :
-${params.resetUrl}
-
-Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet e-mail.`;
-
-  const html = `<p>Bonjour,</p>
-<p>Une demande de réinitialisation de mot de passe a été effectuée pour le compte <strong>${params.loginEmail}</strong>.</p>
-<p><a href="${params.resetUrl}" target="_blank">Cliquez ici pour définir un nouveau mot de passe</a>.</p>
-<p>Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet e-mail.</p>`;
+  const resetContent = buildResetEmail({
+    userName: params.userName ?? undefined,
+    establishmentName: params.establishmentName ?? DEFAULT_APP_NAME,
+    loginEmail: params.loginEmail,
+    actionUrl: params.resetUrl,
+  });
 
   await deliverEmail({
     to: params.to,
-    subject,
-    text,
-    html,
+    subject: resetContent.subject,
+    text: resetContent.text,
+    html: resetContent.html,
     context: "RESET",
   });
 }

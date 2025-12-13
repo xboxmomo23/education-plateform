@@ -1,5 +1,10 @@
 import { Request, Response } from 'express';
 import pool from '../config/database';
+import {
+  getEstablishmentSettings as fetchEstablishmentSettings,
+  upsertEstablishmentSettings,
+  getDefaultEstablishmentSettings,
+} from '../models/establishmentSettings.model';
 
 /**
  * GET /api/establishment/timetable-config
@@ -177,6 +182,107 @@ export async function updateDirectorSignature(req: Request, res: Response): Prom
     res.status(500).json({
       success: false,
       error: 'Erreur lors de la mise à jour',
+    });
+  }
+}
+
+export async function getEstablishmentSettingsHandler(req: Request, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: 'Non authentifié' });
+      return;
+    }
+
+    const establishmentId = req.user.establishmentId;
+    const settings = establishmentId
+      ? await fetchEstablishmentSettings(establishmentId)
+      : getDefaultEstablishmentSettings();
+
+    res.json({
+      success: true,
+      data: settings,
+    });
+  } catch (error) {
+    console.error('Erreur getEstablishmentSettingsHandler:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la récupération des paramètres établissement',
+    });
+  }
+}
+
+export async function updateEstablishmentSettingsHandler(req: Request, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: 'Non authentifié' });
+      return;
+    }
+
+    if (req.user.role !== 'admin') {
+      res.status(403).json({ success: false, error: 'Accès réservé aux administrateurs' });
+      return;
+    }
+
+    const establishmentId = req.user.establishmentId;
+    if (!establishmentId) {
+      res.status(403).json({ success: false, error: 'Aucun établissement associé à ce compte' });
+      return;
+    }
+
+    const { display_name, contact_email, school_year } = req.body || {};
+
+    if (
+      typeof display_name === 'undefined' &&
+      typeof contact_email === 'undefined' &&
+      typeof school_year === 'undefined'
+    ) {
+      res.status(400).json({
+        success: false,
+        error: 'Aucun champ à mettre à jour',
+      });
+      return;
+    }
+
+    const payload = {
+      displayName:
+        typeof display_name === 'string' ? display_name.trim() || null : display_name === null ? null : undefined,
+      contactEmail:
+        typeof contact_email === 'string'
+          ? contact_email.trim().toLowerCase() || null
+          : contact_email === null
+            ? null
+            : undefined,
+      schoolYear:
+        typeof school_year === 'string' ? school_year.trim() || null : school_year === null ? null : undefined,
+    };
+
+    const filteredPayload: Record<string, string | null> = {};
+    (['displayName', 'contactEmail', 'schoolYear'] as const).forEach((key) => {
+      const value = payload[key];
+      if (value !== undefined) {
+        filteredPayload[key] = value;
+      }
+    });
+
+    if (Object.keys(filteredPayload).length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'Aucun champ à mettre à jour',
+      });
+      return;
+    }
+
+    const updated = await upsertEstablishmentSettings(establishmentId, filteredPayload);
+    res.json({
+      success: true,
+      message: 'Paramètres mis à jour',
+      data: updated,
+    });
+  } catch (error) {
+    console.error('Erreur updateEstablishmentSettingsHandler:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la mise à jour des paramètres',
     });
   }
 }

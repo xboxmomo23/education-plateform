@@ -7,6 +7,7 @@ import { ParentChildSelector } from "@/components/parent-child-selector"
 import { useAuth } from "@/hooks/useAuth"
 import { cn } from "@/lib/utils"
 import { ParentChildProvider, useParentChild } from "@/components/parent/ParentChildContext"
+import { useEstablishmentSettings } from "@/hooks/useEstablishmentSettings"
 
 const navItems = [
   { href: "/parent/dashboard", label: "Tableau de bord" },
@@ -67,6 +68,7 @@ function ParentLayoutContent({
   children: React.ReactNode
 }) {
   const { accountDisabled } = useParentChild()
+  const { settings } = useEstablishmentSettings()
 
   return (
     <div className="min-h-screen bg-muted/20">
@@ -74,8 +76,13 @@ function ParentLayoutContent({
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 py-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm uppercase text-muted-foreground">Espace parent</p>
+              <p className="text-sm uppercase text-muted-foreground">
+                {settings?.displayName ?? "Espace parent"}
+              </p>
               <h1 className="text-2xl font-semibold">{fullName ?? "Parent"}</h1>
+              {settings?.schoolYear && (
+                <p className="text-xs text-muted-foreground">Année scolaire {settings.schoolYear}</p>
+              )}
             </div>
             <nav className="flex flex-wrap gap-2">
               {navItems.map((item) => (
@@ -96,8 +103,10 @@ function ParentLayoutContent({
           </div>
           {accountDisabled && (
             <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
-              Votre compte parent a été désactivé car aucun enfant actif n'est associé. Contactez l'établissement pour
-              plus d'informations.
+              Votre compte parent a été désactivé car aucun enfant actif n'est associé.
+              {settings?.contactEmail
+                ? ` Contactez ${settings.contactEmail} pour plus d'informations.`
+                : " Contactez l'établissement pour plus d'informations."}
             </div>
           )}
           <ParentChildSelector />

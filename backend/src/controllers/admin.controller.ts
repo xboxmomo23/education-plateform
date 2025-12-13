@@ -10,6 +10,7 @@ import {
 } from "../utils/identifier.utils";
 import { syncParentsForStudent, SyncParentsResult, linkExistingParentToStudent, recomputeParentActiveStatus } from "../models/parent.model";
 import { ParentForStudentInput } from "../types";
+import { getEstablishmentSettings } from "../models/establishmentSettings.model";
 
 /**
  * Helper : récupère l'établissement de l'admin connecté
@@ -34,11 +35,8 @@ async function getAdminEstablishmentId(adminUserId: string): Promise<string | nu
 }
 
 async function getEstablishmentName(establishmentId: string): Promise<string | null> {
-  const result = await pool.query(
-    `SELECT name FROM establishments WHERE id = $1 LIMIT 1`,
-    [establishmentId]
-  );
-  return result.rows[0]?.name || null;
+  const settings = await getEstablishmentSettings(establishmentId);
+  return settings.displayName || null;
 }
 
 type BasicUserRole = "student" | "teacher" | "staff" | "parent";

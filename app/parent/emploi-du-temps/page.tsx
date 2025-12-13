@@ -10,6 +10,8 @@ import { Calendar, ChevronLeft, ChevronRight, Download, AlertCircle } from "luci
 import { addDays, format } from "date-fns"
 import { fr } from "date-fns/locale"
 import { useParentChild } from "@/components/parent/ParentChildContext"
+import { useEstablishmentSettings } from "@/hooks/useEstablishmentSettings"
+import { PageLoader } from "@/components/ui/page-loader"
 
 const DAYS = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"]
 const HOURS = Array.from({ length: 11 }, (_, i) => 8 + i)
@@ -48,6 +50,7 @@ function formatWeekRange(startDate: Date): string {
 
 export default function ParentEmploiDuTempsPage() {
   const { selectedChild } = useParentChild()
+  const { settings } = useEstablishmentSettings()
   const child = selectedChild ?? null
 
   const [courses, setCourses] = useState<TimetableCourse[]>([])
@@ -205,7 +208,10 @@ export default function ParentEmploiDuTempsPage() {
     return (
       <div className="space-y-4">
         <h1 className="text-3xl font-bold">Emploi du temps</h1>
-        <p className="text-muted-foreground">Aucun enfant n’est associé à ce compte.</p>
+        <p className="text-muted-foreground">
+          Aucun enfant n’est associé à ce compte.
+          {settings?.contactEmail ? ` Contactez ${settings.contactEmail} pour lier votre compte parent à un élève.` : ""}
+        </p>
       </div>
     )
   }
@@ -217,7 +223,9 @@ export default function ParentEmploiDuTempsPage() {
         <p className="text-muted-foreground">
           {classLoading
             ? "Chargement de la classe de votre enfant..."
-            : "Impossible de trouver la classe associée à cet enfant. Contactez l’établissement."}
+            : settings?.contactEmail
+              ? `Impossible de trouver la classe associée à cet enfant. Contactez ${settings.contactEmail}.`
+              : "Impossible de trouver la classe associée à cet enfant. Contactez l’établissement."}
           {classError && <span className="block text-sm text-red-500 mt-2">{classError}</span>}
         </p>
       </div>
@@ -260,10 +268,7 @@ export default function ParentEmploiDuTempsPage() {
 
         <CardContent>
           {loading ? (
-            <div className="py-12 text-center">
-              <div className="mx-auto inline-block h-8 w-8 animate-spin rounded-full border-4 border-current border-r-transparent" />
-              <p className="mt-4 text-muted-foreground">Chargement...</p>
-            </div>
+            <PageLoader label="Chargement de l'emploi du temps..." className="border-none" />
           ) : error ? (
             <div className="py-12 text-center">
               <AlertCircle className="mx-auto mb-4 h-12 w-12 text-red-500" />
