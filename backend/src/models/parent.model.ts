@@ -345,3 +345,42 @@ export async function syncParentsForStudent(params: {
 
   return results;
 }
+
+export async function linkExistingParentToStudent(params: {
+  studentId: string;
+  parentId: string;
+  relationType?: string | null;
+  isPrimary?: boolean;
+  receiveNotifications?: boolean;
+  canViewGrades?: boolean;
+  canViewAttendance?: boolean;
+  contactEmail?: string | null;
+}): Promise<void> {
+  const {
+    studentId,
+    parentId,
+    relationType = 'guardian',
+    isPrimary = true,
+    receiveNotifications = true,
+    canViewGrades = true,
+    canViewAttendance = true,
+    contactEmail = null,
+  } = params;
+
+  await upsertParentProfile({
+    parentId,
+    relationType,
+    isPrimaryContact: isPrimary,
+    canViewGrades,
+    canViewAttendance,
+    contactEmail: contactEmail || null,
+  });
+
+  await upsertStudentParentRelation({
+    studentId,
+    parentId,
+    relationType,
+    isPrimary,
+    receiveNotifications,
+  });
+}

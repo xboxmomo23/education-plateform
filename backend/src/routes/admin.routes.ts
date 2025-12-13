@@ -37,10 +37,11 @@ import {
   updateStaffStatusHandler,
   resendStaffInviteHandler,
   updateStaffClassesHandler,
+  searchParentsForAdminHandler,
 } from "../controllers/admin.controller";
 
 
-import { body } from "express-validator";
+import { body, query } from "express-validator";
 import { validateRequest } from "../middleware/validation.middleware";
 
 const router = Router();
@@ -262,6 +263,19 @@ router.post(
 
 router.post("/students/:userId/resend-invite", resendStudentInviteHandler);
 router.post("/students/:userId/resend-parent-invite", resendParentInviteHandler);
+
+router.get(
+  "/parents",
+  [
+    query("search").optional().isString().withMessage("search doit être une chaîne"),
+    query("limit")
+      .optional()
+      .isInt({ min: 1, max: 50 })
+      .withMessage("limit doit être un entier entre 1 et 50"),
+  ],
+  validateRequest,
+  searchParentsForAdminHandler
+);
 
 router.delete(
   "/student-class-changes/:changeId",

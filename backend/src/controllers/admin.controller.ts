@@ -8,7 +8,7 @@ import {
   generateHumanCode,
   generateLoginEmailFromName,
 } from "../utils/identifier.utils";
-import { syncParentsForStudent, SyncParentsResult } from "../models/parent.model";
+import { syncParentsForStudent, SyncParentsResult, linkExistingParentToStudent } from "../models/parent.model";
 import { ParentForStudentInput } from "../types";
 
 /**
@@ -236,6 +236,70 @@ function normalizeParentsPayload(rawParents: any): ParentForStudentInput[] {
   });
 
   return normalized;
+}
+
+export async function searchParentsForAdminHandler(req: Request, res: Response) {
+  try {
+    const { userId } = req.user!;
+    const estId = await getAdminEstablishmentId(userId);
+
+    if (!estId) {
+      return res.status(404).json({
+        success: false,
+        error: "Établissement introuvable pour cet administrateur",
+      });
+    }
+
+    const rawSearch =
+      typeof req.query.search === "string" ? req.query.search.trim() : "";
+    const limitParam =
+      typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 20;
+    const limit = Math.min(50, Math.max(1, Number.isNaN(limitParam) ? 20 : limitParam));
+
+    if (!rawSearch) {
+      return res.json({
+        success: true,
+        data: [],
+      });
+    }
+
+    const pattern = `%${rawSearch}%`;
+    const result = await pool.query(
+      `
+        SELECT 
+          u.id,
+          u.full_name,
+          u.email,
+          pp.contact_email,
+          COUNT(sp.student_id)::INT AS children_count
+        FROM users u
+        LEFT JOIN parent_profiles pp ON pp.user_id = u.id
+        LEFT JOIN student_parents sp ON sp.parent_id = u.id
+        WHERE u.role = 'parent'
+          AND u.establishment_id = $1
+          AND (
+            u.full_name ILIKE $2
+            OR u.email ILIKE $2
+            OR COALESCE(pp.contact_email, '') ILIKE $2
+          )
+        GROUP BY u.id, pp.contact_email
+        ORDER BY u.full_name ASC
+        LIMIT $3
+      `,
+      [estId, pattern, limit]
+    );
+
+    return res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error("Erreur searchParentsForAdminHandler:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Erreur lors de la recherche de parents",
+    });
+  }
 }
 
 interface ParentInviteInfo {
@@ -699,6 +763,7 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
     student_number,
     date_of_birth,
     parents,
+    existing_parent_id,
   } = req.body;
 
     if (!full_name) {
@@ -719,6 +784,45 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
 
     const establishmentName = await getEstablishmentName(estId);
     let parentsPayload = normalizeParentsPayload(parents);
+
+    let existingParentRow: { id: string; full_name: string; email: string | null } | null = null;
+    if (
+      typeof existing_parent_id === "string" &&
+      existing_parent_id.trim().length > 0
+    ) {
+      const existingParentId = existing_parent_id.trim();
+      const parentResult = await pool.query(
+        `
+          SELECT id, full_name, email, establishment_id
+          FROM users
+          WHERE id = $1
+            AND role = 'parent'
+          LIMIT 1
+        `,
+        [existingParentId]
+      );
+
+      if (parentResult.rowCount === 0) {
+        return res.status(404).json({
+          success: false,
+          error: "Parent sélectionné introuvable",
+        });
+      }
+
+      const parentRow = parentResult.rows[0];
+      if (parentRow.establishment_id !== estId) {
+        return res.status(403).json({
+          success: false,
+          error: "Ce parent appartient à un autre établissement",
+        });
+      }
+
+      existingParentRow = {
+        id: parentRow.id,
+        full_name: parentRow.full_name,
+        email: parentRow.email,
+      };
+    }
 
     let normalizedClassId: string | null = null;
     if (typeof class_id === "string" && class_id.trim().length > 0) {
@@ -833,7 +937,7 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
 
     const student = studentInsert.rows[0];
 
-    if (parentsPayload.length === 0 && contactEmail) {
+    if (!existingParentRow && parentsPayload.length === 0 && contactEmail) {
       parentsPayload = [
         {
           firstName: "Parent",
@@ -850,6 +954,7 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
 
     let parentResults: SyncParentsResult[] = [];
     let parentInvitesData: ParentInviteInfo[] = [];
+    let linkedExistingParent: { id: string; full_name: string; email: string | null } | null = null;
     if (parentsPayload.length > 0) {
       try {
         parentResults = await syncParentsForStudent({
@@ -863,6 +968,20 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
         }
         throw error;
       }
+    }
+
+    if (existingParentRow) {
+      await linkExistingParentToStudent({
+        studentId: user.id,
+        parentId: existingParentRow.id,
+        relationType: "guardian",
+        isPrimary: true,
+        receiveNotifications: true,
+        canViewGrades: true,
+        canViewAttendance: true,
+      });
+
+      linkedExistingParent = existingParentRow;
     }
 
     const invite = await createInviteTokenForUser({
@@ -884,8 +1003,9 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
       });
     }
 
-    if (parentResults.length > 0) {
-      for (const parentResult of parentResults) {
+    const parentsNeedingInvite = parentResults.filter((parent) => parent.isNewUser);
+    if (parentsNeedingInvite.length > 0) {
+      for (const parentResult of parentsNeedingInvite) {
         const invites = await sendParentInvitesForNewAccounts(
           [parentResult],
           establishmentName,
@@ -900,6 +1020,15 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
     const parentInviteUrls = parentInvitesData.map((invite) => invite.inviteUrl);
     const parentLoginEmails = parentInvitesData.map((invite) => invite.loginEmail);
     const smtpConfigured = isSmtpConfigured();
+    const parentsForResponse: SyncParentsResult[] = [...parentResults];
+    if (linkedExistingParent) {
+      parentsForResponse.push({
+        parentUserId: linkedExistingParent.id,
+        full_name: linkedExistingParent.full_name,
+        email: linkedExistingParent.email,
+        isNewUser: false,
+      });
+    }
 
     return res.status(201).json({
       success: true,
@@ -914,7 +1043,8 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
         },
         contact_email: contactEmail,
         inviteUrl: invite.inviteUrl,
-        parents: parentResults,
+        parents: parentsForResponse,
+        linkedExistingParent,
         parentInviteUrls,
         parentLoginEmails,
         smtpConfigured,

@@ -14,6 +14,8 @@ import {
   updateStudentClassApi,
   updateStudentStatusApi,
 } from "@/lib/api/students";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 
 interface ClassOption {
   id: string;
@@ -88,7 +90,26 @@ interface CreateStudentResponse {
     parentInviteUrls?: string[];
     parentLoginEmails?: string[];
     smtpConfigured?: boolean;
+    linkedExistingParent?: {
+      id: string;
+      full_name: string;
+      email: string | null;
+    } | null;
   };
+}
+
+interface ParentSearchResult {
+  id: string;
+  full_name: string;
+  email: string;
+  contact_email?: string | null;
+  children_count?: number;
+}
+
+interface SearchParentsResponse {
+  success: boolean;
+  data: ParentSearchResult[];
+  message?: string;
 }
 
 export default function AdminStudentsPage() {
@@ -132,6 +153,12 @@ export default function AdminStudentsPage() {
     parent_phone: "",
     parent_address: "",
   });
+  const [parentMode, setParentMode] = useState<"create" | "link">("create");
+  const [parentSearchQuery, setParentSearchQuery] = useState("");
+  const [parentSearchResults, setParentSearchResults] = useState<ParentSearchResult[]>([]);
+  const [parentSearchLoading, setParentSearchLoading] = useState(false);
+  const [parentSearchError, setParentSearchError] = useState<string | null>(null);
+  const [selectedExistingParent, setSelectedExistingParent] = useState<ParentSearchResult | null>(null);
   const [showOnlyNoClass, setShowOnlyNoClass] = useState(false);
   const [editingStudent, setEditingStudent] = useState<StudentItem | null>(null);
   const [editClassId, setEditClassId] = useState<string>("");
@@ -197,6 +224,52 @@ export default function AdminStudentsPage() {
     }
   }, [pendingTermOptions, applyTermId]);
 
+  useEffect(() => {
+    if (parentMode !== "link") {
+      setParentSearchResults([]);
+      setParentSearchError(null);
+      setParentSearchLoading(false);
+      return;
+    }
+
+    const query = parentSearchQuery.trim();
+    if (query.length < 2) {
+      setParentSearchResults([]);
+      setParentSearchError(null);
+      setParentSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setParentSearchLoading(true);
+    setParentSearchError(null);
+
+    apiFetch<SearchParentsResponse>(
+      `/admin/parents?search=${encodeURIComponent(query)}&limit=10`
+    )
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success) {
+          setParentSearchResults(res.data);
+        } else {
+          setParentSearchError(res.message || "Erreur lors de la recherche");
+        }
+      })
+      .catch((err: any) => {
+        if (cancelled) return;
+        setParentSearchError(err.message || "Erreur lors de la recherche");
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setParentSearchLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [parentMode, parentSearchQuery]);
+
   async function loadData() {
     try {
       setLoading(true);
@@ -259,6 +332,11 @@ export default function AdminStudentsPage() {
     setParentLoginEmails([]);
     setParentCopyFeedback(null);
     setSmtpConfigured(true);
+    setParentMode("create");
+    setParentSearchQuery("");
+    setParentSearchResults([]);
+    setParentSearchError(null);
+    setSelectedExistingParent(null);
     setIsModalOpen(true);
   }
 
@@ -289,6 +367,11 @@ export default function AdminStudentsPage() {
       return;
     }
 
+    if (parentMode === "link" && !selectedExistingParent) {
+      setSubmitError("Merci de sélectionner un parent existant ou de créer un nouveau parent.");
+      return;
+    }
+
     try {
       setIsSubmitting(true);
 
@@ -309,7 +392,9 @@ export default function AdminStudentsPage() {
       }
       const parentFirstName = form.parent_first_name.trim();
       const parentLastName = form.parent_last_name.trim();
-      if (parentFirstName && parentLastName) {
+      if (parentMode === "link" && selectedExistingParent) {
+        payload.existing_parent_id = selectedExistingParent.id;
+      } else if (parentFirstName && parentLastName) {
         const parentPayload: Record<string, unknown> = {
           firstName: parentFirstName,
           lastName: parentLastName,
@@ -386,6 +471,11 @@ export default function AdminStudentsPage() {
         parent_phone: "",
         parent_address: "",
       });
+      setParentMode("create");
+      setParentSearchQuery("");
+      setParentSearchResults([]);
+      setParentSearchError(null);
+      setSelectedExistingParent(null);
     } catch (err: any) {
       console.error(err);
       setSubmitError(err.message || "Erreur lors de la création");
@@ -1060,68 +1150,180 @@ export default function AdminStudentsPage() {
                 />
               </div>
 
-              <div className="rounded-md border border-dashed px-3 py-2">
-                <p className="text-xs font-semibold">Parent principal (optionnel)</p>
-                <p className="text-[11px] text-muted-foreground">
-                  Renseignez ces champs pour créer automatiquement un compte parent.
-                  Laissez-les vides pour utiliser le fallback actuel.
-                </p>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium">
-                      Prénom du parent
-                    </label>
-                    <input
-                      type="text"
-                      name="parent_first_name"
-                      value={form.parent_first_name}
-                      onChange={handleChange}
-                      className="w-full rounded-md border px-3 py-2 text-sm"
-                      placeholder="Prénom"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium">
-                      Nom du parent
-                    </label>
-                    <input
-                      type="text"
-                      name="parent_last_name"
-                      value={form.parent_last_name}
-                      onChange={handleChange}
-                      className="w-full rounded-md border px-3 py-2 text-sm"
-                      placeholder="Nom"
-                    />
+              <div className="rounded-md border border-dashed px-3 py-2 space-y-3">
+                <div>
+                  <p className="text-xs font-semibold">Gestion du parent principal</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Choisissez de créer un parent ou de lier un parent existant de votre établissement.
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <Button
+                      type="button"
+                      variant={parentMode === "create" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        setParentMode("create");
+                        setSelectedExistingParent(null);
+                        setParentSearchResults([]);
+                        setParentSearchQuery("");
+                      }}
+                    >
+                      Créer un parent
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={parentMode === "link" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setParentMode("link")}
+                    >
+                      Lier un parent existant
+                    </Button>
                   </div>
                 </div>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium">
-                      Téléphone parent (optionnel)
-                    </label>
-                    <input
-                      type="tel"
-                      name="parent_phone"
-                      value={form.parent_phone}
-                      onChange={handleChange}
-                      className="w-full rounded-md border px-3 py-2 text-sm"
-                      placeholder="+213..."
-                    />
+
+                {parentMode === "create" ? (
+                  <>
+                    <p className="text-[11px] text-muted-foreground">
+                      Renseignez ces champs pour créer automatiquement un compte parent. Laissez-les vides pour utiliser le fallback actuel.
+                    </p>
+                    <div className="mt-1 grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium">
+                          Prénom du parent
+                        </label>
+                        <input
+                          type="text"
+                          name="parent_first_name"
+                          value={form.parent_first_name}
+                          onChange={handleChange}
+                          className="w-full rounded-md border px-3 py-2 text-sm"
+                          placeholder="Prénom"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium">
+                          Nom du parent
+                        </label>
+                        <input
+                          type="text"
+                          name="parent_last_name"
+                          value={form.parent_last_name}
+                          onChange={handleChange}
+                          className="w-full rounded-md border px-3 py-2 text-sm"
+                          placeholder="Nom"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium">
+                          Téléphone parent (optionnel)
+                        </label>
+                        <input
+                          type="tel"
+                          name="parent_phone"
+                          value={form.parent_phone}
+                          onChange={handleChange}
+                          className="w-full rounded-md border px-3 py-2 text-sm"
+                          placeholder="+213..."
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium">
+                          Adresse parent (optionnel)
+                        </label>
+                        <input
+                          type="text"
+                          name="parent_address"
+                          value={form.parent_address}
+                          onChange={handleChange}
+                          className="w-full rounded-md border px-3 py-2 text-sm"
+                          placeholder="Adresse"
+                        />
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium">Rechercher un parent existant</Label>
+                    {selectedExistingParent ? (
+                      <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2">
+                        <div>
+                          <p className="text-sm font-medium">{selectedExistingParent.full_name}</p>
+                          <p className="text-xs text-muted-foreground">{selectedExistingParent.email}</p>
+                          {selectedExistingParent.contact_email && (
+                            <p className="text-[11px] text-muted-foreground">
+                              Contact&nbsp;: {selectedExistingParent.contact_email}
+                            </p>
+                          )}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedExistingParent(null);
+                            setParentSearchQuery("");
+                            setParentSearchResults([]);
+                          }}
+                        >
+                          Changer
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          type="text"
+                          value={parentSearchQuery}
+                          onChange={(e) => setParentSearchQuery(e.target.value)}
+                          className="w-full rounded-md border px-3 py-2 text-sm"
+                          placeholder="Nom ou email (min. 2 caractères)"
+                        />
+                        {parentSearchError && (
+                          <p className="text-xs text-destructive">{parentSearchError}</p>
+                        )}
+                        {parentSearchLoading && (
+                          <p className="text-xs text-muted-foreground">Recherche en cours...</p>
+                        )}
+                        {!parentSearchLoading &&
+                          parentSearchQuery.trim().length >= 2 &&
+                          !parentSearchError && (
+                            <>
+                              {parentSearchResults.length === 0 ? (
+                                <p className="text-xs text-muted-foreground">Aucun parent trouvé.</p>
+                              ) : (
+                                <div className="max-h-48 overflow-y-auto rounded-md border">
+                                  {parentSearchResults.map((parent) => (
+                                    <button
+                                      type="button"
+                                      key={parent.id}
+                                      onClick={() => setSelectedExistingParent(parent)}
+                                      className="flex w-full items-start justify-between border-b px-3 py-2 text-left hover:bg-muted/80 last:border-b-0"
+                                    >
+                                      <div>
+                                        <p className="text-sm font-medium">{parent.full_name}</p>
+                                        <p className="text-xs text-muted-foreground">{parent.email}</p>
+                                        {parent.contact_email && (
+                                          <p className="text-[11px] text-muted-foreground">
+                                            Contact&nbsp;: {parent.contact_email}
+                                          </p>
+                                        )}
+                                      </div>
+                                      {typeof parent.children_count === "number" && (
+                                        <span className="text-[11px] text-muted-foreground">
+                                          {parent.children_count} élève{parent.children_count > 1 ? "s" : ""}
+                                        </span>
+                                      )}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          )}
+                      </>
+                    )}
                   </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium">
-                      Adresse parent (optionnel)
-                    </label>
-                    <input
-                      type="text"
-                      name="parent_address"
-                      value={form.parent_address}
-                      onChange={handleChange}
-                      className="w-full rounded-md border px-3 py-2 text-sm"
-                      placeholder="Adresse"
-                    />
-                  </div>
-                </div>
+                )}
               </div>
 
               <div>
