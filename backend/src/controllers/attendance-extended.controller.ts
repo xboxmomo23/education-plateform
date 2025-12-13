@@ -89,18 +89,7 @@ export async function getAllAbsencesHandler(req: Request, res: Response) {
     const offset = (pageNum - 1) * limitNum;
 
     const classAssignments = assignedClassIds ?? [];
-    if ((role === 'teacher' || role === 'staff') && classAssignments.length === 0) {
-      return res.json({
-        success: true,
-        data: [],
-        meta: {
-          page: pageNum,
-          limit: limitNum,
-          total: 0,
-          totalPages: 0,
-        },
-      });
-    }
+    const hasClassScope = classAssignments.length > 0;
 
     const clauses: string[] = [
       "ar.status IN ('absent', 'late', 'excused')",
@@ -151,10 +140,12 @@ export async function getAllAbsencesHandler(req: Request, res: Response) {
       clauses.push(`c.teacher_id = $${paramIndex}`);
       params.push(userId);
       paramIndex++;
-      clauses.push(`cl.id = ANY($${paramIndex}::uuid[])`);
-      params.push(classAssignments);
-      paramIndex++;
-    } else if (role === 'staff') {
+      if (hasClassScope) {
+        clauses.push(`cl.id = ANY($${paramIndex}::uuid[])`);
+        params.push(classAssignments);
+        paramIndex++;
+      }
+    } else if (role === 'staff' && hasClassScope) {
       clauses.push(`cl.id = ANY($${paramIndex}::uuid[])`);
       params.push(classAssignments);
       paramIndex++;
@@ -254,16 +245,27 @@ export async function getAccessibleClassesHandler(req: Request, res: Response) {
       params = [userId];
     } else if (role === 'staff') {
       if (classAssignments.length === 0) {
-        return res.json({ success: true, data: [] });
+        if (!req.user?.establishmentId) {
+          return res.json({ success: true, data: [] });
+        }
+        query = `
+          SELECT cl.id, cl.label
+          FROM classes cl
+          WHERE cl.establishment_id = $1
+            AND cl.archived = false
+          ORDER BY cl.label
+        `;
+        params = [req.user.establishmentId];
+      } else {
+        query = `
+          SELECT cl.id, cl.label
+          FROM classes cl
+          WHERE cl.id = ANY($1::uuid[])
+            AND cl.archived = false
+          ORDER BY cl.label
+        `;
+        params = [classAssignments];
       }
-      query = `
-        SELECT cl.id, cl.label
-        FROM classes cl
-        WHERE cl.id = ANY($1::uuid[])
-          AND cl.archived = false
-        ORDER BY cl.label
-      `;
-      params = [classAssignments];
     } else if (role === 'teacher') {
       if (classAssignments.length === 0) {
         return res.json({ success: true, data: [] });
