@@ -27,6 +27,7 @@ import { getUserSession } from "@/lib/auth-new"
 import { messagesApi, InboxMessage } from "@/lib/api/messages"
 import { assignmentsApi, Assignment } from "@/lib/api/assignments"
 import { timetableApi, TimetableCourse } from "@/lib/api/timetable"
+import { attendanceApi } from "@/lib/api/attendance"
 import { 
   KpiCard,
   TodayCourses,
@@ -139,6 +140,28 @@ export default function TeacherDashboardPage() {
           .map(transformCourseToTodayCourse)
           .sort((a, b) => a.start_time.localeCompare(b.start_time))
       }
+
+      if (todayCoursesData.length > 0) {
+        try {
+          const statusRes = await attendanceApi.getSessionsStatus(todayCoursesData.map((course) => course.id))
+          if (statusRes.success && statusRes.data) {
+            todayCoursesData = todayCoursesData.map((course) => {
+              const status = statusRes.data[course.id]
+              if (!status) {
+                return course
+              }
+              return {
+                ...course,
+                has_attendance: status.has_attendance,
+                attendance_status: status.attendance_status,
+              }
+            })
+          }
+        } catch (statusError) {
+          console.error('Erreur récupération statut présence:', statusError)
+        }
+      }
+
       setTodayCourses(todayCoursesData)
 
       // Calculer la durée totale
@@ -149,9 +172,7 @@ export default function TeacherDashboardPage() {
       }, 0)
 
       // Compter les appels en attente
-      const pendingAttendance = todayCoursesData.filter(c => 
-        c.attendance_status === 'pending' || !c.has_attendance
-      ).length
+      const pendingAttendance = todayCoursesData.filter(c => !c.has_attendance).length
 
       // 2. Récupérer les devoirs du professeur
       const homeworkRes = await assignmentsApi.getTeacherAssignments({ status: 'published' })
@@ -206,9 +227,21 @@ export default function TeacherDashboardPage() {
       }
       setClasses(classesData)
 
-      // 5. Absences récentes (mock - à remplacer par vraie API)
-      // TODO: Implémenter l'API des absences pour le professeur
-      setRecentAbsences([])
+      // 5. Absences / retards récents
+      try {
+        const absencesRes = await attendanceApi.getTeacherRecentAbsences({
+          date: new Date().toISOString().slice(0, 10),
+          limit: 8,
+        })
+        if (absencesRes.success && absencesRes.data) {
+          setRecentAbsences(absencesRes.data)
+        } else {
+          setRecentAbsences([])
+        }
+      } catch (absError) {
+        console.error('Erreur absences récentes:', absError)
+        setRecentAbsences([])
+      }
 
       // Mettre à jour les KPIs
       setKpis({
@@ -479,6 +512,23 @@ export default function TeacherDashboardPage() {
                 <ClassesSummaryWidget 
                   classes={classes}
                   maxItems={5}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Absences / retards récents */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                  Absences & retards récents
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AbsenceSummaryWidget 
+                  absences={recentAbsences}
+                  maxItems={5}
+                  viewAllLink="/professeur/presence"
                 />
               </CardContent>
             </Card>

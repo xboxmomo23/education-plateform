@@ -113,6 +113,87 @@ export async function getSessionHandler(req: Request, res: Response) {
 }
 
 /**
+ * GET /api/attendance/sessions/status
+ * Récupérer l'état des présences pour plusieurs séances
+ */
+export async function getSessionsStatusListHandler(req: Request, res: Response) {
+  try {
+    const { userId, role } = req.user!;
+    if (role !== 'teacher') {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès réservé aux professeurs',
+      });
+    }
+
+    const instanceIdsParam = req.query.instanceIds;
+    if (!instanceIdsParam || typeof instanceIdsParam !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'instanceIds est requis',
+      });
+    }
+
+    const uuidRegex = /^[0-9a-fA-F-]{36}$/;
+    let instanceIds = instanceIdsParam
+      .split(',')
+      .map((id) => id.trim())
+      .filter((id) => uuidRegex.test(id));
+
+    if (instanceIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Aucun instanceId valide fourni',
+      });
+    }
+
+    if (instanceIds.length > 50) {
+      instanceIds = instanceIds.slice(0, 50);
+    }
+
+    const rows = await AttendanceModel.getSessionsStatusByInstanceIds(userId, instanceIds);
+    const map: Record<
+      string,
+      { has_attendance: boolean; attendance_status: 'pending' | 'partial' | 'completed'; session_id?: string | null }
+    > = {};
+
+    instanceIds.forEach((id) => {
+      map[id] = {
+        has_attendance: false,
+        attendance_status: 'pending',
+      };
+    });
+
+    rows.forEach((row) => {
+      const hasAttendance = row.has_attendance;
+      let attendanceStatus: 'pending' | 'partial' | 'completed' = 'pending';
+      if (row.session_status === 'closed' || row.session_status === 'validated') {
+        attendanceStatus = 'completed';
+      } else if (hasAttendance) {
+        attendanceStatus = 'partial';
+      }
+
+      map[row.instance_id] = {
+        has_attendance: hasAttendance,
+        attendance_status: attendanceStatus,
+        session_id: row.session_id,
+      };
+    });
+
+    return res.json({
+      success: true,
+      data: map,
+    });
+  } catch (error) {
+    console.error('Erreur getSessionsStatusListHandler:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la récupération des statuts',
+    });
+  }
+}
+
+/**
  * POST /api/attendance/session/:sessionId/close
  * Fermer une session de présence
  */

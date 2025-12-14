@@ -1,4 +1,5 @@
 import { apiCall } from './base';
+import type { AbsenceAlert } from './dashboard';
 
 // ============================================
 // TYPES
@@ -65,6 +66,12 @@ export interface TeacherWeekCourse {
   absent_count: number;
   late_count: number;
   total_students: number;
+}
+
+export interface SessionStatusSummary {
+  has_attendance: boolean;
+  attendance_status: 'pending' | 'partial' | 'completed';
+  session_id?: string | null;
 }
 
 export interface AttendanceRecord {
@@ -188,6 +195,18 @@ export const attendanceApi = {
       params.append('teacherId', teacherId);
     }
     return apiCall<TeacherWeekCourse[]>(`/attendance/week?${params.toString()}`);
+  },
+
+  /**
+   * Récupérer l'état de plusieurs séances (présence effectuée ou non)
+   */
+  async getSessionsStatus(instanceIds: string[]) {
+    const params = new URLSearchParams({
+      instanceIds: instanceIds.join(','),
+    });
+    return apiCall<Record<string, SessionStatusSummary>>(
+      `/attendance/sessions/status?${params.toString()}`
+    );
   },
 
   // ============================================
@@ -396,6 +415,20 @@ export const attendanceApi = {
    */
   async getAccessibleClasses() {
     return apiCall<ClassOption[]>('/attendance/classes');
+  },
+
+  /**
+   * Absences / retards récents pour un professeur
+   */
+  async getTeacherRecentAbsences(options?: { date?: string; limit?: number; days?: number }) {
+    const params = new URLSearchParams();
+    if (options?.date) params.append('date', options.date);
+    if (options?.limit) params.append('limit', options.limit.toString());
+    if (options?.days) params.append('days', options.days.toString());
+    const query = params.toString();
+    return apiCall<AbsenceAlert[]>(
+      `/attendance/teacher/recent${query ? `?${query}` : ''}`
+    );
   },
 
   /**

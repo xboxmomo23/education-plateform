@@ -222,6 +222,47 @@ export async function getAllAbsencesHandler(req: Request, res: Response) {
 }
 
 /**
+ * GET /api/attendance/teacher/recent
+ * Récupérer les absences/retards récents pour un professeur
+ */
+export async function getTeacherRecentAbsencesHandler(req: Request, res: Response) {
+  try {
+    const { userId, role } = req.user!;
+    if (role !== 'teacher') {
+      return res.status(403).json({
+        success: false,
+        error: 'Accès réservé aux professeurs',
+      });
+    }
+
+    const { date, limit, days } = req.query;
+    const targetDate = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)
+      ? date
+      : new Date().toISOString().slice(0, 10);
+
+    const limitNum = limit ? Math.min(Math.max(parseInt(limit as string, 10) || 5, 1), 20) : 8;
+    const daysNum = days ? Math.min(Math.max(parseInt(days as string, 10) || 7, 1), 14) : 7;
+
+    const data = await AttendanceModel.getRecentTeacherAbsences(userId, {
+      date: targetDate,
+      days: daysNum,
+      limit: limitNum,
+    });
+
+    return res.json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    console.error('Erreur getTeacherRecentAbsencesHandler:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Erreur lors de la récupération des absences',
+    });
+  }
+}
+
+/**
  * GET /api/attendance/classes
  * Récupérer les classes accessibles à l'utilisateur (pour les filtres)
  */

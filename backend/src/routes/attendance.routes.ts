@@ -11,6 +11,7 @@ import {
   getStudentHistoryHandler,
   getStudentStatsHandler,
   checkSessionExistsHandler,
+  getSessionsStatusListHandler,
 } from '../controllers/attendance.controller';
 import {
   getMyHistoryHandler,
@@ -18,7 +19,8 @@ import {
   getAccessibleClassesHandler,
   justifyAbsenceHandler,
   getClassAttendanceStatsHandler,
-  updateRecordStatusHandler
+  updateRecordStatusHandler,
+  getTeacherRecentAbsencesHandler,
 } from '../controllers/attendance-extended.controller';
 
 const router = Router();
@@ -82,6 +84,15 @@ router.get(
   param('instanceId').isUUID(),
   validateRequest,
   getSessionHandler
+);
+
+router.get(
+  '/sessions/status',
+  authenticate,
+  authorize('teacher'),
+  query('instanceIds').isString().withMessage('instanceIds requis'),
+  validateRequest,
+  getSessionsStatusListHandler
 );
 
 router.post(
@@ -175,6 +186,17 @@ router.get(
   authenticate,
   authorize('teacher', 'staff', 'admin'),
   getAccessibleClassesHandler
+);
+
+router.get(
+  '/teacher/recent',
+  authenticate,
+  authorize('teacher'),
+  query('date').optional().matches(/^\d{4}-\d{2}-\d{2}$/),
+  query('limit').optional().isInt({ min: 1, max: 20 }),
+  query('days').optional().isInt({ min: 1, max: 14 }),
+  validateRequest,
+  getTeacherRecentAbsencesHandler
 );
 
 router.put(
