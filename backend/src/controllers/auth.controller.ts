@@ -34,6 +34,7 @@ import {
   generateTemporaryPassword,
 } from '../utils/auth.utils';
 import { LoginResponse, RegisterRequest, UserRole, User, ParentChildSummary } from '../types';
+import { logAuditEvent } from '../services/audit.service';
 
 
 
@@ -78,6 +79,15 @@ export async function login(req: Request, res: Response): Promise<void> {
     // Vérifier si le compte est bloqué
     const locked = await isAccountLocked(user.id);
     if (locked) {
+      await logAuditEvent({
+        req,
+        establishmentId: user.establishment_id || undefined,
+        actorUserId: user.id,
+        actorRole: user.role,
+        actorName: user.full_name,
+        action: 'AUTH_LOGIN_FAILED',
+        metadata: { reason: 'account_locked', email },
+      });
       res.status(403).json({
         success: false,
         error: `Compte temporairement bloqué suite à trop de tentatives échouées. Réessayez dans ${LOCK_DURATION_MINUTES} minutes.`,
@@ -100,6 +110,15 @@ export async function login(req: Request, res: Response): Promise<void> {
           success: false,
           error: `Trop de tentatives échouées. Compte bloqué pour ${LOCK_DURATION_MINUTES} minutes.`,
         });
+        await logAuditEvent({
+          req,
+          establishmentId: user.establishment_id || undefined,
+          actorUserId: user.id,
+          actorRole: user.role,
+          actorName: user.full_name,
+          action: 'AUTH_LOGIN_FAILED',
+          metadata: { reason: 'too_many_attempts', email },
+        });
         return;
       }
 
@@ -108,11 +127,29 @@ export async function login(req: Request, res: Response): Promise<void> {
         error: 'Email ou mot de passe incorrect',
         remaining_attempts: MAX_FAILED_ATTEMPTS - failedAttempts,
       });
+      await logAuditEvent({
+        req,
+        establishmentId: user.establishment_id || undefined,
+        actorUserId: user.id,
+        actorRole: user.role,
+        actorName: user.full_name,
+        action: 'AUTH_LOGIN_FAILED',
+        metadata: { reason: 'invalid_password', email },
+      });
       return;
     }
 
     // Vérifier si le compte est actif
     if (!user.active) {
+      await logAuditEvent({
+        req,
+        establishmentId: user.establishment_id || undefined,
+        actorUserId: user.id,
+        actorRole: user.role,
+        actorName: user.full_name,
+        action: 'AUTH_LOGIN_FAILED',
+        metadata: { reason: 'inactive_account', email },
+      });
       res.status(403).json({
         success: false,
         error: 'Compte désactivé. Contactez l\'administrateur.',
@@ -178,6 +215,15 @@ export async function login(req: Request, res: Response): Promise<void> {
     if (parentChildren) {
       response.children = parentChildren;
     }
+
+    await logAuditEvent({
+      req,
+      establishmentId: user.establishment_id || undefined,
+      actorUserId: user.id,
+      actorRole: user.role,
+      actorName: user.full_name,
+      action: 'AUTH_LOGIN_SUCCESS',
+    });
 
     res.status(200).json(response);
   } catch (error) {
@@ -363,6 +409,15 @@ export async function requestPasswordReset(req: Request, res: Response): Promise
       });
     }
 
+    await logAuditEvent({
+      req,
+      establishmentId: user.establishment_id || undefined,
+      actorUserId: user.id,
+      actorRole: user.role,
+      actorName: user.full_name,
+      action: 'AUTH_RESET_REQUESTED',
+      metadata: { email: normalizedEmail },
+    });
     res.status(200).json(genericResponse);
   } catch (error) {
     console.error('Erreur lors de la demande de réinitialisation:', error);
@@ -434,6 +489,15 @@ export async function resetPassword(req: Request, res: Response): Promise<void> 
       `,
       [resetEntry.id]
     );
+
+    await logAuditEvent({
+      req,
+      establishmentId: user.establishment_id || undefined,
+      actorUserId: user.id,
+      actorRole: user.role,
+      actorName: user.full_name,
+      action: 'AUTH_RESET_COMPLETED',
+    });
 
     res.status(200).json({
       success: true,
@@ -567,6 +631,15 @@ export async function acceptInvite(req: Request, res: Response): Promise<void> {
     if (parentChildren && parentChildren.length > 0) {
       responseBody.children = parentChildren;
     }
+
+    await logAuditEvent({
+      req,
+      establishmentId: user.establishment_id || undefined,
+      actorUserId: user.id,
+      actorRole: user.role,
+      actorName: user.full_name,
+      action: 'AUTH_INVITE_ACCEPTED',
+    });
 
     res.status(200).json(responseBody);
   } catch (error) {
@@ -900,6 +973,20 @@ export async function sendInvite(req: Request, res: Response): Promise<void> {
     }
 
     const invite = await createInviteTokenForUser(user);
+
+    await logAuditEvent({
+      req,
+      establishmentId: user.establishment_id || undefined,
+      actorUserId: user.id,
+      actorRole: user.role,
+      actorName: user.full_name,
+      action: 'AUTH_INVITE_SENT',
+      metadata: {
+        roleTarget: user.role,
+        loginEmail: user.email,
+        toEmail: user.email,
+      },
+    });
 
     res.status(200).json({
       success: true,

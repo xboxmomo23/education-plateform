@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import PDFDocument from 'pdfkit';
 import pool from '../config/database';
 import { TimetableModel, TimetableInstanceModel, TimetableInstance } from '../models/timetable.model';
+import { logAuditEvent } from '../services/audit.service';
 
 const DAY_LABELS: Record<number, string> = {
   1: 'Dimanche',
@@ -1334,6 +1335,14 @@ export async function exportClassTimetablePdfHandler(req: Request, res: Response
         theme: themeParam,
       });
     }
+
+    await logAuditEvent({
+      req,
+      action: 'TIMETABLE_PDF_EXPORTED',
+      entityType: 'class',
+      entityId: classId,
+      metadata: { weekStart: weekStartDate, format: formatParam, theme: themeParam },
+    });
 
     doc.end();
   } catch (error) {

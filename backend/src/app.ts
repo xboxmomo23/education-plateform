@@ -27,6 +27,7 @@ import staffRoutes from './routes/staff.routes';
 import staffAbsencesRoutes from './routes/staff-absences.routes';
 import dashboardStaffRoutes from './routes/dashboard-staff.routes';
 import teacherRoutes from './routes/teacher.routes';
+import auditRoutes from './routes/audit.routes';
 import { demoReadOnlyGuard, demoDataMiddleware } from './middleware/demo.middleware';
 
 
@@ -114,6 +115,7 @@ app.use('/api/staff', staffRoutes);
 app.use('/api/dashboard/staff', dashboardStaffRoutes);
 app.use('/api/staff/absences', staffAbsencesRoutes);
 app.use('/api/teacher', teacherRoutes);
+app.use('/api/admin/audit', auditRoutes);
 
 
 // Route classes

@@ -25,6 +25,7 @@ import {
   getClassAverages,
   getChildrenGrades,
 } from '../models/grade.model';
+import { logAuditEvent } from '../services/audit.service';
 import { findTermById } from '../models/term.model';
 import { UserRole } from '../types';
 
@@ -114,6 +115,14 @@ export async function createEvaluationHandler(req: Request, res: Response): Prom
       description,
       createdBy: req.user.userId,
       establishmentId,
+    });
+
+    await logAuditEvent({
+      req,
+      action: 'EVALUATION_CREATED',
+      entityType: 'evaluation',
+      entityId: evaluation.id,
+      metadata: { courseId, termId },
     });
 
     res.status(201).json({
@@ -302,6 +311,13 @@ export async function updateEvaluationHandler(req: Request, res: Response): Prom
       return;
     }
 
+    await logAuditEvent({
+      req,
+      action: 'EVALUATION_UPDATED',
+      entityType: 'evaluation',
+      entityId: updatedEvaluation.id,
+    });
+
     res.json({
       success: true,
       message: 'Évaluation modifiée avec succès',
@@ -350,6 +366,13 @@ export async function deleteEvaluationHandler(req: Request, res: Response): Prom
       });
       return;
     }
+
+    await logAuditEvent({
+      req,
+      action: 'EVALUATION_DELETED',
+      entityType: 'evaluation',
+      entityId: id,
+    });
 
     res.json({
       success: true,
@@ -418,6 +441,14 @@ export async function createOrUpdateGradesHandler(req: Request, res: Response): 
 
     // Créer ou mettre à jour les notes
     const createdGrades = await createGrades(gradeData);
+
+    await logAuditEvent({
+      req,
+      action: 'GRADE_CREATED',
+      entityType: 'evaluation',
+      entityId: evaluationId,
+      metadata: { count: createdGrades.length },
+    });
 
     res.status(201).json({
       success: true,
@@ -491,6 +522,13 @@ export async function updateGradeHandler(req: Request, res: Response): Promise<v
       return;
     }
 
+    await logAuditEvent({
+      req,
+      action: 'GRADE_UPDATED',
+      entityType: 'grade',
+      entityId: id,
+    });
+
     res.json({
       success: true,
       message: 'Note modifiée avec succès',
@@ -555,6 +593,13 @@ export async function deleteGradeHandler(req: Request, res: Response): Promise<v
       });
       return;
     }
+
+    await logAuditEvent({
+      req,
+      action: 'GRADE_DELETED',
+      entityType: 'grade',
+      entityId: id,
+    });
 
     res.json({
       success: true,

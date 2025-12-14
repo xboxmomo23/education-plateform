@@ -193,6 +193,11 @@ export default function AdminDashboardPage() {
               description="comptes staff a créer"
               href="/admin/staff"
             />
+            <QuickLink
+              title="Journal d'audit"
+              description="Consultez les actions sensibles et exports."
+              href="/admin/audit"
+            />
           </section>
         </>
       )}

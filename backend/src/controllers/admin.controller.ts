@@ -11,6 +11,7 @@ import {
 import { syncParentsForStudent, SyncParentsResult, linkExistingParentToStudent, recomputeParentActiveStatus } from "../models/parent.model";
 import { ParentForStudentInput } from "../types";
 import { getEstablishmentSettings } from "../models/establishmentSettings.model";
+import { logAuditEvent } from "../services/audit.service";
 
 /**
  * Helper : récupère l'établissement de l'admin connecté
@@ -960,6 +961,18 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
           establishmentId: estId,
           parents: parentsPayload,
         });
+        for (const parent of parentResults) {
+          if (parent.isNewUser) {
+            await logAuditEvent({
+              req,
+              establishmentId: estId,
+              action: "PARENT_CREATED",
+              entityType: "user",
+              entityId: parent.parentUserId,
+              metadata: { studentId: user.id },
+            });
+          }
+        }
       } catch (error) {
         if (handleParentSyncError(res, error)) {
           return;
@@ -980,6 +993,14 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
       });
 
       linkedExistingParent = existingParentRow;
+      await logAuditEvent({
+        req,
+        establishmentId: estId,
+        action: "PARENT_LINKED_TO_STUDENT",
+        entityType: "user",
+        entityId: existingParentRow.id,
+        metadata: { studentId: user.id },
+      });
     }
 
     const invite = await createInviteTokenForUser({
@@ -999,6 +1020,14 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
       }).catch((err) => {
         console.error("[MAIL] Erreur envoi email d'invitation élève:", err);
       });
+      await logAuditEvent({
+        req,
+        establishmentId: estId,
+        action: "AUTH_INVITE_SENT",
+        entityType: "user",
+        entityId: user.id,
+        metadata: { roleTarget: "student", loginEmail: user.email, toEmail: targetEmail },
+      });
     }
 
     const parentsNeedingInvite = parentResults.filter((parent) => parent.isNewUser);
@@ -1011,6 +1040,16 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
         );
         if (invites.length > 0) {
           parentInvitesData = parentInvitesData.concat(invites);
+          for (const inviteInfo of invites) {
+            await logAuditEvent({
+              req,
+              establishmentId: estId,
+              action: "AUTH_INVITE_SENT",
+              entityType: "user",
+              entityId: inviteInfo.parentUserId,
+              metadata: { roleTarget: "parent", loginEmail: inviteInfo.loginEmail, toEmail: inviteInfo.targetEmail },
+            });
+          }
         }
       }
     }
@@ -1027,6 +1066,15 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
         isNewUser: false,
       });
     }
+
+    await logAuditEvent({
+      req,
+      establishmentId: estId,
+      action: "STUDENT_CREATED",
+      entityType: "user",
+      entityId: user.id,
+      metadata: { classId: normalizedClassId, studentNumber: finalStudentNumber },
+    });
 
     return res.status(201).json({
       success: true,
@@ -1121,6 +1169,19 @@ export async function updateStudentStatusHandler(req: Request, res: Response) {
         autoDisabledParents.push(parentId);
       }
     }
+
+    await logAuditEvent({
+      req,
+      establishmentId: estId,
+      action: "STUDENT_STATUS_UPDATED",
+      entityType: "user",
+      entityId: targetUserId,
+      metadata: {
+        active,
+        impactedParentsCount: impactedParents.size,
+        autoDisabledParents,
+      },
+    });
 
     return res.json({
       success: true,
@@ -1230,6 +1291,18 @@ export async function updateStudentClassHandler(req: Request, res: Response) {
           establishmentId: estId,
           parents: parentsPayload,
         });
+        for (const parent of parentResults) {
+          if (parent.isNewUser) {
+            await logAuditEvent({
+              req,
+              establishmentId: estId,
+              action: "PARENT_CREATED",
+              entityType: "user",
+              entityId: parent.parentUserId,
+              metadata: { studentId: targetUserId },
+            });
+          }
+        }
       } catch (error) {
         if (handleParentSyncError(res, error)) {
           return;
@@ -1243,11 +1316,25 @@ export async function updateStudentClassHandler(req: Request, res: Response) {
       if (shouldInviteParents) {
         const establishmentName = await getEstablishmentName(estId);
         for (const parentResult of parentResults) {
-          await sendParentInvitesForNewAccounts(
+          const invites = await sendParentInvitesForNewAccounts(
             [parentResult],
             establishmentName,
             parentResult.contactEmailOverride || undefined
           );
+          for (const inviteInfo of invites) {
+            await logAuditEvent({
+              req,
+              establishmentId: estId,
+              action: "AUTH_INVITE_SENT",
+              entityType: "user",
+              entityId: inviteInfo.parentUserId,
+              metadata: {
+                roleTarget: "parent",
+                loginEmail: inviteInfo.loginEmail,
+                toEmail: inviteInfo.targetEmail,
+              },
+            });
+          }
         }
       }
     }
@@ -2110,7 +2197,23 @@ export async function createStaffForAdminHandler(req: Request, res: Response) {
       }).catch((err) => {
         console.error("[MAIL] Erreur envoi email d'invitation staff:", err);
       });
+      await logAuditEvent({
+        req,
+        establishmentId: estId,
+        action: "AUTH_INVITE_SENT",
+        entityType: "user",
+        entityId: newUser.id,
+        metadata: { roleTarget: "staff", loginEmail: newUser.email, toEmail: targetEmail },
+      });
     }
+
+    await logAuditEvent({
+      req,
+      establishmentId: estId,
+      action: "STAFF_CREATED",
+      entityType: "user",
+      entityId: newUser.id,
+    });
 
     return res.status(201).json({
       success: true,
@@ -2682,6 +2785,15 @@ export async function createTeacherForAdminHandler(req: Request, res: Response) 
       }).catch((err) => {
         console.error("[MAIL] Erreur envoi email d'invitation professeur:", err);
       });
+
+      await logAuditEvent({
+        req,
+        establishmentId: estId,
+        action: "AUTH_INVITE_SENT",
+        entityType: "user",
+        entityId: user.id,
+        metadata: { roleTarget: "teacher", loginEmail: user.email, toEmail: targetEmail },
+      });
     }
 
     const teacherPayload = {
@@ -2697,6 +2809,15 @@ export async function createTeacherForAdminHandler(req: Request, res: Response) 
       contact_email: profile.contact_email,
       assigned_class_ids: [],
     };
+
+    await logAuditEvent({
+      req,
+      establishmentId: estId,
+      action: "TEACHER_CREATED",
+      entityType: "user",
+      entityId: user.id,
+      metadata: { employeeNo: profile.employee_no || finalEmployeeNo },
+    });
 
     return res.status(201).json({
       success: true,

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AttendanceModel } from '../models/attendance.model';
 import pool from '../config/database';
+import { logAuditEvent } from '../services/audit.service';
 
 // ============================================
 // HANDLERS SUPPLÉMENTAIRES - ABSENCES
@@ -387,6 +388,13 @@ export async function justifyAbsenceHandler(req: Request, res: Response) {
       });
     }
 
+    await logAuditEvent({
+      req,
+      action: 'ATTENDANCE_JUSTIFIED',
+      entityType: 'attendance_record',
+      entityId: recordId,
+    });
+
     return res.json({
       success: true,
       message: 'Absence justifiée',
@@ -489,6 +497,17 @@ export async function updateRecordStatusHandler(req: Request, res: Response) {
     }
 
     console.log(`✅ Statut modifié: ${recordId} → ${status}`);
+
+    const action =
+      status === 'present' ? 'ATTENDANCE_REMOVED' : 'ATTENDANCE_STATUS_CHANGED';
+
+    await logAuditEvent({
+      req,
+      action,
+      entityType: 'attendance_record',
+      entityId: recordId,
+      metadata: { newStatus: status },
+    });
 
     return res.json({
       success: true,

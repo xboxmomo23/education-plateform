@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import pool from '../config/database';
 import { AssignmentModel, AssignmentFilters, AssignmentStatus } from '../models/assignment.model';
 import { assertParentCanAccessStudent } from '../models/parent.model';
+import { logAuditEvent } from '../services/audit.service';
 
 // ============================================
 // HANDLERS - ENSEIGNANTS (TEACHERS/STAFF)
@@ -160,6 +161,15 @@ export async function createAssignmentHandler(req: Request, res: Response) {
 
     console.log('✅ Devoir créé:', assignment.id);
 
+    await logAuditEvent({
+      req,
+      action: 'ASSIGNMENT_CREATED',
+      establishmentId,
+      entityType: 'assignment',
+      entityId: assignment.id,
+      metadata: { courseId: course_id, due_at },
+    });
+
     return res.status(201).json({
       success: true,
       message: 'Devoir créé avec succès',
@@ -252,6 +262,14 @@ export async function updateAssignmentHandler(req: Request, res: Response) {
 
     console.log('✅ Devoir mis à jour:', assignment.id);
 
+    await logAuditEvent({
+      req,
+      action: 'ASSIGNMENT_UPDATED',
+      entityType: 'assignment',
+      entityId: assignment.id,
+      metadata: { assignmentId, fieldsUpdated: Object.keys(updateData) },
+    });
+
     return res.json({
       success: true,
       message: 'Devoir mis à jour avec succès',
@@ -313,6 +331,14 @@ export async function deleteAssignmentHandler(req: Request, res: Response) {
     await AssignmentModel.updateByTeacher(assignmentId, userId, { status: 'archived' });
 
     console.log('✅ Devoir archivé:', assignmentId);
+
+    await logAuditEvent({
+      req,
+      action: 'ASSIGNMENT_DELETED',
+      entityType: 'assignment',
+      entityId: assignmentId,
+      metadata: { classId: existingAssignment.class_id },
+    });
 
     return res.json({
       success: true,

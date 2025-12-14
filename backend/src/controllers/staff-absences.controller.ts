@@ -7,6 +7,7 @@ import {
   StaffAbsenceHistoryItem,
 } from '../models/dashboard-staff.model';
 import { getEstablishmentSettings } from '../models/establishmentSettings.model';
+import { logAuditEvent } from '../services/audit.service';
 
 type HistoryQuery = {
   filters: StaffAbsenceHistoryFilters;
@@ -224,6 +225,13 @@ export async function exportStaffAbsencesCsvHandler(req: Request, res: Response)
       .join('\n');
 
     const filename = `absences_${filters.from || filters.to || new Date().toISOString().slice(0, 10)}.csv`;
+    await logAuditEvent({
+      req,
+      establishmentId,
+      action: 'STAFF_ABSENCES_EXPORT_CSV',
+      metadata: filters,
+    });
+
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     return res.send(`\uFEFF${csvContent}`);
@@ -413,6 +421,13 @@ export async function exportStaffAbsencesPdfHandler(req: Request, res: Response)
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     doc.pipe(res);
+
+    await logAuditEvent({
+      req,
+      establishmentId,
+      action: 'STAFF_ABSENCES_EXPORT_PDF',
+      metadata: filters,
+    });
 
     drawPdfHeader(doc, settings.displayName, settings.schoolYear, filters, classLabel);
 
