@@ -132,7 +132,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
           { icon: FileText, label: "Devoirs", href: "/professeur/devoirs" },
           { icon: Calendar, label: "Emploi du temps", href: "/professeur/emplois-du-temps" },
           { icon: Mail, label: "Messages", href: "/professeur/messages", badge: unreadCount > 0 ? unreadCount : undefined },  // ✨ NOUVEAU
-          { icon: BookOpen, label: "Mes classes", href: "#" },
+          { icon: BookOpen, label: "Mes classes", href: "/professeur/classes" },
           { icon: Users, label: "Élèves", href: "#" },
         ]
       case "staff":

@@ -24,6 +24,8 @@ import parentMessagesRoutes from './routes/parent-messages.routes';
 import parentAttendanceRoutes from './routes/parent-attendance.routes';
 import parentDashboardRoutes from './routes/parent-dashboard.routes';
 import staffRoutes from './routes/staff.routes';
+import dashboardStaffRoutes from './routes/dashboard-staff.routes';
+import teacherRoutes from './routes/teacher.routes';
 import { demoReadOnlyGuard, demoDataMiddleware } from './middleware/demo.middleware';
 
 
@@ -108,6 +110,8 @@ app.use('/api/parent', parentMessagesRoutes);
 app.use('/api/parent', parentAttendanceRoutes);
 app.use('/api/parent', parentDashboardRoutes);
 app.use('/api/staff', staffRoutes);
+app.use('/api/dashboard/staff', dashboardStaffRoutes);
+app.use('/api/teacher', teacherRoutes);
 
 
 // Route classes

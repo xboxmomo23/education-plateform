@@ -28,10 +28,9 @@ import {
 import Link from "next/link"
 import { getUserSession } from "@/lib/auth-new"
 import { messagesApi, InboxMessage } from "@/lib/api/messages"
-import { timetableApi } from "@/lib/api/timetable"
+import { dashboardStaffApi } from "@/lib/api/dashboard-staff"
 import { 
   KpiCard,
-  AbsenceAlertsList,
   ClassesSummaryWidget,
   QuickActionsGrid,
 } from "@/components/dashboard"
@@ -53,6 +52,8 @@ interface StaffStats {
   lateToday: number
   notJustified: number
   unreadMessages: number
+  studentsTotal: number
+  classesCount: number
 }
 
 // =========================
@@ -72,11 +73,13 @@ export default function StaffDashboardPage() {
     lateToday: 0,
     notJustified: 0,
     unreadMessages: 0,
+    studentsTotal: 0,
+    classesCount: 0,
   })
   const [pendingAbsences, setPendingAbsences] = useState<AbsenceAlert[]>([])
   const [classes, setClasses] = useState<ClassSummary[]>([])
   const [recentMessages, setRecentMessages] = useState<InboxMessage[]>([])
-  const [dailyEvents, setDailyEvents] = useState<DailyEvent[]>([])
+  const [dailyEvents] = useState<DailyEvent[]>([])
 
   // Charger les données
   const loadData = useCallback(async (showLoader = true) => {
@@ -91,14 +94,64 @@ export default function StaffDashboardPage() {
         return
       }
 
-      // 1. Récupérer les messages non lus
-      let unreadCount = 0
+      // 1. KPI + pending absences + classes summary
+      const [kpiRes, pendingRes, classesRes] = await Promise.all([
+        dashboardStaffApi.getKpis(),
+        dashboardStaffApi.getPendingAbsences(8),
+        dashboardStaffApi.getClassesSummary(),
+      ])
+
+      if (kpiRes.success && kpiRes.data) {
+        setStats({
+          presentToday: kpiRes.data.present_today,
+          absentToday: kpiRes.data.absent_today,
+          lateToday: kpiRes.data.late_today,
+          notJustified: kpiRes.data.not_justified_today,
+          unreadMessages: kpiRes.data.unread_messages,
+          studentsTotal: kpiRes.data.students_total,
+          classesCount: kpiRes.data.classes_count,
+        })
+      }
+
+      if (pendingRes.success && Array.isArray(pendingRes.data)) {
+        const pending = pendingRes.data.map((absence) => ({
+          id: absence.id,
+          student_id: absence.student_id,
+          student_name: absence.student_name,
+          student_number: absence.student_number || undefined,
+          class_label: absence.class_label,
+          class_id: absence.class_id,
+          subject_name: absence.subject_name,
+          subject_color: absence.subject_color || '#6b7280',
+          session_date: absence.session_date,
+          start_time: absence.start_time,
+          end_time: absence.end_time,
+          status: absence.status,
+          late_minutes: absence.late_minutes || undefined,
+          justified: absence.justified,
+        }))
+        setPendingAbsences(pending)
+      } else {
+        setPendingAbsences([])
+      }
+
+      if (classesRes.success && Array.isArray(classesRes.data)) {
+        const mappedClasses = classesRes.data.map<ClassSummary>((classe) => ({
+          id: classe.class_id,
+          label: classe.class_label,
+          level: classe.level || '',
+          student_count: classe.students_count,
+          absent_today: classe.absent_today,
+          late_today: classe.late_today,
+        }))
+        setClasses(mappedClasses)
+      } else {
+        setClasses([])
+      }
+
+      // 2. Récupérer les messages récents (lecture)
       let messagesData: InboxMessage[] = []
       try {
-        const messagesRes = await messagesApi.getUnreadCount()
-        if (messagesRes.success) {
-          unreadCount = messagesRes.data.count
-        }
         const inboxRes = await messagesApi.getInbox({ limit: 5 })
         if (inboxRes.success) {
           messagesData = inboxRes.data
@@ -107,49 +160,6 @@ export default function StaffDashboardPage() {
         console.error('Erreur messages:', e)
       }
       setRecentMessages(messagesData)
-
-      // 2. Récupérer les classes du staff
-      let classesData: ClassSummary[] = []
-      try {
-        const classesRes = await timetableApi.getStaffClasses()
-        if (classesRes.success && Array.isArray(classesRes.data)) {
-          classesData = classesRes.data.map((c: any) => ({
-            id: c.id || c.class_id || String(Math.random()),
-            label: c.label || c.class_label || c.name || 'Classe inconnue',
-            level: c.level || c.class_level || '',
-            student_count: c.student_count || c.students_count || 0,
-            absent_today: c.absent_today || 0,
-            late_today: c.late_today || 0,
-          }))
-        }
-      } catch (e) {
-        console.error('Erreur classes:', e)
-        // On continue sans les classes
-      }
-      setClasses(classesData)
-
-      // 3. Récupérer les absences non justifiées
-      // TODO: Implémenter l'API réelle
-      // Pour l'instant, données mockées pour la démo
-      const mockAbsences: AbsenceAlert[] = []
-      setPendingAbsences(mockAbsences)
-
-      // 4. Calcul des stats
-      // TODO: Implémenter l'API réelle pour les stats journalières
-      const totalStudents = classesData.reduce((sum, c) => sum + c.student_count, 0)
-      const totalAbsent = classesData.reduce((sum, c) => sum + c.absent_today, 0)
-      const totalLate = classesData.reduce((sum, c) => sum + c.late_today, 0)
-
-      setStats({
-        presentToday: totalStudents - totalAbsent,
-        absentToday: totalAbsent,
-        lateToday: totalLate,
-        notJustified: mockAbsences.filter(a => !a.justified).length,
-        unreadMessages: unreadCount,
-      })
-
-      // 5. Événements du jour (mock)
-      setDailyEvents([])
 
     } catch (err: any) {
       console.error('Erreur chargement dashboard:', err)
