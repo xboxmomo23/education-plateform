@@ -1,13 +1,13 @@
 "use client"
 
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
-import React, { useState, useEffect, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import {
   Search,
   Filter,
   Calendar,
-  Clock,
   Users,
   CheckCircle,
   XCircle,
@@ -18,7 +18,8 @@ import {
   Loader2,
   Eye,
   FileText,
-  RotateCcw
+  RotateCcw,
+  Clock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,1015 +40,895 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { 
+import {
   attendanceApi,
   type AbsenceRecord,
   type ClassOption,
   type AttendanceStatus,
-  getStatusLabel,
   getStatusColor,
+  getStatusLabel,
 } from "@/lib/api/attendance"
+import { staffAbsencesApi, type StaffAbsenceHistoryItem } from "@/lib/api/staff-absences"
 
-// ============================================
-// PAGE GESTION DES ABSENCES (STAFF)
-// ============================================
+type StaffAbsenceRecord = AbsenceRecord & { teacher_name?: string | null }
+
+const DEFAULT_LIMIT = 50
+
+function deriveSchoolYear(date: string) {
+  const current = new Date(date)
+  const year = current.getFullYear()
+  const month = current.getMonth() + 1
+  return month >= 9 ? `${year}-${year + 1}` : `${year - 1}-${year}`
+}
+
+function buildDownloadFilename(prefix: string, extension: "csv" | "pdf") {
+  const today = new Date().toISOString().split("T")[0]
+  return `${prefix}_${today}.${extension}`
+}
 
 export default function StaffAbsencesPage() {
-  // États
-  const [absences, setAbsences] = useState<AbsenceRecord[]>([])
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const { settings } = useEstablishmentSettings()
+
+  const currentFilters = useMemo(() => {
+    const get = (key: string, defaultValue: string = "") =>
+      searchParams.get(key) ?? defaultValue
+
+    return {
+      q: get("q"),
+      classId: get("classId", "all"),
+      status: get("status", "all"),
+      justified: get("justified", "all"),
+      from: get("from"),
+      to: get("to"),
+      sort: get("sort", "date_desc"),
+      page: Math.max(1, parseInt(get("page", "1"), 10) || 1),
+    }
+  }, [searchParams])
+
+  const [searchInput, setSearchInput] = useState(currentFilters.q)
+  const [absences, setAbsences] = useState<StaffAbsenceRecord[]>([])
   const [classes, setClasses] = useState<ClassOption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedAbsence, setSelectedAbsence] = useState<AbsenceRecord | null>(null)
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: DEFAULT_LIMIT,
+    total: 0,
+    totalPages: 1,
+  })
+  const [selectedAbsence, setSelectedAbsence] = useState<StaffAbsenceRecord | null>(null)
   const [justifyModalOpen, setJustifyModalOpen] = useState(false)
   const [justifying, setJustifying] = useState(false)
   const [changeStatusModalOpen, setChangeStatusModalOpen] = useState(false)
   const [changingStatus, setChangingStatus] = useState(false)
-  
-  // Filtres
-  const [filters, setFilters] = useState({
-    search: '',
-    classId: 'all',
-    status: 'all',
-    schoolYear: getCurrentSchoolYearValue(),
-    startDate: '',
-    endDate: '',
-    justifiedOnly: false,
+  const [exporting, setExporting] = useState<"csv" | "pdf" | null>(null)
+
+  useEffect(() => {
+    setSearchInput(currentFilters.q)
+  }, [currentFilters.q])
+
+  const historyParams = useMemo(() => {
+    return {
+      q: currentFilters.q || undefined,
+      classId: currentFilters.classId === "all" ? undefined : currentFilters.classId,
+      status: currentFilters.status,
+      justified: currentFilters.justified,
+      from: currentFilters.from || undefined,
+      to: currentFilters.to || undefined,
+      sort: currentFilters.sort,
+      page: currentFilters.page,
+      limit: DEFAULT_LIMIT,
+    }
+  }, [currentFilters])
+
+  const applySearch = () => {
+    const value = searchInput.trim()
+    setQueryParam("q", value || undefined)
+  }
+
+  const setQueryParam = (key: string, value?: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (!value || value === "" || value === "all" || (key === "sort" && value === "date_desc")) {
+      params.delete(key)
+    } else {
+      params.set(key, value)
+    }
+    if (key !== "page") {
+      params.delete("page")
+    }
+
+    const queryString = params.toString()
+    router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })
+  }
+
+  const resetFilters = () => {
+    router.replace(pathname, { scroll: false })
+  }
+
+  const fetchClasses = useCallback(async () => {
+    try {
+      const response = await attendanceApi.getAccessibleClasses()
+      if (response.success) {
+        setClasses(response.data)
+      }
+    } catch (error) {
+      console.error("Erreur chargement classes:", error)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchClasses()
+  }, [fetchClasses])
+
+  const mapToRecord = (item: StaffAbsenceHistoryItem): StaffAbsenceRecord => ({
+    id: item.id,
+    student_id: item.student_id,
+    student_name: item.student_name,
+    student_number: item.student_number,
+    class_id: item.class_id,
+    class_label: item.class_label,
+    subject_name: item.subject_name,
+    subject_color: item.subject_color || "#0ea5e9",
+    session_date: item.session_date,
+    start_time: item.start_time,
+    end_time: item.end_time,
+    status: item.status,
+    late_minutes: item.late_minutes,
+    comment: item.comment,
+    justified: item.justified,
+    justification: item.justification,
+    justified_at: item.justified_at,
+    school_year: item.school_year || deriveSchoolYear(item.session_date),
+    teacher_name: item.teacher_name,
   })
 
-  // Pagination
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-
-  const { settings } = useEstablishmentSettings()
-
-  // Charger les données
-  const loadData = useCallback(async () => {
+  const loadAbsences = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
 
-      // Charger les classes accessibles
-      const classesResponse = await attendanceApi.getAccessibleClasses()
-      if (classesResponse.success) {
-        setClasses(classesResponse.data)
+      const response = await staffAbsencesApi.getHistory(historyParams)
+      if (response.success) {
+        const data = response.data
+        setAbsences(data.items.map(mapToRecord))
+        setPagination(data.pagination)
       }
-
-      // Charger les absences
-      const absencesResponse = await attendanceApi.getAllAbsences({
-        ...filters,
-        page,
-        limit: 50,
-      })
-
-      if (absencesResponse.success) {
-        const payload = (absencesResponse as any).data ?? absencesResponse
-        const absencesList: AbsenceRecord[] = payload?.absences ?? []
-        const pagination = payload?.pagination ?? payload?.meta ?? null
-
-        setAbsences(absencesList)
-
-        if (pagination && typeof pagination.totalPages === "number") {
-          setTotalPages(pagination.totalPages || 1)
-        } else if (typeof payload?.totalPages === "number") {
-          setTotalPages(payload.totalPages || 1)
-        } else {
-          const computedTotalPages = Math.max(1, Math.ceil((payload?.total ?? absencesList.length) / 50))
-          setTotalPages(computedTotalPages)
-        }
-      } else {
-        setError('Erreur lors du chargement des absences')
-      }
-
     } catch (err: any) {
-      console.error('Erreur chargement absences:', err)
-      setError(err.message || 'Erreur lors du chargement')
+      console.error("Erreur chargement absences:", err)
+      setError(err.message || "Impossible de charger les absences")
       notify.error("Impossible de charger les absences", err.message || "Merci de réessayer.")
+      setAbsences([])
     } finally {
       setLoading(false)
     }
-  }, [filters, page])
+  }, [historyParams])
 
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    loadAbsences()
+  }, [loadAbsences])
 
-  // Stats
-  const stats = {
-    total: absences.length,
-    absent: absences.filter(a => a.status === 'absent').length,
-    late: absences.filter(a => a.status === 'late').length,
-    excused: absences.filter(a => a.status === 'excused').length,
-    notJustified: absences.filter(a => !a.justified && a.status === 'absent').length,
-  }
+  const stats = useMemo(() => {
+    const absent = absences.filter((a) => a.status === "absent").length
+    const late = absences.filter((a) => a.status === "late").length
+    const excused = absences.filter((a) => a.status === "excused").length
+    const notJustified = absences.filter(
+      (a) => !a.justified && (a.status === "absent" || a.status === "late")
+    ).length
 
-  // Justifier une absence
+    return {
+      total: pagination.total,
+      absent,
+      late,
+      excused,
+      notJustified,
+    }
+  }, [absences, pagination])
+
   const handleJustify = async (justification: string) => {
     if (!selectedAbsence) return
 
     setJustifying(true)
     try {
-      const response = await attendanceApi.justifyAbsence(
-        selectedAbsence.id,
-        justification
-      )
-
+      const response = await attendanceApi.justifyAbsence(selectedAbsence.id, justification)
       if (response.success) {
-        setAbsences(prev => prev.map(a => 
-          a.id === selectedAbsence.id 
-            ? { ...a, justified: true, justification }
-            : a
-        ))
+        notify.success("Absence justifiée", `${selectedAbsence.student_name} est désormais justifié(e).`)
         setJustifyModalOpen(false)
         setSelectedAbsence(null)
-        notify.success("Absence justifiée", `${selectedAbsence.student_name} est désormais marqué comme justifié.`)
+        await loadAbsences()
       }
-    } catch (err) {
-      console.error('Erreur justification:', err)
-      notify.error("Erreur lors de la justification", (err as Error)?.message || "Veuillez réessayer.")
+    } catch (error: any) {
+      console.error("Erreur justification:", error)
+      notify.error("Erreur lors de la justification", error.message || "Veuillez réessayer.")
     } finally {
       setJustifying(false)
     }
   }
 
-  // Changer le statut (mettre présent = enlever l'absence)
   const handleChangeStatus = async (newStatus: AttendanceStatus) => {
     if (!selectedAbsence) return
 
     setChangingStatus(true)
     try {
-      const response = await attendanceApi.updateRecordStatus(
-        selectedAbsence.id,
-        newStatus
-      )
-
-        if (response.success) {
-        // Si on met "present", on retire de la liste des absences
-        if (newStatus === 'present') {
-          setAbsences(prev => prev.filter(a => a.id !== selectedAbsence.id))
-        } else {
-          // Sinon on met à jour le statut
-          setAbsences(prev => prev.map(a => 
-            a.id === selectedAbsence.id 
-              ? { ...a, status: newStatus }
-              : a
-          ))
-        }
+      const response = await attendanceApi.updateRecordStatus(selectedAbsence.id, newStatus)
+      if (response.success) {
+        notify.success("Statut mis à jour", "La présence a été mise à jour.")
         setChangeStatusModalOpen(false)
         setSelectedAbsence(null)
-        notify.success(
-          newStatus === 'present' ? "Absent retiré" : "Statut mis à jour",
-          `${selectedAbsence.student_name} : ${getStatusLabel(newStatus)}`
-        )
+        await loadAbsences()
       }
-    } catch (err) {
-      console.error('Erreur changement statut:', err)
-      notify.error("Impossible de mettre à jour le statut", (err as Error)?.message || "Réessayez plus tard.")
+    } catch (error: any) {
+      console.error("Erreur changement statut:", error)
+      notify.error("Erreur lors du changement de statut", error.message || "Veuillez réessayer.")
     } finally {
       setChangingStatus(false)
     }
   }
 
-  // Export CSV
-  const handleExport = () => {
-    const headers = ['Élève', 'Classe', 'Date', 'Horaire', 'Matière', 'Statut', 'Justifié', 'Justification']
-    const rows = absences.map(a => [
-      a.student_name,
-      a.class_label,
-      a.session_date,
-      `${a.start_time.slice(0, 5)}-${a.end_time.slice(0, 5)}`,
-      a.subject_name,
-      getStatusLabel(a.status),
-      a.justified ? 'Oui' : 'Non',
-      a.justification || '',
-    ])
+  const handleExport = async (type: "csv" | "pdf") => {
+    try {
+      setExporting(type)
+      const requestParams = {
+        q: currentFilters.q || undefined,
+        classId: currentFilters.classId === "all" ? undefined : currentFilters.classId,
+        status: currentFilters.status,
+        justified: currentFilters.justified,
+        from: currentFilters.from || undefined,
+        to: currentFilters.to || undefined,
+        sort: currentFilters.sort,
+      }
 
-    const csvContent = [headers, ...rows]
-      .map(row => row.map(cell => `"${cell}"`).join(','))
-      .join('\n')
+      const { blob, filename } =
+        type === "csv"
+          ? await staffAbsencesApi.exportCsv(requestParams)
+          : await staffAbsencesApi.exportPdf(requestParams)
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `absences_${new Date().toISOString().split('T')[0]}.csv`
-    link.click()
+      const link = document.createElement("a")
+      const blobUrl = URL.createObjectURL(blob)
+      link.href = blobUrl
+      link.download = filename || buildDownloadFilename("absences", type)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(blobUrl)
+
+      notify.success("Export lancé", `Le fichier ${type.toUpperCase()} a été généré.`)
+    } catch (error: any) {
+      console.error("Erreur export:", error)
+      notify.error("Export impossible", error.message || "Veuillez réessayer plus tard.")
+    } finally {
+      setExporting(null)
+    }
   }
 
-  // Reset filtres
-  const resetFilters = () => {
-    setFilters({
-      search: '',
-      classId: 'all',
-      status: 'all',
-      schoolYear: getCurrentSchoolYearValue(),
-      startDate: '',
-      endDate: '',
-      justifiedOnly: false,
-    })
-    setPage(1)
+  const renderContent = () => {
+    if (loading) {
+      return <ListSkeleton />
+    }
+
+    if (error) {
+      return (
+        <EmptyState
+          icon={AlertCircle}
+          title="Impossible de charger les absences"
+          description={error}
+          action={
+            <Button onClick={() => loadAbsences()} variant="outline">
+              Réessayer
+            </Button>
+          }
+        />
+      )
+    }
+
+    if (absences.length === 0) {
+      return (
+        <EmptyState
+          icon={Calendar}
+          title="Aucune absence trouvée"
+          description="Aucun résultat ne correspond aux filtres sélectionnés."
+        />
+      )
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="grid gap-4">
+          {absences.map((absence) => (
+            <AbsenceCard
+              key={absence.id}
+              absence={absence}
+              onView={() => {
+                setSelectedAbsence(absence)
+                setChangeStatusModalOpen(false)
+                setJustifyModalOpen(false)
+              }}
+              onJustify={() => {
+                setSelectedAbsence(absence)
+                setJustifyModalOpen(true)
+              }}
+              onChangeStatus={() => {
+                setSelectedAbsence(absence)
+                setChangeStatusModalOpen(true)
+              }}
+            />
+          ))}
+        </div>
+
+        <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            Page {pagination.page} sur {pagination.totalPages} — {pagination.total} résultat(s)
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setQueryParam("page", String(pagination.page - 1))}
+              disabled={pagination.page <= 1}
+            >
+              Précédent
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setQueryParam("page", String(pagination.page + 1))}
+              disabled={pagination.page >= pagination.totalPages}
+            >
+              Suivant
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
     <DashboardLayout requiredRole="staff">
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto p-6">
-          {/* En-tête */}
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 mb-1">
-                📋 Gestion des absences {settings?.displayName ? `· ${settings.displayName}` : ""}
-              </h1>
-              <p className="text-gray-600">
-                Consultez et gérez toutes les absences de l'établissement
-                {settings?.schoolYear ? ` — Année scolaire ${settings.schoolYear}` : ""}
-              </p>
-            </div>
-            <Button onClick={handleExport} variant="outline" className="gap-2">
-              <Download className="h-4 w-4" />
-              Exporter CSV
+      <div className="container mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">📋 Gestion des absences</h1>
+            <p className="text-muted-foreground">
+              Consultez et gérez les absences de l&apos;établissement {settings?.displayName ? `· ${settings.displayName}` : ""}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => handleExport("csv")}
+              disabled={exporting === "csv" || loading}
+            >
+              {exporting === "csv" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              <span className="ml-2">Exporter CSV</span>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleExport("pdf")}
+              disabled={exporting === "pdf" || loading}
+            >
+              {exporting === "pdf" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileText className="h-4 w-4" />
+              )}
+              <span className="ml-2">Exporter PDF</span>
             </Button>
           </div>
+        </div>
 
-          {/* Stats rapides */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-            <StatCard
-              label="Total"
-              value={stats.total}
-              icon={<Users className="h-4 w-4" />}
-              color="text-gray-600"
-              bgColor="bg-gray-100"
-            />
-            <StatCard
-              label="Absences"
-              value={stats.absent}
-              icon={<XCircle className="h-4 w-4" />}
-              color="text-red-600"
-              bgColor="bg-red-50"
-            />
-            <StatCard
-              label="Retards"
-              value={stats.late}
-              icon={<AlertCircle className="h-4 w-4" />}
-              color="text-orange-600"
-              bgColor="bg-orange-50"
-            />
-            <StatCard
-              label="Excusés"
-              value={stats.excused}
-              icon={<ShieldCheck className="h-4 w-4" />}
-              color="text-blue-600"
-              bgColor="bg-blue-50"
-            />
-            <StatCard
-              label="Non justifiés"
-              value={stats.notJustified}
-              icon={<FileText className="h-4 w-4" />}
-              color="text-purple-600"
-              bgColor="bg-purple-50"
-              highlight={stats.notJustified > 0}
-            />
-          </div>
+        <Card>
+          <CardContent className="space-y-4 pt-6">
+            <div className="flex flex-col gap-3 lg:flex-row">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Rechercher un élève, une classe, une matière..."
+                  className="pl-9"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") applySearch()
+                  }}
+                />
+              </div>
+              <Button variant="secondary" onClick={applySearch}>
+                <Filter className="mr-2 h-4 w-4" />
+                Appliquer
+              </Button>
+              <Button variant="ghost" onClick={resetFilters}>
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Réinitialiser
+              </Button>
+            </div>
 
-          {/* Filtres */}
-          <Card className="mb-6">
-            <CardContent className="py-4">
-              <div className="flex flex-col md:flex-row gap-4">
-                {/* Recherche */}
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    placeholder="Rechercher un élève, une classe..."
-                    value={filters.search}
-                    onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                    className="pl-10"
-                  />
-                </div>
-
-                {/* Filtre classe */}
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Classe</p>
                 <Select
-                  value={filters.classId}
-                  onValueChange={(value) => setFilters({ ...filters, classId: value })}
+                  defaultValue={currentFilters.classId}
+                  onValueChange={(value) => setQueryParam("classId", value === "all" ? undefined : value)}
+                  value={currentFilters.classId}
                 >
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger>
                     <SelectValue placeholder="Toutes les classes" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Toutes les classes</SelectItem>
-                    {classes.map((cls) => (
-                      <SelectItem key={cls.id} value={cls.id}>
-                        {cls.label}
+                    {classes.map((classe) => (
+                      <SelectItem key={classe.id} value={classe.id}>
+                        {classe.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
 
-                {/* Filtre statut */}
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Statut</p>
                 <Select
-                  value={filters.status}
-                  onValueChange={(value) => setFilters({ ...filters, status: value })}
+                  value={currentFilters.status}
+                  onValueChange={(value) => setQueryParam("status", value === "all" ? undefined : value)}
                 >
-                  <SelectTrigger className="w-[150px]">
-                    <SelectValue placeholder="Tous statuts" />
+                  <SelectTrigger>
+                    <SelectValue placeholder="Tous les statuts" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Tous statuts</SelectItem>
+                    <SelectItem value="all">Tous</SelectItem>
                     <SelectItem value="absent">Absents</SelectItem>
                     <SelectItem value="late">Retards</SelectItem>
                     <SelectItem value="excused">Excusés</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
 
-                {/* Filtre année scolaire */}
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Justification</p>
                 <Select
-                  value={filters.schoolYear}
-                  onValueChange={(value) => setFilters({ ...filters, schoolYear: value })}
+                  value={currentFilters.justified}
+                  onValueChange={(value) => setQueryParam("justified", value === "all" ? undefined : value)}
                 >
-                  <SelectTrigger className="w-[150px]">
-                    <SelectValue placeholder="Année" />
+                  <SelectTrigger>
+                    <SelectValue placeholder="Toutes" />
                   </SelectTrigger>
                   <SelectContent>
-                    {getSchoolYearOptions().map((year) => (
-                      <SelectItem key={year.value} value={year.value}>
-                        {year.label}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="all">Toutes</SelectItem>
+                    <SelectItem value="false">Non justifiées</SelectItem>
+                    <SelectItem value="true">Justifiées</SelectItem>
                   </SelectContent>
                 </Select>
-
-                {/* Plus de filtres */}
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="gap-2">
-                      <Filter className="h-4 w-4" />
-                      Plus
-                      <ChevronDown className="h-3 w-3" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-80" align="end">
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-sm font-medium mb-1 block">
-                          Date de début
-                        </label>
-                        <Input
-                          type="date"
-                          value={filters.startDate}
-                          onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium mb-1 block">
-                          Date de fin
-                        </label>
-                        <Input
-                          type="date"
-                          value={filters.endDate}
-                          onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
-                        />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id="justifiedOnly"
-                          checked={filters.justifiedOnly}
-                          onChange={(e) => setFilters({ ...filters, justifiedOnly: e.target.checked })}
-                          className="rounded"
-                        />
-                        <label htmlFor="justifiedOnly" className="text-sm">
-                          Absences justifiées uniquement
-                        </label>
-                      </div>
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={resetFilters}
-                      >
-                        Réinitialiser les filtres
-                      </Button>
-                    </div>
-                  </PopoverContent>
-                </Popover>
               </div>
-            </CardContent>
-          </Card>
 
-          {/* Tableau des absences */}
-          <Card>
-            <CardContent className="p-0">
-              {loading ? (
-                <ListSkeleton rows={8} className="py-8" />
-              ) : error ? (
-                <div className="text-center py-12">
-                  <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-                  <p className="text-red-600 mb-4">{error}</p>
-                  <Button onClick={loadData}>Réessayer</Button>
-                </div>
-              ) : absences.length === 0 ? (
-                <EmptyState
-                  icon={CheckCircle}
-                  title="Aucune absence trouvée"
-                  description="Aucun enregistrement ne correspond aux critères actuels."
-                  action={
-                    <Button variant="outline" onClick={resetFilters}>
-                      Réinitialiser les filtres
-                    </Button>
-                  }
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Tri</p>
+                <Select
+                  value={currentFilters.sort}
+                  onValueChange={(value) => setQueryParam("sort", value === "date_desc" ? undefined : value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Tri" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="date_desc">Date décroissante</SelectItem>
+                    <SelectItem value="date_asc">Date croissante</SelectItem>
+                    <SelectItem value="student_asc">Élève (A→Z)</SelectItem>
+                    <SelectItem value="class_asc">Classe (A→Z)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">À partir du</p>
+                <Input
+                  type="date"
+                  value={currentFilters.from}
+                  onChange={(e) => setQueryParam("from", e.target.value || undefined)}
                 />
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b bg-gray-50">
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                          Élève
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                          Classe
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                          Date
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                          Cours
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                          Statut
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                          Justifié
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-28">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {absences.map((absence, index) => (
-                        <AbsenceRow
-                          key={absence.id}
-                          absence={absence}
-                          index={index}
-                          onView={() => setSelectedAbsence(absence)}
-                          onJustify={() => {
-                            setSelectedAbsence(absence)
-                            setJustifyModalOpen(true)
-                          }}
-                          onChangeStatus={() => {
-                            setSelectedAbsence(absence)
-                            setChangeStatusModalOpen(true)
-                          }}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Jusqu&apos;au</p>
+                <Input
+                  type="date"
+                  value={currentFilters.to}
+                  onChange={(e) => setQueryParam("to", e.target.value || undefined)}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-center gap-2 p-4 border-t">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page === 1}
-                    onClick={() => setPage(p => p - 1)}
-                  >
-                    Précédent
-                  </Button>
-                  <span className="text-sm text-gray-600">
-                    Page {page} sur {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page === totalPages}
-                    onClick={() => setPage(p => p + 1)}
-                  >
-                    Suivant
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        <Card>
+          <CardContent className="grid gap-4 pt-6 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              label="Total résultats"
+              value={stats.total}
+              icon={<Users className="h-4 w-4 text-primary" />}
+              helper="Tous statuts confondus"
+            />
+            <StatCard
+              label="Absents"
+              value={stats.absent}
+              icon={<AlertCircle className="h-4 w-4 text-destructive" />}
+              helper="Sur cette page"
+            />
+            <StatCard
+              label="Retards"
+              value={stats.late}
+              icon={<Clock className="h-4 w-4 text-amber-500" />}
+              helper="Sur cette page"
+            />
+            <StatCard
+              label="Non justifiées"
+              value={stats.notJustified}
+              icon={<ShieldCheck className="h-4 w-4 text-emerald-600" />}
+              helper="À traiter"
+            />
+          </CardContent>
+        </Card>
 
-          {/* Modal détails */}
-          <AbsenceDetailsModal
-            absence={selectedAbsence}
-            open={!!selectedAbsence && !justifyModalOpen && !changeStatusModalOpen}
-            onClose={() => setSelectedAbsence(null)}
-            onJustify={() => setJustifyModalOpen(true)}
-            onChangeStatus={() => setChangeStatusModalOpen(true)}
-          />
-
-          {/* Modal justification */}
-          <JustifyModal
-            open={justifyModalOpen}
-            onClose={() => {
-              setJustifyModalOpen(false)
-              setSelectedAbsence(null)
-            }}
-            onConfirm={handleJustify}
-            loading={justifying}
-            studentName={selectedAbsence?.student_name || ''}
-          />
-
-          {/* Modal changement de statut */}
-          <ChangeStatusModal
-            open={changeStatusModalOpen}
-            onClose={() => {
-              setChangeStatusModalOpen(false)
-              setSelectedAbsence(null)
-            }}
-            onConfirm={handleChangeStatus}
-            loading={changingStatus}
-            studentName={selectedAbsence?.student_name || ''}
-            currentStatus={selectedAbsence?.status || 'absent'}
-          />
-        </div>
+        {renderContent()}
       </div>
+
+      <AbsenceDetailsDialog
+        absence={selectedAbsence}
+        open={!!selectedAbsence && !justifyModalOpen && !changeStatusModalOpen}
+        onOpenChange={(open) => {
+          if (!open) setSelectedAbsence(null)
+        }}
+      />
+
+      <JustifyAbsenceDialog
+        open={justifyModalOpen}
+        onOpenChange={setJustifyModalOpen}
+        absence={selectedAbsence}
+        loading={justifying}
+        onSubmit={handleJustify}
+      />
+
+      <ChangeStatusDialog
+        open={changeStatusModalOpen}
+        onOpenChange={setChangeStatusModalOpen}
+        absence={selectedAbsence}
+        loading={changingStatus}
+        onSubmit={handleChangeStatus}
+      />
     </DashboardLayout>
   )
 }
-
-// ============================================
-// COMPOSANTS
-// ============================================
 
 function StatCard({
   label,
   value,
   icon,
-  color,
-  bgColor,
-  highlight = false,
+  helper,
 }: {
   label: string
   value: number
   icon: React.ReactNode
-  color: string
-  bgColor: string
-  highlight?: boolean
+  helper?: string
 }) {
   return (
-    <Card className={cn(highlight && "ring-2 ring-purple-300")}>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-gray-500">{label}</p>
-            <p className={cn("text-2xl font-bold", color)}>{value}</p>
-          </div>
-          <div className={cn("p-2 rounded-lg", bgColor, color)}>
-            {icon}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="rounded-lg border bg-card p-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">{label}</p>
+        {icon}
+      </div>
+      <p className="mt-2 text-2xl font-semibold">{value}</p>
+      {helper && <p className="text-xs text-muted-foreground">{helper}</p>}
+    </div>
   )
 }
 
-function AbsenceRow({
+function AbsenceCard({
   absence,
-  index,
   onView,
   onJustify,
   onChangeStatus,
 }: {
-  absence: AbsenceRecord
-  index: number
+  absence: StaffAbsenceRecord
   onView: () => void
   onJustify: () => void
   onChangeStatus: () => void
 }) {
   const date = new Date(absence.session_date)
-  const formattedDate = date.toLocaleDateString('fr-FR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  })
-
   return (
-    <tr 
-      className={cn(
-        "border-b hover:bg-gray-50 transition-colors",
-        index % 2 === 0 ? "bg-white" : "bg-gray-50/50"
-      )}
-    >
-      <td className="px-4 py-3">
+    <div className="rounded-xl border bg-card p-4 shadow-sm">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="font-medium text-gray-900">{absence.student_name}</p>
-          {absence.student_number && (
-            <p className="text-xs text-gray-500">N° {absence.student_number}</p>
+          <div className="flex items-center gap-2">
+            <p className="font-semibold text-foreground">{absence.student_name}</p>
+            <Badge variant="outline">{absence.class_label}</Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {date.toLocaleDateString("fr-FR")} • {absence.start_time.slice(0, 5)} -{" "}
+            {absence.end_time.slice(0, 5)}
+          </p>
+          {absence.teacher_name && (
+            <p className="text-xs text-muted-foreground">Professeur : {absence.teacher_name}</p>
           )}
         </div>
-      </td>
-      <td className="px-4 py-3">
-        <Badge variant="outline">{absence.class_label}</Badge>
-      </td>
-      <td className="px-4 py-3">
-        <div className="text-sm">
-          <p className="text-gray-900">{formattedDate}</p>
-          <p className="text-gray-500">
-            {absence.start_time.slice(0, 5)} - {absence.end_time.slice(0, 5)}
-          </p>
-        </div>
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          <div 
-            className="w-2 h-2 rounded-full"
-            style={{ backgroundColor: absence.subject_color }}
-          />
-          <span className="text-sm">{absence.subject_name}</span>
-        </div>
-      </td>
-      <td className="px-4 py-3">
-        <Badge 
-          variant="outline" 
-          className={cn("text-xs", getStatusColor(absence.status))}
-        >
+        <Badge className={cn(getStatusColor(absence.status))}>
           {getStatusLabel(absence.status)}
-          {absence.status === 'late' && absence.late_minutes && (
-            <span className="ml-1">(+{absence.late_minutes}min)</span>
+          {absence.status === "late" && absence.late_minutes && (
+            <span className="ml-1">(+{absence.late_minutes} min)</span>
           )}
         </Badge>
-      </td>
-      <td className="px-4 py-3">
+      </div>
+
+      <div className="mt-3 flex items-center gap-2 text-sm">
+        <span
+          className="inline-flex h-2 w-2 rounded-full"
+          style={{ backgroundColor: absence.subject_color }}
+        />
+        <span className="font-medium">{absence.subject_name}</span>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
         {absence.justified ? (
-          <CheckCircle className="h-5 w-5 text-green-500" />
+          <Badge variant="secondary" className="gap-1 text-emerald-700">
+            <ShieldCheck className="h-3 w-3" />
+            Justifié
+          </Badge>
         ) : (
-          <XCircle className="h-5 w-5 text-gray-300" />
+          <Badge variant="destructive" className="gap-1">
+            <AlertCircle className="h-3 w-3" />
+            À justifier
+          </Badge>
         )}
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-1">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="h-8 w-8 p-0"
-            onClick={onView}
-            title="Voir détails"
-          >
-            <Eye className="h-4 w-4" />
+
+        {absence.comment && (
+          <Badge variant="outline" className="text-xs">
+            Commentaire ajouté
+          </Badge>
+        )}
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" onClick={onView}>
+          <Eye className="mr-1 h-4 w-4" />
+          Détails
+        </Button>
+        {!absence.justified && (
+          <Button variant="secondary" size="sm" onClick={onJustify}>
+            <CheckCircle className="mr-1 h-4 w-4" />
+            Justifier
           </Button>
-          {!absence.justified && (
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-8 w-8 p-0 text-green-600 hover:text-green-700"
-              onClick={onJustify}
-              title="Justifier"
-            >
-              <ShieldCheck className="h-4 w-4" />
+        )}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="sm">
+              Actions
+              <ChevronDown className="ml-1 h-4 w-4" />
             </Button>
-          )}
-          {/* Bouton pour modifier le statut */}
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700"
-            onClick={onChangeStatus}
-            title="Modifier le statut"
-          >
-            <RotateCcw className="h-4 w-4" />
-          </Button>
-        </div>
-      </td>
-    </tr>
+          </PopoverTrigger>
+          <PopoverContent className="w-48">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start"
+              onClick={() => onChangeStatus()}
+            >
+              <XCircle className="mr-2 h-4 w-4" />
+              Modifier le statut
+            </Button>
+          </PopoverContent>
+        </Popover>
+      </div>
+    </div>
   )
 }
 
-function AbsenceDetailsModal({
+function AbsenceDetailsDialog({
   absence,
   open,
-  onClose,
-  onJustify,
-  onChangeStatus,
+  onOpenChange,
 }: {
-  absence: AbsenceRecord | null
+  absence: StaffAbsenceRecord | null
   open: boolean
-  onClose: () => void
-  onJustify: () => void
-  onChangeStatus: () => void
+  onOpenChange: (open: boolean) => void
+}) {
+  if (!absence) return null
+  const date = new Date(absence.session_date)
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Détails de l&apos;absence</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3">
+              <p className="text-lg font-semibold text-foreground">{absence.student_name}</p>
+              <Badge variant="outline">{absence.class_label}</Badge>
+              <Badge className={cn(getStatusColor(absence.status))}>{getStatusLabel(absence.status)}</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {date.toLocaleDateString("fr-FR")} — {absence.start_time.slice(0, 5)} à{" "}
+              {absence.end_time.slice(0, 5)}
+            </p>
+            {absence.teacher_name && (
+              <p className="text-xs text-muted-foreground">Professeur : {absence.teacher_name}</p>
+            )}
+          </div>
+
+          <div className="rounded-lg bg-muted/40 p-3">
+            <p className="text-xs text-muted-foreground">Matière</p>
+            <p className="font-medium">{absence.subject_name}</p>
+          </div>
+
+          <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
+            <div>
+              <p className="text-xs text-muted-foreground">Statut</p>
+              <p className="font-medium">
+                {getStatusLabel(absence.status)}
+                {absence.status === "late" && absence.late_minutes && (
+                  <span className="ml-1 text-xs text-muted-foreground">
+                    (+{absence.late_minutes} min)
+                  </span>
+                )}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Justification</p>
+              {absence.justified ? (
+                <div className="flex items-center gap-2 text-sm text-emerald-600">
+                  <CheckCircle className="h-4 w-4" />
+                  Justifié
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-red-500">
+                  <AlertCircle className="h-4 w-4" />
+                  Non justifié
+                </div>
+              )}
+            </div>
+            {absence.justification && (
+              <div className="sm:col-span-2">
+                <p className="text-xs text-muted-foreground">Commentaire justification</p>
+                <p className="text-sm text-muted-foreground">{absence.justification}</p>
+              </div>
+            )}
+            {absence.comment && (
+              <div className="sm:col-span-2">
+                <p className="text-xs text-muted-foreground">Commentaire interne</p>
+                <p className="text-sm text-muted-foreground">{absence.comment}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function JustifyAbsenceDialog({
+  open,
+  onOpenChange,
+  absence,
+  loading,
+  onSubmit,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  absence: StaffAbsenceRecord | null
+  loading: boolean
+  onSubmit: (justification: string) => void
+}) {
+  const [justification, setJustification] = useState("")
+
+  useEffect(() => {
+    if (!open) setJustification("")
+  }, [open])
+
+  if (!absence) return null
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Justifier l&apos;absence</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-sm">
+            Vous allez justifier l&apos;absence de <strong>{absence.student_name}</strong> ({absence.class_label}).
+          </p>
+          <Textarea
+            placeholder="Motif ou commentaire"
+            value={justification}
+            onChange={(e) => setJustification(e.target.value)}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={loading}>
+            Annuler
+          </Button>
+          <Button onClick={() => onSubmit(justification)} disabled={loading || !justification.trim()}>
+            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
+            Justifier
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ChangeStatusDialog({
+  open,
+  onOpenChange,
+  absence,
+  loading,
+  onSubmit,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  absence: StaffAbsenceRecord | null
+  loading: boolean
+  onSubmit: (status: AttendanceStatus) => void
 }) {
   if (!absence) return null
 
-  const date = new Date(absence.session_date)
-  const formattedDate = date.toLocaleDateString('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
-
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Détails de l'absence</DialogTitle>
-        </DialogHeader>
-        
-        <div className="space-y-4">
-          {/* Élève */}
-          <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-            <div className="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center">
-              <Users className="h-6 w-6 text-gray-500" />
-            </div>
-            <div>
-              <p className="font-semibold text-gray-900">{absence.student_name}</p>
-              <p className="text-sm text-gray-500">
-                {absence.class_label}
-                {absence.student_number && ` • N° ${absence.student_number}`}
-              </p>
-            </div>
-          </div>
-
-          {/* Infos cours */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-500 mb-1">Date</p>
-              <p className="font-medium">{formattedDate}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500 mb-1">Horaire</p>
-              <p className="font-medium">
-                {absence.start_time.slice(0, 5)} - {absence.end_time.slice(0, 5)}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500 mb-1">Matière</p>
-              <div className="flex items-center gap-2">
-                <div 
-                  className="w-3 h-3 rounded"
-                  style={{ backgroundColor: absence.subject_color }}
-                />
-                <span className="font-medium">{absence.subject_name}</span>
-              </div>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500 mb-1">Statut</p>
-              <Badge className={cn(getStatusColor(absence.status))}>
-                {getStatusLabel(absence.status)}
-              </Badge>
-            </div>
-          </div>
-
-          {/* Justification */}
-          <div className="border-t pt-4">
-            <p className="text-sm text-gray-500 mb-2">Justification</p>
-            {absence.justified ? (
-              <div className="p-3 bg-green-50 rounded-lg">
-                <div className="flex items-center gap-2 text-green-700 mb-1">
-                  <CheckCircle className="h-4 w-4" />
-                  <span className="font-medium">Justifié</span>
-                </div>
-                {absence.justification && (
-                  <p className="text-sm text-green-600">{absence.justification}</p>
-                )}
-                {absence.justified_at && (
-                  <p className="text-xs text-green-500 mt-1">
-                    Le {new Date(absence.justified_at).toLocaleDateString('fr-FR')}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="p-3 bg-orange-50 rounded-lg">
-                <div className="flex items-center gap-2 text-orange-700">
-                  <AlertCircle className="h-4 w-4" />
-                  <span className="font-medium">Non justifié</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Commentaire */}
-          {absence.comment && (
-            <div className="border-t pt-4">
-              <p className="text-sm text-gray-500 mb-1">Commentaire du professeur</p>
-              <p className="text-gray-700">{absence.comment}</p>
-            </div>
-          )}
-        </div>
-
-        <DialogFooter className="flex-col sm:flex-row gap-2">
-          <Button variant="outline" onClick={onClose}>
-            Fermer
-          </Button>
-          <Button 
-            variant="outline" 
-            onClick={onChangeStatus}
-            className="gap-2"
-          >
-            <RotateCcw className="h-4 w-4" />
-            Modifier statut
-          </Button>
-          {!absence.justified && (
-            <Button onClick={onJustify} className="gap-2">
-              <ShieldCheck className="h-4 w-4" />
-              Justifier
-            </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function JustifyModal({
-  open,
-  onClose,
-  onConfirm,
-  loading,
-  studentName,
-}: {
-  open: boolean
-  onClose: () => void
-  onConfirm: (justification: string) => void
-  loading: boolean
-  studentName: string
-}) {
-  const [justification, setJustification] = useState('')
-
-  const handleSubmit = () => {
-    if (justification.trim()) {
-      onConfirm(justification)
-      setJustification('')
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Justifier l'absence</DialogTitle>
-        </DialogHeader>
-        
-        <div className="space-y-4">
-          <p className="text-sm text-gray-600">
-            Vous allez justifier l'absence de <strong>{studentName}</strong>.
-          </p>
-
-          <div>
-            <label className="text-sm font-medium mb-1 block">
-              Motif de la justification
-            </label>
-            <Textarea
-              placeholder="Ex: Certificat médical fourni, Convocation officielle..."
-              value={justification}
-              onChange={(e) => setJustification(e.target.value)}
-              rows={3}
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={loading}>
-            Annuler
-          </Button>
-          <Button 
-            onClick={handleSubmit} 
-            disabled={!justification.trim() || loading}
-            className="gap-2"
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <ShieldCheck className="h-4 w-4" />
-            )}
-            Confirmer
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function ChangeStatusModal({
-  open,
-  onClose,
-  onConfirm,
-  loading,
-  studentName,
-  currentStatus,
-}: {
-  open: boolean
-  onClose: () => void
-  onConfirm: (status: AttendanceStatus) => void
-  loading: boolean
-  studentName: string
-  currentStatus: AttendanceStatus
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Modifier le statut</DialogTitle>
         </DialogHeader>
-        
-        <div className="space-y-4">
-          <p className="text-sm text-gray-600">
-            Modifier le statut de <strong>{studentName}</strong>
-          </p>
-          
-          <div className="text-sm text-gray-500">
-            Statut actuel : <Badge variant="outline">{getStatusLabel(currentStatus)}</Badge>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            {/* Mettre Présent */}
-            <Button
-              variant="outline"
-              className="h-auto py-4 flex flex-col items-center gap-2 border-green-200 hover:bg-green-50"
-              onClick={() => onConfirm('present')}
-              disabled={loading || currentStatus === 'present'}
-            >
-              <CheckCircle className="h-6 w-6 text-green-600" />
-              <span className="text-green-700 font-medium">Mettre Présent</span>
-              <span className="text-xs text-gray-500">Enlever l'absence</span>
-            </Button>
-
-            {/* Mettre Excusé */}
-            <Button
-              variant="outline"
-              className="h-auto py-4 flex flex-col items-center gap-2 border-blue-200 hover:bg-blue-50"
-              onClick={() => onConfirm('excused')}
-              disabled={loading || currentStatus === 'excused'}
-            >
-              <ShieldCheck className="h-6 w-6 text-blue-600" />
-              <span className="text-blue-700 font-medium">Mettre Excusé</span>
-              <span className="text-xs text-gray-500">Justifier</span>
-            </Button>
-
-            {/* Mettre Absent */}
-            <Button
-              variant="outline"
-              className="h-auto py-4 flex flex-col items-center gap-2 border-red-200 hover:bg-red-50"
-              onClick={() => onConfirm('absent')}
-              disabled={loading || currentStatus === 'absent'}
-            >
-              <XCircle className="h-6 w-6 text-red-600" />
-              <span className="text-red-700 font-medium">Mettre Absent</span>
-            </Button>
-
-            {/* Mettre En retard */}
-            <Button
-              variant="outline"
-              className="h-auto py-4 flex flex-col items-center gap-2 border-orange-200 hover:bg-orange-50"
-              onClick={() => onConfirm('late')}
-              disabled={loading || currentStatus === 'late'}
-            >
-              <AlertCircle className="h-6 w-6 text-orange-600" />
-              <span className="text-orange-700 font-medium">Mettre En retard</span>
-            </Button>
-          </div>
-
-          {loading && (
-            <div className="flex items-center justify-center">
-              <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-            </div>
-          )}
+        <p className="text-sm text-muted-foreground">
+          Choisissez l&apos;action pour <strong>{absence.student_name}</strong>.
+        </p>
+        <div className="grid gap-2">
+          <Button
+            variant="outline"
+            className="justify-start"
+            onClick={() => onSubmit("present")}
+            disabled={loading}
+          >
+            <CheckCircle className="mr-2 h-4 w-4 text-emerald-600" />
+            Marquer présent (retirer l&apos;absence)
+          </Button>
+          <Button
+            variant="outline"
+            className="justify-start"
+            onClick={() => onSubmit("late")}
+            disabled={loading}
+          >
+            <Clock className="mr-2 h-4 w-4 text-amber-500" />
+            Marquer en retard
+          </Button>
+          <Button
+            variant="outline"
+            className="justify-start"
+            onClick={() => onSubmit("excused")}
+            disabled={loading}
+          >
+            <ShieldCheck className="mr-2 h-4 w-4 text-blue-500" />
+            Marquer excusé
+          </Button>
         </div>
-
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={loading}>
-            Annuler
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={loading}>
+            Fermer
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   )
-}
-
-// ============================================
-// HELPERS
-// ============================================
-
-function getCurrentSchoolYearValue(): string {
-  const now = new Date()
-  const year = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1
-  return `${year}-${year + 1}`
-}
-
-function getSchoolYearOptions(): Array<{ value: string; label: string }> {
-  const currentYear = new Date().getFullYear()
-  const years = []
-  
-  for (let i = 0; i < 5; i++) {
-    const startYear = currentYear - i
-    years.push({
-      value: `${startYear}-${startYear + 1}`,
-      label: `${startYear}-${startYear + 1}`,
-    })
-  }
-  
-  return years
 }
