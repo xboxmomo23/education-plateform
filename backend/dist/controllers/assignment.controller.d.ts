@@ -35,4 +35,9 @@ export declare function getStudentAssignmentsHandler(req: Request, res: Response
  * Récupérer un devoir spécifique pour un élève
  */
 export declare function getStudentAssignmentByIdHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+/**
+ * GET /api/students/:studentId/assignments
+ * Récupérer les devoirs d'un élève spécifique (parent/staff/admin)
+ */
+export declare function getAssignmentsForSpecificStudentHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 //# sourceMappingURL=assignment.controller.d.ts.map

@@ -22,7 +22,8 @@ import {
   Pencil,
   Calendar,
   Copy,
-  Download
+  Download,
+  FileDown
 } from "lucide-react"
 import { timetableApi } from "@/lib/api/timetable"
 import { timetableInstanceApi, type TimetableInstance } from "@/lib/api/timetable-instance"
@@ -35,6 +36,8 @@ import { GenerateFromTemplateModal } from "@/components/timetable/GenerateFromTe
 import { ModeIndicator } from "@/components/timetable/ModeIndicator"
 import type { CourseTemplate } from "@/lib/api/timetable"
 import { getWeekStart, addWeeksToStart, getDateForDay, formatWeekLabel } from "@/lib/date"
+import { API_BASE_URL } from "@/lib/api/config"
+import { useEstablishmentSettings } from "@/hooks/useEstablishmentSettings"
 
 // Configuration Algérienne
 const DAYS_CONFIG = {
@@ -44,6 +47,15 @@ const DAYS_CONFIG = {
 }
 
 const { days: DAYS, daysMap: DAYS_MAP, daysNumbers: DAYS_NUMBERS } = DAYS_CONFIG
+const HOURS = Array.from({ length: 11 }, (_, i) => i + 8)
+
+const slugify = (value: string) =>
+  value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "classe"
 
 export default function StaffEmploisDuTempsPage() {
   // ==================== ÉTATS GÉNÉRAUX ====================
@@ -57,6 +69,7 @@ export default function StaffEmploisDuTempsPage() {
   // Templates
   const [templates, setTemplates] = useState<CourseTemplate[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<CourseTemplate | null>(null)
+  const { settings } = useEstablishmentSettings()
   
   // ==================== NAVIGATION (Architecture durable) ====================
   
@@ -77,6 +90,17 @@ export default function StaffEmploisDuTempsPage() {
     () => formatWeekLabel(currentWeekStart),
     [currentWeekStart]
   )
+
+  const academicYear = useMemo(() => {
+    if (settings?.school_year) {
+      return settings.school_year
+    }
+    const date = new Date(`${currentWeekStart}T00:00:00Z`)
+    if (Number.isNaN(date.getTime())) return undefined
+    const year = date.getUTCFullYear()
+    const month = date.getUTCMonth() + 1
+    return month >= 9 ? `${year}-${year + 1}` : `${year - 1}-${year}`
+  }, [settings?.school_year, currentWeekStart])
   
   // ==================== DONNÉES ====================
   
@@ -85,6 +109,7 @@ export default function StaffEmploisDuTempsPage() {
   // ==================== CHARGEMENT ====================
   
   const [loading, setLoading] = useState(false)
+  const [exportingPdf, setExportingPdf] = useState(false)
   
   // AbortController pour annuler les requêtes obsolètes
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -272,6 +297,51 @@ export default function StaffEmploisDuTempsPage() {
   const handleReturnToCurrentWeek = () => {
     setWeekOffset(0)
   }
+
+  const handleExportPdf = useCallback(async (mode: 'color' | 'gray' = 'color') => {
+    if (!selectedClassId) return
+
+    try {
+      setExportingPdf(true)
+      const params = new URLSearchParams({
+        weekStart: currentWeekStart,
+        theme: mode,
+        color: mode === 'gray' ? '0' : '1',
+        format: 'carnet',
+      })
+      const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
+
+      const response = await fetch(
+        `${API_BASE_URL}/staff/timetable/classes/${selectedClassId}/print?${params.toString()}`,
+        {
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error("Export impossible")
+      }
+
+      const blob = await response.blob()
+      const downloadUrl = window.URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      const classLabel = classes.find((c) => c.class_id === selectedClassId)?.class_label || "classe"
+
+      anchor.href = downloadUrl
+      anchor.download = `EDT_${slugify(classLabel)}_${currentWeekStart}_${mode}.pdf`
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      window.URL.revokeObjectURL(downloadUrl)
+    } catch (error) {
+      console.error("❌ Export PDF:", error)
+      alert("Impossible de générer le PDF. Réessayez plus tard.")
+    } finally {
+      setExportingPdf(false)
+    }
+  }, [selectedClassId, currentWeekStart, classes])
 
   // ==================== CALLBACKS APRÈS ACTIONS ====================
 
@@ -524,28 +594,50 @@ export default function StaffEmploisDuTempsPage() {
                     </Select>
                   </div>
 
-                  {timetableMode === 'dynamic' && (
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowCopyWeekModal(true)}
-                        disabled={!selectedClassId}
-                      >
-                        <Copy className="h-4 w-4 mr-2" />
-                        Copier une autre semaine
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowGenerateModal(true)}
-                        disabled={!selectedClassId}
-                      >
-                        <Download className="h-4 w-4 mr-2" />
-                        Copier depuis template
-                      </Button>
-                    </div>
-                  )}
+                  <div className="flex gap-2">
+                    {timetableMode === 'dynamic' && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowCopyWeekModal(true)}
+                          disabled={!selectedClassId}
+                        >
+                          <Copy className="h-4 w-4 mr-2" />
+                          Copier une autre semaine
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowGenerateModal(true)}
+                          disabled={!selectedClassId}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Copier depuis template
+                        </Button>
+                      </>
+                    )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          disabled={!selectedClassId || exportingPdf}
+                        >
+                          <FileDown className="h-4 w-4 mr-2" />
+                          {exportingPdf ? 'Export en cours…' : 'Exporter PDF'}
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleExportPdf('color')}>
+                          Version couleur
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleExportPdf('gray')}>
+                          Version gris
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
 
                 {/* Navigation semaine */}
@@ -560,7 +652,10 @@ export default function StaffEmploisDuTempsPage() {
                   </Button>
 
                   <div className="text-center">
-                    <div className="font-semibold">{weekLabel}</div>
+                    <div className="font-semibold">
+                      {weekLabel}
+                      {academicYear && ` — ${academicYear}`}
+                    </div>
                     {weekOffset !== 0 && (
                       <Button
                         variant="link"
@@ -606,7 +701,7 @@ export default function StaffEmploisDuTempsPage() {
                         ))}
 
                         {/* Time slots */}
-                        {Array.from({ length: 8 }, (_, i) => i + 8).map(hour => (
+                        {HOURS.map(hour => (
                           <React.Fragment key={hour}>
                             <div className="p-2 text-sm text-muted-foreground">
                               {hour}:00

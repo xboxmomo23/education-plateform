@@ -6,6 +6,8 @@ export declare function generateHumanCode(params: {
 export declare function generateLoginEmailFromName(params: {
     fullName: string;
     establishmentId: string;
+    domainOverride?: string | null;
+    forceDomainSuffix?: string;
 }): Promise<string>;
 export {};
 //# sourceMappingURL=identifier.utils.d.ts.map

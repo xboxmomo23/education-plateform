@@ -10,8 +10,10 @@ exports.updateAssignmentHandler = updateAssignmentHandler;
 exports.deleteAssignmentHandler = deleteAssignmentHandler;
 exports.getStudentAssignmentsHandler = getStudentAssignmentsHandler;
 exports.getStudentAssignmentByIdHandler = getStudentAssignmentByIdHandler;
+exports.getAssignmentsForSpecificStudentHandler = getAssignmentsForSpecificStudentHandler;
 const database_1 = __importDefault(require("../config/database"));
 const assignment_model_1 = require("../models/assignment.model");
+const parent_model_1 = require("../models/parent.model");
 // ============================================
 // HANDLERS - ENSEIGNANTS (TEACHERS/STAFF)
 // ============================================
@@ -372,6 +374,55 @@ async function getStudentAssignmentByIdHandler(req, res) {
         return res.status(500).json({
             success: false,
             error: 'Erreur lors de la récupération du devoir',
+        });
+    }
+}
+/**
+ * GET /api/students/:studentId/assignments
+ * Récupérer les devoirs d'un élève spécifique (parent/staff/admin)
+ */
+async function getAssignmentsForSpecificStudentHandler(req, res) {
+    try {
+        const { studentId } = req.params;
+        const { subjectId, fromDueAt, toDueAt } = req.query;
+        if (!req.user) {
+            return res.status(401).json({
+                success: false,
+                error: 'Authentification requise',
+            });
+        }
+        const role = req.user.role;
+        const requesterId = req.user.userId;
+        if (role === 'parent') {
+            await (0, parent_model_1.assertParentCanAccessStudent)(requesterId, studentId);
+        }
+        else if (role === 'student' && requesterId !== studentId) {
+            return res.status(403).json({
+                success: false,
+                error: 'Accès refusé',
+            });
+        }
+        const filters = {};
+        if (subjectId && typeof subjectId === 'string') {
+            filters.subjectId = subjectId;
+        }
+        if (fromDueAt && typeof fromDueAt === 'string') {
+            filters.fromDueAt = fromDueAt;
+        }
+        if (toDueAt && typeof toDueAt === 'string') {
+            filters.toDueAt = toDueAt;
+        }
+        const assignments = await assignment_model_1.AssignmentModel.getForStudent(studentId, filters);
+        return res.json({
+            success: true,
+            data: assignments,
+        });
+    }
+    catch (error) {
+        console.error('❌ Erreur getAssignmentsForSpecificStudentHandler:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Erreur lors de la récupération des devoirs',
         });
     }
 }

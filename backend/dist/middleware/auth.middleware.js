@@ -58,10 +58,17 @@ async function authenticate(req, res, next) {
             return;
         }
         const user = await (0, user_model_1.findUserById)(decoded.userId);
-        if (!user || !user.active || user.deleted_at) {
+        if (!user || user.deleted_at) {
             res.status(401).json({
                 success: false,
-                error: 'Compte utilisateur inactif ou supprimé',
+                error: 'Compte utilisateur introuvable ou supprimé',
+            });
+            return;
+        }
+        if (!user.active) {
+            res.status(403).json({
+                success: false,
+                error: 'Compte désactivé. Contactez l\'établissement.',
             });
             return;
         }

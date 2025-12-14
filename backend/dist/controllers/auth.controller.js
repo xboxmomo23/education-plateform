@@ -15,6 +15,7 @@ exports.buildInviteUrl = buildInviteUrl;
 exports.createInviteTokenForUser = createInviteTokenForUser;
 const database_1 = require("../config/database");
 const user_model_1 = require("../models/user.model");
+const establishmentSettings_model_1 = require("../models/establishmentSettings.model");
 const parent_model_1 = require("../models/parent.model");
 const session_model_1 = require("../models/session.model");
 const email_service_1 = require("../services/email.service");
@@ -276,16 +277,22 @@ async function requestPasswordReset(req, res) {
           user_id, token, purpose, expires_at, created_ip, user_agent
         ) VALUES ($1, $2, $3, $4, $5, $6)
       `, [user.id, token, 'reset', expiresAt, createdIp, userAgent]);
-        const appUrl = process.env.APP_URL || process.env.FRONTEND_URL || 'http://localhost:3000';
-        const resetUrl = `${appUrl.replace(/\/$/, '')}/reset-mot-de-passe?token=${encodeURIComponent(token)}`;
+        const baseAppUrl = (process.env.APP_URL || process.env.FRONTEND_URL || 'http://localhost:3000').trim();
+        const sanitizedBaseUrl = baseAppUrl.replace(/\/$/, '');
+        const resetUrl = `${sanitizedBaseUrl}/reset-mot-de-passe?token=${encodeURIComponent(token.trim())}`.trim();
         console.log(`🔐 Lien de réinitialisation pour ${user.email}: ${resetUrl}`);
         const contactEmail = await getUserContactEmail(user.id, user.role);
         const targetEmail = contactEmail || user.email;
+        const establishmentSettings = user.establishment_id
+            ? await (0, establishmentSettings_model_1.getEstablishmentSettings)(user.establishment_id)
+            : (0, establishmentSettings_model_1.getDefaultEstablishmentSettings)();
         if (targetEmail) {
             (0, email_service_1.sendPasswordResetEmail)({
                 to: targetEmail,
                 loginEmail: user.email,
                 resetUrl,
+                establishmentName: establishmentSettings.displayName,
+                userName: user.full_name,
             }).catch((err) => {
                 console.error('[MAIL] Erreur envoi email reset:', err);
             });
@@ -302,8 +309,10 @@ async function requestPasswordReset(req, res) {
 // =========================
 async function resetPassword(req, res) {
     try {
-        const { token, newPassword } = req.body || {};
-        if (!token || typeof token !== 'string') {
+        const rawToken = typeof req.body?.token === 'string' ? req.body.token : '';
+        const trimmedToken = rawToken.trim();
+        const { newPassword } = req.body || {};
+        if (!trimmedToken || /\s/.test(trimmedToken)) {
             res.status(400).json({
                 success: false,
                 error: 'Lien de réinitialisation invalide ou expiré',
@@ -325,7 +334,7 @@ async function resetPassword(req, res) {
             });
             return;
         }
-        const tokenData = await getValidPasswordResetToken(token, ['reset']);
+        const tokenData = await getValidPasswordResetToken(trimmedToken, ['reset']);
         if (!tokenData) {
             res.status(400).json({
                 success: false,
@@ -363,8 +372,12 @@ async function resetPassword(req, res) {
 // =========================
 async function acceptInvite(req, res) {
     try {
-        const { token, newPassword } = req.body || {};
-        if (!token || typeof token !== 'string') {
+        const bodyToken = typeof req.body?.token === 'string' ? req.body.token : '';
+        const queryToken = typeof req.query?.invite === 'string' ? req.query.invite : '';
+        const rawToken = bodyToken || queryToken || '';
+        const trimmedToken = rawToken.trim();
+        const { newPassword } = req.body || {};
+        if (!trimmedToken || /\s/.test(trimmedToken)) {
             res.status(400).json({
                 success: false,
                 error: 'Lien d\'activation invalide ou expiré',
@@ -386,7 +399,7 @@ async function acceptInvite(req, res) {
             });
             return;
         }
-        const tokenData = await getValidPasswordResetToken(token, ['invite']);
+        const tokenData = await getValidPasswordResetToken(trimmedToken, ['invite']);
         if (!tokenData) {
             res.status(400).json({
                 success: false,
@@ -395,6 +408,13 @@ async function acceptInvite(req, res) {
             return;
         }
         const { entry, user } = tokenData;
+        if (!user.active) {
+            res.status(403).json({
+                success: false,
+                error: "Compte désactivé. Contactez l'établissement.",
+            });
+            return;
+        }
         await (0, user_model_1.updatePassword)(user.id, newPassword);
         await database_1.pool.query(`
         UPDATE users
@@ -425,7 +445,11 @@ async function acceptInvite(req, res) {
         await (0, user_model_1.updateLastLogin)(user.id);
         const userWithProfile = await (0, user_model_1.getUserWithProfile)(user.id, user.role);
         const profile = userWithProfile?.profile || null;
-        res.status(200).json({
+        let parentChildren;
+        if (user.role === 'parent') {
+            parentChildren = await (0, parent_model_1.getChildrenForParent)(user.id);
+        }
+        const responseBody = {
             success: true,
             token: accessToken,
             refreshToken,
@@ -436,7 +460,11 @@ async function acceptInvite(req, res) {
                 full_name: user.full_name,
                 profile: profile || undefined,
             },
-        });
+        };
+        if (parentChildren && parentChildren.length > 0) {
+            responseBody.children = parentChildren;
+        }
+        res.status(200).json(responseBody);
     }
     catch (error) {
         console.error('Erreur lors de l\'activation:', error);
@@ -752,7 +780,8 @@ function buildInviteUrlFromToken(token) {
         process.env.FRONTEND_URL ||
         process.env.NEXT_PUBLIC_APP_URL ||
         'http://localhost:3000';
-    return `${appUrl.replace(/\/$/, '')}/premiere-connexion?invite=${encodeURIComponent(token)}`;
+    const trimmedBase = appUrl.trim().replace(/\/$/, '');
+    return `${trimmedBase}/premiere-connexion?invite=${encodeURIComponent(token)}`;
 }
 function buildInviteUrl(token) {
     return buildInviteUrlFromToken(token);
@@ -765,7 +794,7 @@ async function createInviteTokenForUser(user) {
         user_id, token, purpose, expires_at
       ) VALUES ($1, $2, $3, $4)
     `, [user.id, token, 'invite', expiresAt]);
-    const inviteUrl = buildInviteUrlFromToken(token);
+    const inviteUrl = buildInviteUrlFromToken(token).trim();
     console.log('[INVITE] Lien d\'activation pour', user.email, ':', inviteUrl);
     return { token, inviteUrl };
 }

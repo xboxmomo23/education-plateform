@@ -181,6 +181,14 @@ router.post("/students/:userId/class-changes", [
     (0, express_validator_1.body)("reason").optional().isString(),
 ], validation_middleware_1.validateRequest, admin_controller_1.scheduleStudentClassChangeHandler);
 router.post("/students/:userId/resend-invite", admin_controller_1.resendStudentInviteHandler);
+router.post("/students/:userId/resend-parent-invite", admin_controller_1.resendParentInviteHandler);
+router.get("/parents", [
+    (0, express_validator_1.query)("search").optional().isString().withMessage("search doit être une chaîne"),
+    (0, express_validator_1.query)("limit")
+        .optional()
+        .isInt({ min: 1, max: 50 })
+        .withMessage("limit doit être un entier entre 1 et 50"),
+], validation_middleware_1.validateRequest, admin_controller_1.searchParentsForAdminHandler);
 router.delete("/student-class-changes/:changeId", admin_controller_1.deleteStudentClassChangeHandler);
 router.post("/student-class-changes/apply", [
     (0, express_validator_1.body)("term_id")

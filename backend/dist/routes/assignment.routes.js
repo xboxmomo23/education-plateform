@@ -134,5 +134,9 @@ router.get('/student', auth_middleware_1.authenticate, (0, auth_middleware_1.aut
  * Récupérer un devoir spécifique
  */
 router.get('/student/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('student'), (0, express_validator_1.param)('id').isUUID().withMessage('id doit être un UUID valide'), validation_middleware_1.validateRequest, assignment_controller_1.getStudentAssignmentByIdHandler);
+/**
+ * GET /api/assignments/students/:studentId/assignments
+ * Accès parent/admin/staff pour consulter les devoirs d'un élève spécifique
+ */
 exports.default = router;
 //# sourceMappingURL=assignment.routes.js.map

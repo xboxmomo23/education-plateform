@@ -10,5 +10,6 @@ const router = (0, express_1.Router)();
 router.use(auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('parent'));
 router.get('/children', parent_controller_1.getParentChildrenHandler);
 router.get('/children/:studentId/check', (0, express_validator_1.param)('studentId').isUUID().withMessage('studentId doit être un UUID valide'), validation_middleware_1.validateRequest, (0, parentAccess_1.requireParentAccessToStudent)(), parent_controller_1.checkParentChildAccessHandler);
+router.get('/students/:studentId/summary', (0, express_validator_1.param)('studentId').isUUID().withMessage('studentId doit être un UUID valide'), validation_middleware_1.validateRequest, (0, parentAccess_1.requireParentAccessToStudent)(), parent_controller_1.getParentStudentSummaryHandler);
 exports.default = router;
 //# sourceMappingURL=parent.routes.js.map

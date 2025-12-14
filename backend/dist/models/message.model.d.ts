@@ -73,6 +73,23 @@ export interface SendMessageResult {
     recipientCount: number;
     recipientIds: string[];
 }
+export interface MessageThreadSummary {
+    thread_id: string;
+    subject: string;
+    message_count: number;
+    unread_count: number;
+    last_message_at: string;
+    last_message_preview: string;
+    last_sender_id: string;
+    last_sender_name: string;
+    last_sender_role: string;
+}
+export interface ThreadMessage extends Message {
+    thread_id: string;
+    sender_name: string;
+    sender_role: string;
+    read_at: string | null;
+}
 export declare const MessageModel: {
     /**
      * Envoyer un message
@@ -171,5 +188,17 @@ export declare const MessageModel: {
         level: string;
         student_count: number;
     }[]>;
+    /**
+     * Ajouter des destinataires supplémentaires à un message existant
+     */
+    addRecipients(messageId: string, recipientIds: string[]): Promise<void>;
+    /**
+     * Récupérer les threads de messages pour un utilisateur (regroupés par parent_message_id)
+     */
+    getThreadsForParticipant(userId: string, establishmentId: string): Promise<MessageThreadSummary[]>;
+    /**
+     * Récupérer les messages d'un thread pour un utilisateur
+     */
+    getThreadMessagesForParticipant(threadId: string, userId: string, establishmentId: string): Promise<ThreadMessage[]>;
 };
 //# sourceMappingURL=message.model.d.ts.map

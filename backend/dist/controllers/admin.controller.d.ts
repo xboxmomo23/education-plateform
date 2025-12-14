@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+export declare function searchParentsForAdminHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 /**
  * GET /api/admin/dashboard
  */
@@ -31,6 +32,7 @@ export declare function createStudentForAdminHandler(req: Request, res: Response
 export declare function updateStudentStatusHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 export declare function updateStudentClassHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>> | undefined>;
 export declare function resendStudentInviteHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+export declare function resendParentInviteHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 export declare function getStudentClassChangesHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 export declare function scheduleStudentClassChangeHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 export declare function deleteStudentClassChangeHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;

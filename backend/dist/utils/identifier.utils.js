@@ -98,8 +98,20 @@ async function generateHumanCode(params) {
     return `${prefix}-${academicYear}-${String(counter).padStart(5, "0")}`;
 }
 async function generateLoginEmailFromName(params) {
-    const { fullName, establishmentId } = params;
-    const domain = await getEstablishmentDomain(establishmentId);
+    const { fullName, establishmentId, domainOverride, forceDomainSuffix } = params;
+    const normalizeDomain = (value) => value.replace(/^\s+|\s+$/g, "").replace(/^\.+|\.+$/g, "").toLowerCase();
+    const derivedDomain = domainOverride && domainOverride.trim().length > 0
+        ? domainOverride
+        : await getEstablishmentDomain(establishmentId);
+    let domain = normalizeDomain(derivedDomain);
+    if (forceDomainSuffix && forceDomainSuffix.trim().length > 0) {
+        const suffix = forceDomainSuffix.startsWith(".")
+            ? forceDomainSuffix.toLowerCase()
+            : `.${forceDomainSuffix.toLowerCase()}`;
+        if (!domain.endsWith(suffix)) {
+            domain = `${domain.replace(/\.+$/, "")}${suffix}`;
+        }
+    }
     const { lastName, firstNames } = extractNameParts(fullName);
     const cleanedLastName = cleanSegment(lastName) || "utilisateur";
     const cleanedFirstNames = firstNames.map((name) => cleanSegment(name)).filter(Boolean);

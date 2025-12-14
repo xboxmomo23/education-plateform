@@ -1,6 +1,489 @@
 import { Request, Response } from 'express';
+import PDFDocument from 'pdfkit';
 import pool from '../config/database';
-import { TimetableModel, TimetableInstanceModel } from '../models/timetable.model';
+import { TimetableModel, TimetableInstanceModel, TimetableInstance } from '../models/timetable.model';
+
+const DAY_LABELS: Record<number, string> = {
+  1: 'Dimanche',
+  2: 'Lundi',
+  3: 'Mardi',
+  4: 'Mercredi',
+  5: 'Jeudi',
+  6: 'Vendredi',
+  7: 'Samedi',
+};
+
+const STAFF_DAY_ORDER = [1, 2, 3, 4, 5];
+const DEFAULT_TIME_RANGE = { start: 8, end: 18 };
+const MM_TO_PT = 2.83465;
+const A4_WIDTH_PT = 210 * MM_TO_PT; // 595.28
+const A4_HEIGHT_PT = 297 * MM_TO_PT; // 841.89
+const PAGE_MARGIN_PT = 10 * MM_TO_PT; // 28.35
+const CARNET_ZONE_WIDTH_PT = 190 * MM_TO_PT; // 538.58
+const CARNET_ZONE_HEIGHT_PT = 105 * MM_TO_PT; // 297.64
+const CARNET_ZONE_X = (A4_WIDTH_PT - CARNET_ZONE_WIDTH_PT) / 2; // ~28.35
+const CARNET_ZONE_Y = A4_HEIGHT_PT - PAGE_MARGIN_PT - CARNET_ZONE_HEIGHT_PT; // ~515.90
+
+interface TimetablePdfOptions {
+  establishmentName: string;
+  classLabel: string;
+  classCode?: string | null;
+  weekStart: string;
+  instances: TimetableInstance[];
+  schoolYear?: string | null;
+  theme: 'color' | 'gray';
+}
+
+function sanitizeFilePart(value: string): string {
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9-_]+/g, '_');
+}
+
+function parseDateOrThrow(dateStr: string): Date {
+  const date = new Date(`${dateStr}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`Date invalide: ${dateStr}`);
+  }
+  return date;
+}
+
+function computeAcademicYear(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + 1;
+  if (month >= 9) {
+    return `${year}-${year + 1}`;
+  }
+  return `${year - 1}-${year}`;
+}
+
+function normalizeWeekStart(queryWeekStart?: string): string {
+  if (!queryWeekStart) {
+    const now = new Date();
+    const day = now.getUTCDay();
+    now.setUTCDate(now.getUTCDate() - day);
+    return now.toISOString().slice(0, 10);
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(queryWeekStart)) {
+    throw new Error('Paramètre weekStart invalide');
+  }
+
+  const provided = parseDateOrThrow(queryWeekStart);
+  const day = provided.getUTCDay();
+  provided.setUTCDate(provided.getUTCDate() - day);
+  return provided.toISOString().slice(0, 10);
+}
+
+function parseTimeToMinutes(time: string): number {
+  const [hourStr, minuteStr] = time.split(':');
+  const hour = parseInt(hourStr ?? '0', 10);
+  const minute = parseInt((minuteStr ?? '0').slice(0, 2), 10);
+  return hour * 60 + minute;
+}
+
+function getDayColumns(): number[] {
+  return STAFF_DAY_ORDER;
+}
+
+function normalizeHexColor(color?: string | null): string | null {
+  if (!color) return null;
+  let hex = color.trim();
+  if (hex.startsWith('#')) hex = hex.slice(1);
+  if (hex.length === 3) {
+    hex = hex
+      .split('')
+      .map((c) => c + c)
+      .join('');
+  }
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) {
+    return null;
+  }
+  return `#${hex.toLowerCase()}`;
+}
+
+function lightenHexColor(hexColor: string, ratio: number): string {
+  const hex = hexColor.replace('#', '');
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+
+  const mix = (channel: number) => Math.round(channel + (255 - channel) * ratio);
+  const toHex = (value: number) => value.toString(16).padStart(2, '0');
+
+  return `#${toHex(mix(r))}${toHex(mix(g))}${toHex(mix(b))}`;
+}
+
+function computeCourseColors(
+  theme: 'color' | 'gray',
+  subjectColor?: string | null
+): { fill: string; stroke: string; text: string } {
+  if (theme === 'gray') {
+    return {
+      fill: '#e5e5e5',
+      stroke: '#8c8c8c',
+      text: '#111827',
+    };
+  }
+
+  const normalized = normalizeHexColor(subjectColor) ?? '#3b82f6';
+  return {
+    fill: lightenHexColor(normalized, 0.7),
+    stroke: normalized,
+    text: '#0f172a',
+  };
+}
+
+function getSlotConfig(instances: TimetableInstance[]) {
+  let minHour = Number.POSITIVE_INFINITY;
+  let maxHour = Number.NEGATIVE_INFINITY;
+
+  instances.forEach((inst) => {
+    const startHour = Math.floor(parseTimeToMinutes(inst.start_time) / 60);
+    const endHour = Math.ceil(parseTimeToMinutes(inst.end_time) / 60);
+    if (!Number.isNaN(startHour)) {
+      minHour = Math.min(minHour, startHour);
+    }
+    if (!Number.isNaN(endHour)) {
+      maxHour = Math.max(maxHour, endHour);
+    }
+  });
+
+  if (!Number.isFinite(minHour) || !Number.isFinite(maxHour)) {
+    minHour = DEFAULT_TIME_RANGE.start;
+    maxHour = DEFAULT_TIME_RANGE.end;
+  } else {
+    minHour = Math.min(minHour, DEFAULT_TIME_RANGE.start);
+    maxHour = Math.max(maxHour, DEFAULT_TIME_RANGE.end);
+  }
+
+  if (!Number.isFinite(minHour) || !Number.isFinite(maxHour)) {
+    minHour = DEFAULT_TIME_RANGE.start;
+    maxHour = DEFAULT_TIME_RANGE.end;
+  } else {
+    minHour = Math.min(minHour, DEFAULT_TIME_RANGE.start);
+    maxHour = Math.max(maxHour, DEFAULT_TIME_RANGE.end);
+  }
+
+  const hours: number[] = [];
+  for (let hour = minHour; hour <= maxHour; hour += 1) {
+    hours.push(hour);
+  }
+  return {
+    hours: hours.length > 0 ? hours : [DEFAULT_TIME_RANGE.start],
+    minHour,
+    maxHour,
+  };
+}
+
+function formatSlotLabel(hour: number): string {
+  const end = hour + 1;
+  return `${String(hour).padStart(2, '0')}h-${String(end).padStart(2, '0')}h`;
+}
+
+function formatEntryText(entry: TimetableInstance): string {
+  const lines = [entry.subject_name || 'Cours'];
+  if (entry.teacher_name) {
+    lines.push(entry.teacher_name);
+  }
+  return lines.join('\n');
+}
+
+function drawClassTimetablePdf(doc: PDFKit.PDFDocument, options: TimetablePdfOptions) {
+  const { establishmentName, classLabel, classCode, weekStart, instances, schoolYear, theme } = options;
+  const referenceDate = parseDateOrThrow(weekStart);
+  const resolvedSchoolYear = schoolYear && schoolYear.trim().length > 0 ? schoolYear : computeAcademicYear(referenceDate);
+
+  doc.font('Helvetica-Bold').fontSize(18).text(establishmentName);
+  doc.moveDown(0.15);
+  doc
+    .font('Helvetica')
+    .fontSize(12)
+    .text(`Classe : ${classLabel}${classCode ? ` – ${classCode}` : ''}`);
+  doc.fontSize(12).text(`Année scolaire : ${resolvedSchoolYear}`);
+  doc.moveDown(0.7);
+
+  const marginLeft = doc.page.margins.left;
+  const marginRight = doc.page.margins.right;
+  const gridWidth = doc.page.width - marginLeft - marginRight;
+  const headerHeight = 26;
+  const timeColumnWidth = 70;
+  const dayColumns = getDayColumns();
+  const slotConfig = getSlotConfig(instances);
+  const slotHours = slotConfig.hours;
+  const minHour = slotConfig.minHour;
+  const availableHeight = doc.page.height * 0.45;
+  const rowHeight = Math.max(
+    24,
+    Math.min(36, (availableHeight - headerHeight) / Math.max(slotHours.length, 1))
+  );
+  const gridHeight = headerHeight + rowHeight * slotHours.length;
+  const columnWidth = (gridWidth - timeColumnWidth) / dayColumns.length;
+  const gridTop = doc.y;
+  const columnIndexMap = new Map(dayColumns.map((day, index) => [day, index]));
+
+  doc.lineWidth(0.5).strokeColor('#94a3b8');
+  doc.fontSize(9).font('Helvetica-Bold');
+
+  doc.rect(marginLeft, gridTop, timeColumnWidth, headerHeight).stroke();
+  doc.text('Horaire', marginLeft, gridTop + 6, {
+    width: timeColumnWidth,
+    align: 'center',
+  });
+
+  dayColumns.forEach((dayValue, index) => {
+    const x = marginLeft + timeColumnWidth + index * columnWidth;
+    doc.rect(x, gridTop, columnWidth, headerHeight).stroke();
+    doc.text(DAY_LABELS[dayValue] || `Jour ${dayValue}`, x, gridTop + 6, {
+      width: columnWidth,
+      align: 'center',
+    });
+  });
+
+  doc.font('Helvetica').fontSize(8);
+
+  slotHours.forEach((hour, rowIndex) => {
+    const y = gridTop + headerHeight + rowIndex * rowHeight;
+
+    doc.rect(marginLeft, y, timeColumnWidth, rowHeight).stroke();
+    doc.text(formatSlotLabel(hour), marginLeft + 5, y + rowHeight / 2 - 6, {
+      width: timeColumnWidth - 10,
+      align: 'center',
+    });
+
+    dayColumns.forEach((dayValue, index) => {
+      const x = marginLeft + timeColumnWidth + index * columnWidth;
+      doc.rect(x, y, columnWidth, rowHeight).stroke();
+
+      // les blocs seront dessinés après la grille
+    });
+  });
+
+  instances.forEach((entry) => {
+    const columnIndex = columnIndexMap.get(entry.day_of_week);
+    if (columnIndex === undefined) {
+      return;
+    }
+
+    const startMinutes = parseTimeToMinutes(entry.start_time);
+    const endMinutes = parseTimeToMinutes(entry.end_time);
+    if (Number.isNaN(startMinutes) || Number.isNaN(endMinutes) || endMinutes <= startMinutes) {
+      return;
+    }
+
+    const offsetMinutes = startMinutes - minHour * 60;
+    const top =
+      gridTop + headerHeight + Math.max(0, (offsetMinutes / 60) * rowHeight);
+    const durationMinutes = endMinutes - startMinutes;
+    const height = Math.max((durationMinutes / 60) * rowHeight - 4, rowHeight * 0.6);
+    const x = marginLeft + timeColumnWidth + columnIndex * columnWidth;
+    const width = columnWidth - 4;
+
+    const colors = computeCourseColors(theme, (entry as any).subject_color);
+    const hasTeacher = Boolean(entry.teacher_name);
+    const useSingleLine = !hasTeacher || height < 32;
+    const textX = x + 6;
+    const textWidth = width - 12;
+
+    doc
+      .save()
+      .lineWidth(0.6)
+      .fillColor(colors.fill)
+      .strokeColor(colors.stroke)
+      .rect(x + 2, top + 2, width, height)
+      .fillAndStroke()
+      .fillColor(colors.text);
+
+    if (useSingleLine) {
+      const singleLine = hasTeacher
+        ? `${entry.subject_name || 'Cours'} – ${entry.teacher_name}`
+        : entry.subject_name || 'Cours';
+      doc.font('Helvetica-Bold').fontSize(9).text(singleLine, textX, top + 8, {
+        width: textWidth,
+        ellipsis: true,
+      });
+    } else {
+      doc.font('Helvetica-Bold').fontSize(9).text(entry.subject_name || 'Cours', textX, top + 6, {
+        width: textWidth,
+        ellipsis: true,
+      });
+      if (hasTeacher) {
+        doc.font('Helvetica').fontSize(8).text(entry.teacher_name || '', textX, top + 20, {
+          width: textWidth,
+          ellipsis: true,
+        });
+      }
+    }
+
+    doc.restore();
+  });
+
+  if (instances.length === 0) {
+    doc
+      .moveDown(0.5)
+      .font('Helvetica-Bold')
+      .text('Aucun cours planifié pour cette semaine.', { align: 'left' });
+  }
+}
+
+const CARNET_HEADER_BAND_PT = 36;
+
+function drawCarnetTimetablePdf(doc: PDFKit.PDFDocument, options: TimetablePdfOptions) {
+  const { establishmentName, classLabel, classCode, weekStart, instances, schoolYear, theme } = options;
+  const referenceDate = parseDateOrThrow(weekStart);
+  const resolvedSchoolYear = schoolYear && schoolYear.trim().length > 0 ? schoolYear : computeAcademicYear(referenceDate);
+  const dayHeaderHeight = 16;
+  const headerPaddingX = CARNET_ZONE_X + 8;
+  const headerTextWidth = CARNET_ZONE_WIDTH_PT - 16;
+
+  const dayColumns = getDayColumns();
+  const slotConfig = getSlotConfig(instances);
+  const slotHours = slotConfig.hours;
+  const minHour = slotConfig.minHour;
+  const timeColumnWidth = 40;
+  const gridX = CARNET_ZONE_X;
+  const gridY = CARNET_ZONE_Y + CARNET_HEADER_BAND_PT + dayHeaderHeight;
+  const gridWidth = CARNET_ZONE_WIDTH_PT;
+  const gridHeight = CARNET_ZONE_HEIGHT_PT - CARNET_HEADER_BAND_PT - dayHeaderHeight;
+  const dayHeaderY = gridY - dayHeaderHeight;
+  const columnWidth = (gridWidth - timeColumnWidth) / dayColumns.length;
+  const rowHeight = gridHeight / Math.max(slotHours.length, 1);
+  const columnIndexMap = new Map(dayColumns.map((day, index) => [day, index]));
+
+  doc
+    .save()
+    .lineWidth(1)
+    .strokeColor('#1f2937')
+    .rect(CARNET_ZONE_X, CARNET_ZONE_Y, CARNET_ZONE_WIDTH_PT, CARNET_ZONE_HEIGHT_PT)
+    .stroke()
+    .restore();
+
+  doc
+    .moveTo(CARNET_ZONE_X, CARNET_ZONE_Y + CARNET_HEADER_BAND_PT)
+    .lineTo(CARNET_ZONE_X + CARNET_ZONE_WIDTH_PT, CARNET_ZONE_Y + CARNET_HEADER_BAND_PT)
+    .stroke();
+
+  let headerY = CARNET_ZONE_Y + 8;
+  doc
+    .font('Helvetica-Bold')
+    .fillColor('#111827')
+    .fontSize(9)
+    .text(establishmentName, headerPaddingX, headerY, {
+      width: headerTextWidth,
+      ellipsis: true,
+    });
+
+  headerY += 11;
+  doc
+    .font('Helvetica')
+    .fontSize(8.5)
+    .text(`Classe : ${classLabel}${classCode ? ` — ${classCode}` : ''}`, headerPaddingX, headerY, {
+      width: headerTextWidth,
+      ellipsis: true,
+    });
+
+  headerY += 10;
+  doc
+    .font('Helvetica')
+    .fontSize(8.5)
+    .text(`Année scolaire : ${resolvedSchoolYear}`, headerPaddingX, headerY, {
+      width: headerTextWidth,
+      ellipsis: true,
+    });
+
+  doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#111827');
+  dayColumns.forEach((day, index) => {
+    const x = gridX + timeColumnWidth + index * columnWidth;
+    doc.text(DAY_LABELS[day] || `Jour ${day}`, x, dayHeaderY + 2, {
+      width: columnWidth,
+      align: 'center',
+    });
+  });
+
+  doc.font('Helvetica').fontSize(8).fillColor('#111827');
+  slotHours.forEach((hour, rowIndex) => {
+    const y = gridY + rowIndex * rowHeight;
+    doc.text(`${String(hour).padStart(2, '0')}h`, gridX + 2, y + rowHeight / 2 - 4, {
+      width: timeColumnWidth - 4,
+      align: 'left',
+    });
+  });
+
+  doc.save().lineWidth(0.4).strokeColor('#94a3b8');
+
+  for (let i = 0; i <= slotHours.length; i += 1) {
+    const y = gridY + i * rowHeight;
+    doc.moveTo(gridX, y).lineTo(gridX + gridWidth, y);
+  }
+
+  for (let i = 0; i <= dayColumns.length; i += 1) {
+    const x = gridX + timeColumnWidth + i * columnWidth;
+    doc.moveTo(x, gridY).lineTo(x, gridY + gridHeight);
+  }
+
+  doc.moveTo(gridX + timeColumnWidth, CARNET_ZONE_Y + CARNET_HEADER_BAND_PT).lineTo(gridX + timeColumnWidth, CARNET_ZONE_Y + CARNET_ZONE_HEIGHT_PT);
+
+  doc.stroke().restore();
+
+  instances.forEach((entry) => {
+    const columnIndex = columnIndexMap.get(entry.day_of_week);
+    if (columnIndex === undefined) {
+      return;
+    }
+
+    const startMinutes = parseTimeToMinutes(entry.start_time);
+    const endMinutes = parseTimeToMinutes(entry.end_time);
+    if (Number.isNaN(startMinutes) || Number.isNaN(endMinutes) || endMinutes <= startMinutes) {
+      return;
+    }
+
+    const offsetMinutes = startMinutes - minHour * 60;
+    const top = gridY + Math.max(0, (offsetMinutes / 60) * rowHeight);
+    const durationMinutes = endMinutes - startMinutes;
+    const height = Math.max((durationMinutes / 60) * rowHeight - 2, rowHeight * 0.6);
+    const x = gridX + timeColumnWidth + columnIndex * columnWidth;
+    const width = columnWidth - 4;
+
+    const colors = computeCourseColors(theme, (entry as any).subject_color);
+    const hasTeacher = Boolean(entry.teacher_name);
+    const useSingleLine = !hasTeacher || height < 26;
+    const textX = x + 4;
+    const textWidth = width - 8;
+
+    doc
+      .save()
+      .lineWidth(0.6)
+      .fillColor(colors.fill)
+      .strokeColor(colors.stroke)
+      .rect(x + 2, top + 2, width, height)
+      .fillAndStroke()
+      .fillColor(colors.text);
+
+    if (useSingleLine) {
+      const line = hasTeacher
+        ? `${entry.subject_name || 'Cours'} – ${entry.teacher_name}`
+        : entry.subject_name || 'Cours';
+      doc.font('Helvetica-Bold').fontSize(8.5).text(line, textX, top + 6, {
+        width: textWidth,
+        ellipsis: true,
+      });
+    } else {
+      doc.font('Helvetica-Bold').fontSize(9).text(entry.subject_name || 'Cours', textX, top + 4, {
+        width: textWidth,
+        ellipsis: true,
+      });
+      if (hasTeacher) {
+        doc.font('Helvetica').fontSize(8).text(entry.teacher_name || '', textX, top + 16, {
+          width: textWidth,
+          ellipsis: true,
+        });
+      }
+    }
+
+    doc.restore();
+  });
+}
 
 // ============================================
 // HANDLERS - INSTANCES (MODE DYNAMIC)
@@ -691,6 +1174,178 @@ export async function getAvailableCoursesHandler(req: Request, res: Response) {
       success: false,
       error: 'Erreur lors de la récupération des cours',
     });
+  }
+}
+
+/**
+ * Exporter l'emploi du temps d'une classe au format PDF (staff uniquement)
+ */
+export async function exportClassTimetablePdfHandler(req: Request, res: Response) {
+  let pdfStarted = false;
+
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        error: 'Authentification requise',
+      });
+      return;
+    }
+
+    const { classId } = req.params;
+    const weekStartQuery = typeof req.query.weekStart === 'string' ? req.query.weekStart : undefined;
+    const weekStartDate = normalizeWeekStart(weekStartQuery);
+    const formatParam =
+      typeof req.query.format === 'string' && req.query.format === 'full' ? 'full' : 'carnet';
+    let themeParam: 'color' | 'gray' =
+      typeof req.query.theme === 'string' && req.query.theme === 'gray' ? 'gray' : 'color';
+    if (typeof req.query.color === 'string') {
+      themeParam = req.query.color === '0' ? 'gray' : 'color';
+    }
+
+    if (!classId) {
+      res.status(400).json({
+        success: false,
+        error: 'ID de classe requis',
+      });
+      return;
+    }
+
+    const { establishmentId, assignedClassIds } = req.user;
+    if (!establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Aucun établissement associé au compte staff',
+      });
+      return;
+    }
+
+    const classResult = await pool.query(
+      `
+        SELECT id, label, code, establishment_id
+        FROM classes
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [classId]
+    );
+
+    if (classResult.rowCount === 0) {
+      res.status(404).json({
+        success: false,
+        error: 'Classe introuvable',
+      });
+      return;
+    }
+
+    const classRow = classResult.rows[0];
+    if (classRow.establishment_id !== establishmentId) {
+      res.status(403).json({
+        success: false,
+        error: 'Accès refusé pour cette classe',
+      });
+      return;
+    }
+
+    const sanitizedAssignments = (assignedClassIds ?? []).filter(Boolean);
+    if (sanitizedAssignments.length > 0 && !sanitizedAssignments.includes(classId)) {
+      res.status(403).json({
+        success: false,
+        error: 'Classe non accessible dans votre périmètre',
+      });
+      return;
+    }
+
+    let establishmentName = 'Établissement';
+    let schoolYear: string | null = null;
+    try {
+      const establishmentResult = await pool.query(
+        `
+          SELECT COALESCE(es.display_name, e.name) AS display_name,
+                 es.school_year
+          FROM establishments e
+          LEFT JOIN establishment_settings es ON es.establishment_id = e.id
+          WHERE e.id = $1
+        `,
+        [establishmentId]
+      );
+      establishmentName = establishmentResult.rows[0]?.display_name || establishmentName;
+      schoolYear = establishmentResult.rows[0]?.school_year || null;
+    } catch (err: any) {
+      if (err?.code === '42P01') {
+        const fallbackResult = await pool.query(
+          `
+            SELECT name
+            FROM establishments
+            WHERE id = $1
+          `,
+          [establishmentId]
+        );
+        establishmentName = fallbackResult.rows[0]?.name || establishmentName;
+      } else {
+        throw err;
+      }
+    }
+
+    const instances = await TimetableInstanceModel.getInstancesForWeek(classId, weekStartDate);
+
+    const doc = new PDFDocument(
+      formatParam === 'full'
+        ? { size: 'A4', layout: 'landscape', margin: 36 }
+        : { size: 'A4', layout: 'portrait', margin: PAGE_MARGIN_PT }
+    );
+    pdfStarted = true;
+
+    const safeLabel = sanitizeFilePart(classRow.label || classRow.code || 'classe');
+    const filename = `EDT_${safeLabel}_${weekStartDate}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=\"${filename}\"`);
+
+    const effectiveSchoolYear =
+      schoolYear && schoolYear.trim().length > 0
+        ? schoolYear
+        : computeAcademicYear(parseDateOrThrow(weekStartDate));
+
+    console.log(
+      `[PDF_EXPORT] establishmentName=${establishmentName} classId=${classId} weekStart=${weekStartDate} schoolYear=${effectiveSchoolYear} theme=${themeParam}`
+    );
+
+    doc.pipe(res);
+
+    if (formatParam === 'full') {
+      drawClassTimetablePdf(doc, {
+        establishmentName,
+        classLabel: classRow.label || classRow.code || 'Classe',
+        classCode: classRow.code,
+        weekStart: weekStartDate,
+        instances,
+        schoolYear: effectiveSchoolYear,
+        theme: themeParam,
+      });
+    } else {
+      drawCarnetTimetablePdf(doc, {
+        establishmentName,
+        classLabel: classRow.label || classRow.code || 'Classe',
+        classCode: classRow.code,
+        weekStart: weekStartDate,
+        instances,
+        schoolYear: effectiveSchoolYear,
+        theme: themeParam,
+      });
+    }
+
+    doc.end();
+  } catch (error) {
+    console.error('Erreur export PDF emploi du temps:', error);
+    if (!pdfStarted && !res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: 'Impossible de générer le PDF',
+      });
+    } else if (!res.headersSent) {
+      res.end();
+    }
   }
 }
 

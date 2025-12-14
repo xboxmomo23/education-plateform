@@ -107,7 +107,7 @@ const createTemplateValidation = [
  * Récupérer l'emploi du temps d'une classe pour une semaine spécifique
  * Accessible par : élèves, professeurs, staff, admin
  */
-router.get('/class/:classId/week/:weekStartDate', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('student', 'teacher', 'staff', 'admin'), (0, express_validator_1.param)('classId').isUUID().withMessage('ID de classe invalide'), (0, express_validator_1.param)('weekStartDate')
+router.get('/class/:classId/week/:weekStartDate', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('student', 'teacher', 'staff', 'admin', 'parent'), (0, express_validator_1.param)('classId').isUUID().withMessage('ID de classe invalide'), (0, express_validator_1.param)('weekStartDate')
     .matches(/^\d{4}-\d{2}-\d{2}$/)
     .withMessage('Date invalide (format YYYY-MM-DD)'), validation_middleware_1.validateRequest, timetable_controller_1.getClassTimetableForWeekHandler);
 /**

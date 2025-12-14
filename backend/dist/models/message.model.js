@@ -440,5 +440,110 @@ exports.MessageModel = {
         const result = await database_1.default.query(query, [establishmentId]);
         return result.rows;
     },
+    /**
+     * Ajouter des destinataires supplémentaires à un message existant
+     */
+    async addRecipients(messageId, recipientIds) {
+        if (!recipientIds || recipientIds.length === 0)
+            return;
+        const query = `
+      INSERT INTO message_recipients (message_id, recipient_id)
+      VALUES ($1, $2)
+      ON CONFLICT DO NOTHING
+    `;
+        for (const recipientId of recipientIds) {
+            await database_1.default.query(query, [messageId, recipientId]);
+        }
+    },
+    /**
+     * Récupérer les threads de messages pour un utilisateur (regroupés par parent_message_id)
+     */
+    async getThreadsForParticipant(userId, establishmentId) {
+        const query = `
+      WITH participant_messages AS (
+        SELECT 
+          m.id,
+          m.subject,
+          m.body,
+          m.parent_message_id,
+          COALESCE(m.parent_message_id, m.id) AS thread_id,
+          m.sender_id,
+          u.full_name AS sender_name,
+          u.role AS sender_role,
+          m.created_at,
+          CASE WHEN mr.recipient_id IS NULL THEN false ELSE true END AS is_recipient,
+          mr.read_at
+        FROM messages m
+        LEFT JOIN message_recipients mr 
+          ON mr.message_id = m.id 
+          AND mr.recipient_id = $1
+        JOIN users u ON u.id = m.sender_id
+        WHERE m.establishment_id = $2
+          AND (
+            m.sender_id = $1
+            OR EXISTS (
+              SELECT 1 FROM message_recipients mr2
+              WHERE mr2.message_id = m.id AND mr2.recipient_id = $1
+            )
+          )
+      )
+      SELECT
+        thread_id,
+        COALESCE(
+          MIN(subject) FILTER (WHERE parent_message_id IS NULL),
+          MIN(subject)
+        ) AS subject,
+        COUNT(*) AS message_count,
+        COUNT(*) FILTER (WHERE is_recipient = true AND read_at IS NULL) AS unread_count,
+        MAX(created_at) AS last_message_at,
+        (ARRAY_AGG(body ORDER BY created_at DESC))[1] AS last_message_preview,
+        (ARRAY_AGG(sender_id ORDER BY created_at DESC))[1] AS last_sender_id,
+        (ARRAY_AGG(sender_name ORDER BY created_at DESC))[1] AS last_sender_name,
+        (ARRAY_AGG(sender_role ORDER BY created_at DESC))[1] AS last_sender_role
+      FROM participant_messages
+      GROUP BY thread_id
+      ORDER BY last_message_at DESC
+    `;
+        const result = await database_1.default.query(query, [userId, establishmentId]);
+        return result.rows;
+    },
+    /**
+     * Récupérer les messages d'un thread pour un utilisateur
+     */
+    async getThreadMessagesForParticipant(threadId, userId, establishmentId) {
+        const query = `
+      SELECT
+        m.id,
+        m.subject,
+        m.body,
+        m.parent_message_id,
+        COALESCE(m.parent_message_id, m.id) AS thread_id,
+        m.sender_id,
+        u.full_name AS sender_name,
+        u.role AS sender_role,
+        m.created_at,
+        (
+          SELECT read_at 
+          FROM message_recipients mr 
+          WHERE mr.message_id = m.id 
+            AND mr.recipient_id = $2
+          LIMIT 1
+        ) AS read_at
+      FROM messages m
+      JOIN users u ON u.id = m.sender_id
+      WHERE m.establishment_id = $3
+        AND COALESCE(m.parent_message_id, m.id) = $1
+        AND (
+          m.sender_id = $2 OR EXISTS (
+            SELECT 1 FROM message_recipients mr2
+            WHERE mr2.message_id = m.id
+              AND mr2.recipient_id = $2
+          )
+        )
+      ORDER BY m.created_at ASC
+    `;
+        const result = await database_1.default.query(query, [threadId, userId, establishmentId]);
+        return result.rows;
+    },
 };
 //# sourceMappingURL=message.model.js.map

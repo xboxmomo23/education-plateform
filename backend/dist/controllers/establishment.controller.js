@@ -6,8 +6,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getTimetableConfigHandler = getTimetableConfigHandler;
 exports.updateTimetableConfigHandler = updateTimetableConfigHandler;
 exports.updateDirectorSignature = updateDirectorSignature;
+exports.getEstablishmentSettingsHandler = getEstablishmentSettingsHandler;
+exports.updateEstablishmentSettingsHandler = updateEstablishmentSettingsHandler;
 exports.getDirectorSignature = getDirectorSignature;
 const database_1 = __importDefault(require("../config/database"));
+const establishmentSettings_model_1 = require("../models/establishmentSettings.model");
 /**
  * GET /api/establishment/timetable-config
  * Récupérer la config emploi du temps
@@ -159,6 +162,92 @@ async function updateDirectorSignature(req, res) {
         res.status(500).json({
             success: false,
             error: 'Erreur lors de la mise à jour',
+        });
+    }
+}
+async function getEstablishmentSettingsHandler(req, res) {
+    try {
+        if (!req.user) {
+            res.status(401).json({ success: false, error: 'Non authentifié' });
+            return;
+        }
+        const establishmentId = req.user.establishmentId;
+        const settings = establishmentId
+            ? await (0, establishmentSettings_model_1.getEstablishmentSettings)(establishmentId)
+            : (0, establishmentSettings_model_1.getDefaultEstablishmentSettings)();
+        res.json({
+            success: true,
+            data: settings,
+        });
+    }
+    catch (error) {
+        console.error('Erreur getEstablishmentSettingsHandler:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Erreur lors de la récupération des paramètres établissement',
+        });
+    }
+}
+async function updateEstablishmentSettingsHandler(req, res) {
+    try {
+        if (!req.user) {
+            res.status(401).json({ success: false, error: 'Non authentifié' });
+            return;
+        }
+        if (req.user.role !== 'admin') {
+            res.status(403).json({ success: false, error: 'Accès réservé aux administrateurs' });
+            return;
+        }
+        const establishmentId = req.user.establishmentId;
+        if (!establishmentId) {
+            res.status(403).json({ success: false, error: 'Aucun établissement associé à ce compte' });
+            return;
+        }
+        const { display_name, contact_email, school_year } = req.body || {};
+        if (typeof display_name === 'undefined' &&
+            typeof contact_email === 'undefined' &&
+            typeof school_year === 'undefined') {
+            res.status(400).json({
+                success: false,
+                error: 'Aucun champ à mettre à jour',
+            });
+            return;
+        }
+        const payload = {
+            displayName: typeof display_name === 'string' ? display_name.trim() || null : display_name === null ? null : undefined,
+            contactEmail: typeof contact_email === 'string'
+                ? contact_email.trim().toLowerCase() || null
+                : contact_email === null
+                    ? null
+                    : undefined,
+            schoolYear: typeof school_year === 'string' ? school_year.trim() || null : school_year === null ? null : undefined,
+        };
+        const filteredPayload = {};
+        ['displayName', 'contactEmail', 'schoolYear'].forEach((key) => {
+            const value = payload[key];
+            if (value !== undefined) {
+                filteredPayload[key] = value;
+            }
+        });
+        if (Object.keys(filteredPayload).length === 0) {
+            res.status(400).json({
+                success: false,
+                error: 'Aucun champ à mettre à jour',
+            });
+            return;
+        }
+        const updated = await (0, establishmentSettings_model_1.upsertEstablishmentSettings)(establishmentId, filteredPayload);
+        res.json({
+            success: true,
+            message: 'Paramètres mis à jour',
+            data: updated,
+        });
+    }
+    catch (error) {
+        console.error('Erreur updateEstablishmentSettingsHandler:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Erreur lors de la mise à jour des paramètres',
         });
     }
 }

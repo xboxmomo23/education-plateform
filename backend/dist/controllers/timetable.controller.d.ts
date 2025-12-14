@@ -64,6 +64,10 @@ export declare function getStaffClassesHandler(req: Request, res: Response): Pro
  */
 export declare function getAvailableCoursesHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 /**
+ * Exporter l'emploi du temps d'une classe au format PDF (staff uniquement)
+ */
+export declare function exportClassTimetablePdfHandler(req: Request, res: Response): Promise<void>;
+/**
  * Mettre à jour un cours (staff)
  */
 export declare function updateCourseForStaffHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;

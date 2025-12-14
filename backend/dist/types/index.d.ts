@@ -60,7 +60,7 @@ export interface RegisterRequest {
         is_primary_contact?: boolean;
         can_view_grades?: boolean;
         can_view_attendance?: boolean;
-        is_emergency_contact?: boolean;
+        emergency_contact?: boolean;
     };
 }
 export interface User {
@@ -134,8 +134,9 @@ export interface ParentProfile {
     is_primary_contact?: boolean;
     can_view_grades?: boolean;
     can_view_attendance?: boolean;
-    is_emergency_contact?: boolean;
+    emergency_contact?: boolean;
     created_at?: Date;
+    contact_email?: string | null;
 }
 export interface ParentChildSummary {
     id: string;
@@ -161,6 +162,7 @@ export interface ParentForStudentInput {
     can_view_grades?: boolean;
     can_view_attendance?: boolean;
     receive_notifications?: boolean;
+    contact_email?: string;
 }
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused' | 'remote' | 'excluded';
 export type TimetableStatus = 'confirmed' | 'cancelled' | 'changed';

@@ -6,6 +6,7 @@ const auth_middleware_1 = require("../middleware/auth.middleware");
 const validation_middleware_1 = require("../middleware/validation.middleware");
 const report_controller_1 = require("../controllers/report.controller");
 const parent_model_1 = require("../models/parent.model");
+const assignment_controller_1 = require("../controllers/assignment.controller");
 const router = (0, express_1.Router)();
 // =========================
 // ROUTES - Synthèse des notes élève
@@ -238,6 +239,11 @@ router.get('/:studentId/grades/summary', auth_middleware_1.authenticate, (0, exp
         });
     }
 });
+/**
+ * GET /api/students/:studentId/assignments
+ * Accès parent/admin/staff (ou l'élève lui-même) pour consulter les devoirs
+ */
+router.get('/:studentId/assignments', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)('admin', 'staff', 'student', 'parent'), (0, express_validator_1.param)('studentId').isUUID(), (0, express_validator_1.query)('subjectId').optional().isUUID().withMessage('subjectId doit être un UUID valide'), (0, express_validator_1.query)('fromDueAt').optional().isISO8601().withMessage('fromDueAt doit être une date valide'), (0, express_validator_1.query)('toDueAt').optional().isISO8601().withMessage('toDueAt doit être une date valide'), validation_middleware_1.validateRequest, assignment_controller_1.getAssignmentsForSpecificStudentHandler);
 // =========================
 // ROUTES - Bulletins
 // =========================

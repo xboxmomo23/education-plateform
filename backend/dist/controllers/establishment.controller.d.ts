@@ -16,5 +16,7 @@ export declare function getTimetableConfigHandler(req: Request, res: Response): 
  */
 export declare function updateTimetableConfigHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 export declare function updateDirectorSignature(req: Request, res: Response): Promise<void>;
+export declare function getEstablishmentSettingsHandler(req: Request, res: Response): Promise<void>;
+export declare function updateEstablishmentSettingsHandler(req: Request, res: Response): Promise<void>;
 export declare function getDirectorSignature(req: Request, res: Response): Promise<void>;
 //# sourceMappingURL=establishment.controller.d.ts.map

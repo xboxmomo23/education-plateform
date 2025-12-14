@@ -12,6 +12,8 @@ interface ResetEmailParams {
     to: string;
     loginEmail: string;
     resetUrl: string;
+    establishmentName?: string | null;
+    userName?: string | null;
 }
 export declare function sendPasswordResetEmail(params: ResetEmailParams): Promise<void>;
 export {};

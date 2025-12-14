@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getChildrenForParent = getChildrenForParent;
 exports.assertParentCanAccessStudent = assertParentCanAccessStudent;
 exports.syncParentsForStudent = syncParentsForStudent;
+exports.linkExistingParentToStudent = linkExistingParentToStudent;
+exports.recomputeParentActiveStatus = recomputeParentActiveStatus;
 const database_1 = require("../config/database");
 const user_model_1 = require("./user.model");
 const auth_utils_1 = require("../utils/auth.utils");
@@ -23,7 +25,17 @@ function normalizeEmail(email) {
     const normalized = email.trim().toLowerCase();
     return normalized.length > 0 ? normalized : null;
 }
-async function getChildrenForParent(parentId) {
+async function getChildrenForParent(parentId, options) {
+    const includeInactive = options?.includeInactive ?? false;
+    const includePendingActivation = options?.includePendingActivation ?? false;
+    const clauses = ['rel.parent_id = $1', "child.role = 'student'"];
+    const params = [parentId];
+    if (!includeInactive) {
+        clauses.push('child.active = TRUE');
+    }
+    if (!includePendingActivation) {
+        clauses.push('child.must_change_password = FALSE');
+    }
     const result = await database_1.pool.query(`
       SELECT
         rel.student_id AS id,
@@ -34,16 +46,17 @@ async function getChildrenForParent(parentId) {
         cls.label AS class_name,
         rel.relation_type,
         rel.is_primary,
-        rel.can_view_grades,
-        rel.can_view_attendance,
-        rel.receive_notifications
+        rel.receive_notifications,
+        pp.can_view_grades AS profile_can_view_grades,
+        pp.can_view_attendance AS profile_can_view_attendance
       FROM student_parents rel
       INNER JOIN users child ON child.id = rel.student_id
       LEFT JOIN students stu ON stu.user_id = rel.student_id
       LEFT JOIN classes cls ON cls.id = stu.class_id
-      WHERE rel.parent_id = $1
+      LEFT JOIN parent_profiles pp ON pp.user_id = rel.parent_id
+      WHERE ${clauses.join(' AND ')}
       ORDER BY child.full_name ASC
-    `, [parentId]);
+    `, params);
     return result.rows.map((row) => ({
         id: row.id,
         full_name: row.full_name,
@@ -53,24 +66,28 @@ async function getChildrenForParent(parentId) {
         class_name: row.class_name || null,
         relation_type: row.relation_type || null,
         is_primary: row.is_primary ?? null,
-        can_view_grades: row.can_view_grades ?? null,
-        can_view_attendance: row.can_view_attendance ?? null,
+        can_view_grades: row.profile_can_view_grades ?? true,
+        can_view_attendance: row.profile_can_view_attendance ?? true,
         receive_notifications: row.receive_notifications ?? null,
     }));
 }
 async function assertParentCanAccessStudent(parentId, studentId, options = {}) {
-    const clauses = ['parent_id = $1', 'student_id = $2'];
+    const clauses = ['sp.parent_id = $1', 'sp.student_id = $2'];
     const values = [parentId, studentId];
-    let paramIndex = 3;
     if (options.requireCanViewGrades) {
-        clauses.push(`can_view_grades = TRUE`);
+        clauses.push('(pp.can_view_grades IS NULL OR pp.can_view_grades = TRUE)');
     }
     if (options.requireCanViewAttendance) {
-        clauses.push(`can_view_attendance = TRUE`);
+        clauses.push('(pp.can_view_attendance IS NULL OR pp.can_view_attendance = TRUE)');
     }
+    clauses.push('stu.active = TRUE');
+    clauses.push('stu.must_change_password = FALSE');
+    clauses.push("stu.role = 'student'");
     const query = `
     SELECT 1
-    FROM student_parents
+    FROM student_parents sp
+    INNER JOIN users stu ON stu.id = sp.student_id
+    LEFT JOIN parent_profiles pp ON pp.user_id = sp.parent_id
     WHERE ${clauses.join(' AND ')}
     LIMIT 1
   `;
@@ -81,8 +98,10 @@ async function assertParentCanAccessStudent(parentId, studentId, options = {}) {
         throw error;
     }
 }
+const FALLBACK_PARENT_PHONE = '+0000000000'; // DB constraint: parent_profiles.phone NOT NULL
 async function upsertParentProfile(params) {
-    const { parentId, phone, address, relationType, isPrimaryContact, canViewGrades, canViewAttendance, } = params;
+    const { parentId, phone, address, relationType, isPrimaryContact, canViewGrades, canViewAttendance, contactEmail, } = params;
+    const safePhone = typeof phone === 'string' && phone.trim().length > 0 ? phone.trim() : FALLBACK_PARENT_PHONE;
     await database_1.pool.query(`
       INSERT INTO parent_profiles (
         user_id,
@@ -92,9 +111,10 @@ async function upsertParentProfile(params) {
         is_primary_contact,
         can_view_grades,
         can_view_attendance,
-        is_emergency_contact
+        emergency_contact,
+        contact_email
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, $8)
       ON CONFLICT (user_id)
       DO UPDATE SET
         phone = COALESCE(EXCLUDED.phone, parent_profiles.phone),
@@ -102,44 +122,40 @@ async function upsertParentProfile(params) {
         relation_type = COALESCE(EXCLUDED.relation_type, parent_profiles.relation_type),
         is_primary_contact = COALESCE(EXCLUDED.is_primary_contact, parent_profiles.is_primary_contact),
         can_view_grades = COALESCE(EXCLUDED.can_view_grades, parent_profiles.can_view_grades),
-        can_view_attendance = COALESCE(EXCLUDED.can_view_attendance, parent_profiles.can_view_attendance)
+        can_view_attendance = COALESCE(EXCLUDED.can_view_attendance, parent_profiles.can_view_attendance),
+        contact_email = COALESCE(EXCLUDED.contact_email, parent_profiles.contact_email)
     `, [
         parentId,
-        phone || null,
+        safePhone,
         address || null,
         relationType || null,
         isPrimaryContact ?? false,
         canViewGrades ?? true,
         canViewAttendance ?? true,
+        contactEmail || null,
     ]);
 }
 async function upsertStudentParentRelation(params) {
-    const { studentId, parentId, relationType, isPrimary, canViewGrades, canViewAttendance, receiveNotifications, } = params;
+    const { studentId, parentId, relationType, isPrimary, receiveNotifications } = params;
     await database_1.pool.query(`
       INSERT INTO student_parents (
         student_id,
         parent_id,
         relation_type,
         is_primary,
-        can_view_grades,
-        can_view_attendance,
         receive_notifications
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      VALUES ($1, $2, $3, $4, $5)
       ON CONFLICT (student_id, parent_id)
       DO UPDATE SET
         relation_type = COALESCE(EXCLUDED.relation_type, student_parents.relation_type),
         is_primary = COALESCE(EXCLUDED.is_primary, student_parents.is_primary),
-        can_view_grades = COALESCE(EXCLUDED.can_view_grades, student_parents.can_view_grades),
-        can_view_attendance = COALESCE(EXCLUDED.can_view_attendance, student_parents.can_view_attendance),
         receive_notifications = COALESCE(EXCLUDED.receive_notifications, student_parents.receive_notifications)
     `, [
         studentId,
         parentId,
         relationType || null,
         isPrimary ?? false,
-        canViewGrades ?? true,
-        canViewAttendance ?? true,
         receiveNotifications ?? true,
     ]);
 }
@@ -186,11 +202,17 @@ async function syncParentsForStudent(params) {
             user = await findParentUserByEmail(email, establishmentId);
         }
         if (!user) {
-            const fullName = buildFullName(firstName, lastName);
+            const normalizedFirstName = firstName || '';
+            const normalizedLastName = lastName || '';
+            const fullName = buildFullName(normalizedFirstName, normalizedLastName);
+            const loginNameLast = normalizedLastName || 'parent';
+            const loginNameFirst = normalizedFirstName || 'principal';
+            const loginFullName = `${loginNameLast} ${loginNameFirst}`.trim();
             const loginEmail = email ||
                 (await (0, identifier_utils_1.generateLoginEmailFromName)({
-                    fullName,
+                    fullName: loginFullName || fullName,
                     establishmentId,
+                    forceDomainSuffix: ".dz",
                 }));
             const tempPassword = (0, auth_utils_1.generateTemporaryPassword)();
             user = await (0, user_model_1.createUser)({
@@ -222,14 +244,13 @@ async function syncParentsForStudent(params) {
             isPrimaryContact: isPrimary,
             canViewGrades,
             canViewAttendance,
+            contactEmail: parentPayload.contact_email || null,
         });
         await upsertStudentParentRelation({
             studentId,
             parentId: user.id,
             relationType,
             isPrimary,
-            canViewGrades,
-            canViewAttendance,
             receiveNotifications,
         });
         seenParentIds.add(user.id);
@@ -238,8 +259,54 @@ async function syncParentsForStudent(params) {
             full_name: user.full_name,
             email: email || null,
             isNewUser,
+            contactEmailOverride: parentPayload.contact_email || null,
         });
     }
     return results;
+}
+async function linkExistingParentToStudent(params) {
+    const { studentId, parentId, relationType = 'guardian', isPrimary = true, receiveNotifications = true, canViewGrades = true, canViewAttendance = true, contactEmail = null, } = params;
+    await upsertParentProfile({
+        parentId,
+        relationType,
+        isPrimaryContact: isPrimary,
+        canViewGrades,
+        canViewAttendance,
+        contactEmail: contactEmail || null,
+    });
+    await upsertStudentParentRelation({
+        studentId,
+        parentId,
+        relationType,
+        isPrimary,
+        receiveNotifications,
+    });
+}
+async function recomputeParentActiveStatus(parentId) {
+    const result = await database_1.pool.query(`
+      SELECT COUNT(*)::int AS count
+      FROM student_parents sp
+      JOIN users stu ON stu.id = sp.student_id
+      WHERE sp.parent_id = $1
+        AND stu.active = TRUE
+    `, [parentId]);
+    const activeChildren = Number(result.rows[0]?.count || 0);
+    let deactivated = false;
+    if (activeChildren === 0) {
+        const updateResult = await database_1.pool.query(`
+        UPDATE users
+        SET active = FALSE
+        WHERE id = $1
+          AND role = 'parent'
+          AND active = TRUE
+        RETURNING id
+      `, [parentId]);
+        const affectedRows = updateResult.rowCount ?? 0;
+        if (affectedRows > 0) {
+            deactivated = true;
+        }
+    }
+    console.log(`[PARENT_STATUS] parent=${parentId} active_children=${activeChildren} -> ${deactivated ? 'set_active=false' : 'keep_current'}`);
+    return { activeChildren, deactivated };
 }
 //# sourceMappingURL=parent.model.js.map

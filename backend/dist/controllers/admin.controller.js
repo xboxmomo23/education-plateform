@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.searchParentsForAdminHandler = searchParentsForAdminHandler;
 exports.getAdminDashboardHandler = getAdminDashboardHandler;
 exports.getAdminClassesHandler = getAdminClassesHandler;
 exports.createClassForAdminHandler = createClassForAdminHandler;
@@ -12,6 +13,7 @@ exports.createStudentForAdminHandler = createStudentForAdminHandler;
 exports.updateStudentStatusHandler = updateStudentStatusHandler;
 exports.updateStudentClassHandler = updateStudentClassHandler;
 exports.resendStudentInviteHandler = resendStudentInviteHandler;
+exports.resendParentInviteHandler = resendParentInviteHandler;
 exports.getStudentClassChangesHandler = getStudentClassChangesHandler;
 exports.scheduleStudentClassChangeHandler = scheduleStudentClassChangeHandler;
 exports.deleteStudentClassChangeHandler = deleteStudentClassChangeHandler;
@@ -41,6 +43,7 @@ const email_service_1 = require("../services/email.service");
 const auth_utils_1 = require("../utils/auth.utils");
 const identifier_utils_1 = require("../utils/identifier.utils");
 const parent_model_1 = require("../models/parent.model");
+const establishmentSettings_model_1 = require("../models/establishmentSettings.model");
 /**
  * Helper : récupère l'établissement de l'admin connecté
  */
@@ -58,8 +61,8 @@ async function getAdminEstablishmentId(adminUserId) {
     return result.rows[0].id;
 }
 async function getEstablishmentName(establishmentId) {
-    const result = await database_1.default.query(`SELECT name FROM establishments WHERE id = $1 LIMIT 1`, [establishmentId]);
-    return result.rows[0]?.name || null;
+    const settings = await (0, establishmentSettings_model_1.getEstablishmentSettings)(establishmentId);
+    return settings.displayName || null;
 }
 async function getContactEmailForRole(userId, role) {
     let table = null;
@@ -73,6 +76,9 @@ async function getContactEmailForRole(userId, role) {
         case "staff":
             table = "staff_profiles";
             break;
+        case "parent":
+            table = "parent_profiles";
+            break;
         default:
             table = null;
     }
@@ -81,6 +87,13 @@ async function getContactEmailForRole(userId, role) {
     }
     const res = await database_1.default.query(`SELECT contact_email FROM ${table} WHERE user_id = $1 LIMIT 1`, [userId]);
     return res.rows[0]?.contact_email || null;
+}
+function isSmtpConfigured() {
+    return Boolean(process.env.SMTP_HOST &&
+        process.env.SMTP_PORT &&
+        process.env.SMTP_USER &&
+        process.env.SMTP_PASS &&
+        process.env.EMAIL_FROM);
 }
 async function processInviteResend(targetUserId, role, estId) {
     const userResult = await database_1.default.query(`
@@ -129,6 +142,7 @@ async function processInviteResend(targetUserId, role, estId) {
     const contactEmail = await getContactEmailForRole(userRow.id, role);
     const establishmentName = await getEstablishmentName(estId);
     const targetEmail = contactEmail || userRow.email;
+    const smtpConfigured = isSmtpConfigured();
     if (targetEmail) {
         await (0, email_service_1.sendInviteEmail)({
             to: targetEmail,
@@ -140,7 +154,7 @@ async function processInviteResend(targetUserId, role, estId) {
             console.error("[MAIL] Erreur envoi email d'invitation:", err);
         });
     }
-    return { ok: true, inviteUrl };
+    return { ok: true, inviteUrl, loginEmail: userRow.email, targetEmail, smtpConfigured };
 }
 function normalizeParentsPayload(rawParents) {
     if (!Array.isArray(rawParents)) {
@@ -156,6 +170,14 @@ function normalizeParentsPayload(rawParents) {
         if (!firstName && !lastName) {
             return;
         }
+        const rawContactEmail = typeof parent.contact_email === "string"
+            ? parent.contact_email
+            : typeof parent.contactEmail === "string"
+                ? parent.contactEmail
+                : "";
+        const contactEmail = rawContactEmail && rawContactEmail.trim().length > 0
+            ? rawContactEmail.trim().toLowerCase()
+            : undefined;
         normalized.push({
             firstName,
             lastName,
@@ -182,11 +204,67 @@ function normalizeParentsPayload(rawParents) {
             receive_notifications: typeof parent.receive_notifications === "boolean"
                 ? parent.receive_notifications
                 : undefined,
+            contact_email: contactEmail,
         });
     });
     return normalized;
 }
-async function sendParentInvitesForNewAccounts(parents, establishmentName) {
+async function searchParentsForAdminHandler(req, res) {
+    try {
+        const { userId } = req.user;
+        const estId = await getAdminEstablishmentId(userId);
+        if (!estId) {
+            return res.status(404).json({
+                success: false,
+                error: "Établissement introuvable pour cet administrateur",
+            });
+        }
+        const rawSearch = typeof req.query.search === "string" ? req.query.search.trim() : "";
+        const limitParam = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 20;
+        const limit = Math.min(50, Math.max(1, Number.isNaN(limitParam) ? 20 : limitParam));
+        if (!rawSearch) {
+            return res.json({
+                success: true,
+                data: [],
+            });
+        }
+        const pattern = `%${rawSearch}%`;
+        const result = await database_1.default.query(`
+        SELECT 
+          u.id,
+          u.full_name,
+          u.email,
+          pp.contact_email,
+          COUNT(sp.student_id)::INT AS children_count
+        FROM users u
+        LEFT JOIN parent_profiles pp ON pp.user_id = u.id
+        LEFT JOIN student_parents sp ON sp.parent_id = u.id
+        WHERE u.role = 'parent'
+          AND u.establishment_id = $1
+          AND (
+            u.full_name ILIKE $2
+            OR u.email ILIKE $2
+            OR COALESCE(pp.contact_email, '') ILIKE $2
+          )
+        GROUP BY u.id, pp.contact_email
+        ORDER BY u.full_name ASC
+        LIMIT $3
+      `, [estId, pattern, limit]);
+        return res.json({
+            success: true,
+            data: result.rows,
+        });
+    }
+    catch (error) {
+        console.error("Erreur searchParentsForAdminHandler:", error);
+        return res.status(500).json({
+            success: false,
+            error: "Erreur lors de la recherche de parents",
+        });
+    }
+}
+async function sendParentInvitesForNewAccounts(parents, establishmentName, toEmailOverride) {
+    const invites = [];
     for (const parent of parents) {
         if (!parent.isNewUser || !parent.email) {
             continue;
@@ -197,18 +275,29 @@ async function sendParentInvitesForNewAccounts(parents, establishmentName) {
                 email: parent.email,
                 full_name: parent.full_name,
             });
+            const targetEmail = toEmailOverride || parent.contactEmailOverride || parent.email;
+            if (!targetEmail) {
+                continue;
+            }
             await (0, email_service_1.sendInviteEmail)({
-                to: parent.email,
+                to: targetEmail,
                 loginEmail: parent.email,
                 role: "parent",
                 establishmentName: establishmentName || undefined,
                 inviteUrl: invite.inviteUrl,
+            });
+            invites.push({
+                parentUserId: parent.parentUserId,
+                inviteUrl: invite.inviteUrl,
+                loginEmail: parent.email,
+                targetEmail,
             });
         }
         catch (error) {
             console.error("[MAIL] Erreur envoi invitation parent:", error);
         }
     }
+    return invites;
 }
 function handleParentSyncError(res, error) {
     if (!(error instanceof Error)) {
@@ -512,7 +601,14 @@ async function getAdminStudentsHandler(req, res) {
         c.label AS class_label,
         c.code AS class_code,
         c.level,
-        c.academic_year
+        c.academic_year,
+        (
+          SELECT COUNT(*) > 0
+          FROM student_parents sp2
+          JOIN users up ON up.id = sp2.parent_id
+          WHERE sp2.student_id = s.user_id
+            AND up.must_change_password = TRUE
+        ) AS parent_pending_activation
       FROM students s
       JOIN users u ON u.id = s.user_id
       LEFT JOIN classes c ON c.id = s.class_id
@@ -543,7 +639,7 @@ async function getAdminStudentsHandler(req, res) {
 async function createStudentForAdminHandler(req, res) {
     try {
         const { userId } = req.user;
-        const { full_name, email, login_email, contact_email, class_id, student_number, date_of_birth, parents, } = req.body;
+        const { full_name, email, login_email, contact_email, class_id, student_number, date_of_birth, parents, existing_parent_id, } = req.body;
         if (!full_name) {
             return res.status(400).json({
                 success: false,
@@ -558,7 +654,37 @@ async function createStudentForAdminHandler(req, res) {
             });
         }
         const establishmentName = await getEstablishmentName(estId);
-        const parentsPayload = normalizeParentsPayload(parents);
+        let parentsPayload = normalizeParentsPayload(parents);
+        let existingParentRow = null;
+        if (typeof existing_parent_id === "string" &&
+            existing_parent_id.trim().length > 0) {
+            const existingParentId = existing_parent_id.trim();
+            const parentResult = await database_1.default.query(`
+          SELECT id, full_name, email, establishment_id
+          FROM users
+          WHERE id = $1
+            AND role = 'parent'
+          LIMIT 1
+        `, [existingParentId]);
+            if (parentResult.rowCount === 0) {
+                return res.status(404).json({
+                    success: false,
+                    error: "Parent sélectionné introuvable",
+                });
+            }
+            const parentRow = parentResult.rows[0];
+            if (parentRow.establishment_id !== estId) {
+                return res.status(403).json({
+                    success: false,
+                    error: "Ce parent appartient à un autre établissement",
+                });
+            }
+            existingParentRow = {
+                id: parentRow.id,
+                full_name: parentRow.full_name,
+                email: parentRow.email,
+            };
+        }
         let normalizedClassId = null;
         if (typeof class_id === "string" && class_id.trim().length > 0) {
             normalizedClassId = class_id.trim();
@@ -645,7 +771,23 @@ async function createStudentForAdminHandler(req, res) {
             date_of_birth ? new Date(date_of_birth) : null,
         ]);
         const student = studentInsert.rows[0];
+        if (!existingParentRow && parentsPayload.length === 0 && contactEmail) {
+            parentsPayload = [
+                {
+                    firstName: "Parent",
+                    lastName: `de ${full_name}`,
+                    relation_type: "guardian",
+                    is_primary: true,
+                    can_view_grades: true,
+                    can_view_attendance: true,
+                    receive_notifications: true,
+                    contact_email: contactEmail,
+                },
+            ];
+        }
         let parentResults = [];
+        let parentInvitesData = [];
+        let linkedExistingParent = null;
         if (parentsPayload.length > 0) {
             try {
                 parentResults = await (0, parent_model_1.syncParentsForStudent)({
@@ -660,6 +802,18 @@ async function createStudentForAdminHandler(req, res) {
                 }
                 throw error;
             }
+        }
+        if (existingParentRow) {
+            await (0, parent_model_1.linkExistingParentToStudent)({
+                studentId: user.id,
+                parentId: existingParentRow.id,
+                relationType: "guardian",
+                isPrimary: true,
+                receiveNotifications: true,
+                canViewGrades: true,
+                canViewAttendance: true,
+            });
+            linkedExistingParent = existingParentRow;
         }
         const invite = await (0, auth_controller_1.createInviteTokenForUser)({
             id: user.id,
@@ -678,8 +832,26 @@ async function createStudentForAdminHandler(req, res) {
                 console.error("[MAIL] Erreur envoi email d'invitation élève:", err);
             });
         }
-        if (parentResults.length > 0) {
-            await sendParentInvitesForNewAccounts(parentResults, establishmentName);
+        const parentsNeedingInvite = parentResults.filter((parent) => parent.isNewUser);
+        if (parentsNeedingInvite.length > 0) {
+            for (const parentResult of parentsNeedingInvite) {
+                const invites = await sendParentInvitesForNewAccounts([parentResult], establishmentName, parentResult.contactEmailOverride || undefined);
+                if (invites.length > 0) {
+                    parentInvitesData = parentInvitesData.concat(invites);
+                }
+            }
+        }
+        const parentInviteUrls = parentInvitesData.map((invite) => invite.inviteUrl);
+        const parentLoginEmails = parentInvitesData.map((invite) => invite.loginEmail);
+        const smtpConfigured = isSmtpConfigured();
+        const parentsForResponse = [...parentResults];
+        if (linkedExistingParent) {
+            parentsForResponse.push({
+                parentUserId: linkedExistingParent.id,
+                full_name: linkedExistingParent.full_name,
+                email: linkedExistingParent.email,
+                isNewUser: false,
+            });
         }
         return res.status(201).json({
             success: true,
@@ -694,7 +866,11 @@ async function createStudentForAdminHandler(req, res) {
                 },
                 contact_email: contactEmail,
                 inviteUrl: invite.inviteUrl,
-                parents: parentResults,
+                parents: parentsForResponse,
+                linkedExistingParent,
+                parentInviteUrls,
+                parentLoginEmails,
+                smtpConfigured,
             },
         });
     }
@@ -741,9 +917,29 @@ async function updateStudentStatusHandler(req, res) {
                 error: "Élève introuvable pour cet établissement",
             });
         }
+        const parentIdsResult = await database_1.default.query(`
+        SELECT parent_id
+        FROM student_parents
+        WHERE student_id = $1
+      `, [targetUserId]);
+        const parentIds = parentIdsResult.rows.map((row) => row.parent_id);
+        const impactedParents = new Set();
+        const autoDisabledParents = [];
+        for (const parentId of parentIds) {
+            impactedParents.add(parentId);
+            const result = await (0, parent_model_1.recomputeParentActiveStatus)(parentId);
+            if (result.deactivated) {
+                autoDisabledParents.push(parentId);
+            }
+        }
         return res.json({
             success: true,
             message: "Statut de l'élève mis à jour",
+            data: {
+                impactedParentsCount: impactedParents.size,
+                autoDisabledParentsCount: autoDisabledParents.length,
+                autoDisabledParents,
+            },
         });
     }
     catch (error) {
@@ -831,7 +1027,9 @@ async function updateStudentClassHandler(req, res) {
             const shouldInviteParents = parentResults.some((parent) => parent.isNewUser && parent.email);
             if (shouldInviteParents) {
                 const establishmentName = await getEstablishmentName(estId);
-                await sendParentInvitesForNewAccounts(parentResults, establishmentName);
+                for (const parentResult of parentResults) {
+                    await sendParentInvitesForNewAccounts([parentResult], establishmentName, parentResult.contactEmailOverride || undefined);
+                }
             }
         }
         const messages = [];
@@ -879,6 +1077,9 @@ async function resendStudentInviteHandler(req, res) {
         return res.json({
             success: true,
             inviteUrl: result.inviteUrl,
+            loginEmail: result.loginEmail,
+            targetEmail: result.targetEmail,
+            smtpConfigured: result.smtpConfigured,
             message: "Invitation renvoyée avec succès",
         });
     }
@@ -887,6 +1088,85 @@ async function resendStudentInviteHandler(req, res) {
         return res.status(500).json({
             success: false,
             error: "Erreur lors de l'envoi de la nouvelle invitation",
+        });
+    }
+}
+async function resendParentInviteHandler(req, res) {
+    try {
+        const { userId } = req.user;
+        const targetStudentId = req.params.userId;
+        const estId = await getAdminEstablishmentId(userId);
+        if (!estId) {
+            return res.status(404).json({
+                success: false,
+                error: "Établissement non trouvé pour cet admin",
+            });
+        }
+        const studentExists = await database_1.default.query(`
+        SELECT id
+        FROM users
+        WHERE id = $1
+          AND role = 'student'
+          AND establishment_id = $2
+      `, [targetStudentId, estId]);
+        if (studentExists.rowCount === 0) {
+            return res.status(404).json({
+                success: false,
+                error: "Élève introuvable pour cet établissement",
+            });
+        }
+        const parentsResult = await database_1.default.query(`
+        SELECT
+          sp.parent_id,
+          sp.is_primary,
+          u.must_change_password,
+          u.last_login
+        FROM student_parents sp
+        JOIN users u ON u.id = sp.parent_id
+        WHERE sp.student_id = $1
+          AND u.establishment_id = $2
+        ORDER BY sp.is_primary DESC, u.created_at ASC
+      `, [targetStudentId, estId]);
+        if (parentsResult.rowCount === 0) {
+            return res.status(404).json({
+                success: false,
+                error: "Aucun parent lié à cet élève",
+            });
+        }
+        let targetParentRow = null;
+        for (const parentRow of parentsResult.rows) {
+            if (parentRow.must_change_password) {
+                targetParentRow = parentRow;
+                break;
+            }
+        }
+        if (!targetParentRow) {
+            return res.status(400).json({
+                success: false,
+                error: "Tous les parents ont déjà activé leur compte",
+            });
+        }
+        const result = await processInviteResend(targetParentRow.parent_id, "parent", estId);
+        if (!result.ok) {
+            return res.status(result.status).json({
+                success: false,
+                error: result.message,
+            });
+        }
+        return res.json({
+            success: true,
+            inviteUrl: result.inviteUrl,
+            loginEmail: result.loginEmail,
+            targetEmail: result.targetEmail,
+            smtpConfigured: result.smtpConfigured,
+            message: "Invitation parent renvoyée avec succès",
+        });
+    }
+    catch (error) {
+        console.error("Erreur resendParentInviteHandler:", error);
+        return res.status(500).json({
+            success: false,
+            error: "Erreur lors de l'envoi de la nouvelle invitation parent",
         });
     }
 }
