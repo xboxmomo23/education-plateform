@@ -119,7 +119,7 @@ export default function ParentAssignmentsPage() {
           Devoirs
         </h1>
         <p className="text-muted-foreground">
-          Aucun enfant n’est associé à ce compte.
+          Aucun enfant activé n’est associé à ce compte (les invitations peuvent être en attente).
           {settings?.contactEmail
             ? ` Contactez ${settings.contactEmail} pour lier votre compte parent à un élève.`
             : " Contactez l’établissement pour lier votre compte parent à un élève."}

@@ -244,7 +244,7 @@ export default function ParentNotesPage() {
         <div className="border-b pb-6">
           <h1 className="text-4xl font-bold text-slate-900">Notes</h1>
           <p className="text-muted-foreground mt-2 text-lg">
-            Aucun enfant n’est associé à ce compte.
+            Aucun enfant activé n’est associé à ce compte (les invitations peuvent être en attente).
             {settings?.contactEmail
               ? ` Contactez ${settings.contactEmail} pour lier votre compte parent à un élève.`
               : " Contactez l’établissement pour lier votre compte parent à un élève."}

@@ -13,7 +13,12 @@ export async function getParentChildrenHandler(req: Request, res: Response): Pro
     }
 
     const includeInactive = typeof req.query.includeInactive === 'string' && req.query.includeInactive === 'true';
-    const children = await getChildrenForParent(req.user.userId, { includeInactive });
+    const includePendingActivation =
+      typeof req.query.includePendingActivation === 'string' && req.query.includePendingActivation === 'true';
+    const children = await getChildrenForParent(req.user.userId, {
+      includeInactive,
+      includePendingActivation,
+    });
     res.status(200).json({
       success: true,
       data: children,

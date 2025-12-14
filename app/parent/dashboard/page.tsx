@@ -72,7 +72,7 @@ export default function ParentDashboardPage() {
         <Alert>
           <AlertTitle>Enfant introuvable</AlertTitle>
           <AlertDescription>
-            Aucun enfant n&apos;est associé à ce compte.
+            Aucun enfant activé n&apos;est associé à ce compte (les invitations peuvent être en attente).
             {settings?.contactEmail
               ? ` Contactez ${settings.contactEmail} si vous pensez qu'il s'agit d'une erreur.`
               : " Contactez l'administration si vous pensez qu'il s'agit d'une erreur."}

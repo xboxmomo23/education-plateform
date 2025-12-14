@@ -209,7 +209,7 @@ export default function ParentEmploiDuTempsPage() {
       <div className="space-y-4">
         <h1 className="text-3xl font-bold">Emploi du temps</h1>
         <p className="text-muted-foreground">
-          Aucun enfant n’est associé à ce compte.
+          Aucun enfant activé n’est associé à ce compte (les invitations peuvent être en attente).
           {settings?.contactEmail ? ` Contactez ${settings.contactEmail} pour lier votre compte parent à un élève.` : ""}
         </p>
       </div>

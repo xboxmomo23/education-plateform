@@ -341,8 +341,9 @@ export async function requestPasswordReset(req: Request, res: Response): Promise
       [user.id, token, 'reset', expiresAt, createdIp, userAgent]
     );
 
-    const appUrl = process.env.APP_URL || process.env.FRONTEND_URL || 'http://localhost:3000';
-    const resetUrl = `${appUrl.replace(/\/$/, '')}/reset-mot-de-passe?token=${encodeURIComponent(token)}`;
+    const baseAppUrl = (process.env.APP_URL || process.env.FRONTEND_URL || 'http://localhost:3000').trim();
+    const sanitizedBaseUrl = baseAppUrl.replace(/\/$/, '');
+    const resetUrl = `${sanitizedBaseUrl}/reset-mot-de-passe?token=${encodeURIComponent(token.trim())}`.trim();
     console.log(`🔐 Lien de réinitialisation pour ${user.email}: ${resetUrl}`);
 
     const contactEmail = await getUserContactEmail(user.id, user.role);
@@ -375,9 +376,11 @@ export async function requestPasswordReset(req: Request, res: Response): Promise
 
 export async function resetPassword(req: Request, res: Response): Promise<void> {
   try {
-    const { token, newPassword } = req.body || {};
+    const rawToken = typeof req.body?.token === 'string' ? req.body.token : '';
+    const trimmedToken = rawToken.trim();
+    const { newPassword } = req.body || {};
 
-    if (!token || typeof token !== 'string') {
+    if (!trimmedToken || /\s/.test(trimmedToken)) {
       res.status(400).json({
         success: false,
         error: 'Lien de réinitialisation invalide ou expiré',
@@ -402,7 +405,7 @@ export async function resetPassword(req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const tokenData = await getValidPasswordResetToken(token, ['reset']);
+    const tokenData = await getValidPasswordResetToken(trimmedToken, ['reset']);
     if (!tokenData) {
       res.status(400).json({
         success: false,

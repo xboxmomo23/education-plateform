@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express'
 import { DEMO_MODE } from '../config/demo'
-import { demoResponses } from '../demo/sampleData'
+import { demoResponses, DemoResponseBody } from '../demo/sampleData'
 
 const SAFE_METHODS = ['GET', 'HEAD', 'OPTIONS']
 const ALLOWED_MUTATION_PATHS = [/^\/api\/auth\//]
@@ -36,5 +36,8 @@ export function demoDataMiddleware(req: Request, res: Response, next: NextFuncti
     return next()
   }
 
-  return res.json(typeof match.body === 'function' ? match.body(req) : match.body)
+  const body = match.body as DemoResponseBody | ((req: Request) => unknown)
+  const responseBody = typeof body === 'function' ? body(req) : body
+
+  return res.json(responseBody)
 }

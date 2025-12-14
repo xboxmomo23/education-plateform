@@ -31,6 +31,7 @@ import {
   User,
 } from "lucide-react"
 import { useParentChild } from "@/components/parent/ParentChildContext"
+import { useEstablishmentSettings } from "@/hooks/useEstablishmentSettings"
 import {
   parentMessagesApi,
   type ParentThreadSummary,
@@ -48,8 +49,9 @@ import type { SendMessagePayload } from "@/lib/api/messages"
 type FilterOption = "all" | "unread"
 
 export default function ParentContactPage() {
-  const { selectedChild } = useParentChild()
-  const studentId = selectedChild?.id
+  const { selectedChild, selectedChildId } = useParentChild()
+  const { settings } = useEstablishmentSettings()
+  const studentId = selectedChildId ?? null
 
   const [threads, setThreads] = useState<ParentThreadSummary[]>([])
   const [threadsLoading, setThreadsLoading] = useState(true)
@@ -157,7 +159,7 @@ export default function ParentContactPage() {
     return threads
   }, [threads, filter])
 
-  if (!child || !studentId) {
+  if (!selectedChild || !studentId) {
     return (
       <div className="space-y-4 p-6">
         <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -166,7 +168,10 @@ export default function ParentContactPage() {
         </h1>
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
-            Aucun enfant n’est associé à ce compte. Contactez l’établissement pour lier votre compte parent à un élève.
+            Aucun enfant activé n’est associé à ce compte (les invitations peuvent être en attente).
+            {settings?.contactEmail
+              ? ` Contactez ${settings.contactEmail} pour lier votre compte parent à un élève.`
+              : " Contactez l’établissement pour lier votre compte parent à un élève."}
           </CardContent>
         </Card>
       </div>
@@ -179,7 +184,7 @@ export default function ParentContactPage() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Mail className="h-6 w-6" />
-            Messages concernant {child.full_name}
+            Messages concernant {selectedChild.full_name}
           </h1>
           <p className="text-muted-foreground">
             {unreadCount > 0

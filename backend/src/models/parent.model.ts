@@ -37,16 +37,26 @@ function normalizeEmail(email?: string | null): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+type ParentChildrenOptions = {
+  includeInactive?: boolean;
+  includePendingActivation?: boolean;
+};
+
 export async function getChildrenForParent(
   parentId: string,
-  options?: { includeInactive?: boolean }
+  options?: ParentChildrenOptions
 ): Promise<ParentChildSummary[]> {
   const includeInactive = options?.includeInactive ?? false;
+  const includePendingActivation = options?.includePendingActivation ?? false;
   const clauses = ['rel.parent_id = $1', "child.role = 'student'"];
   const params: any[] = [parentId];
 
   if (!includeInactive) {
     clauses.push('child.active = TRUE');
+  }
+
+  if (!includePendingActivation) {
+    clauses.push('child.must_change_password = FALSE');
   }
 
   const result = await pool.query(
@@ -106,6 +116,7 @@ export async function assertParentCanAccessStudent(
   }
 
   clauses.push('stu.active = TRUE');
+  clauses.push('stu.must_change_password = FALSE');
   clauses.push("stu.role = 'student'");
 
   const query = `
@@ -424,7 +435,9 @@ export async function recomputeParentActiveStatus(parentId: string): Promise<{ a
       [parentId]
     );
 
-    if (updateResult.rowCount > 0) {
+    const affectedRows = updateResult.rowCount ?? 0
+
+    if (affectedRows > 0) {
       deactivated = true;
     }
   }

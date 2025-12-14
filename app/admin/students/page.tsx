@@ -4,6 +4,7 @@ import { useEffect, useState, FormEvent, ChangeEvent } from "react";
 import { AdminBackButton } from "@/components/admin/AdminBackButton";
 import { apiFetch } from "@/lib/api/api-client";
 import { notify } from "@/lib/toast";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import type { StudentClassChange } from "@/lib/api/students";
 import {
   applyStudentClassChangesApi,
@@ -568,16 +569,22 @@ export default function AdminStudentsPage() {
       setResendLoadingId(student.user_id);
       const res = await resendStudentInviteApi(student.user_id);
       if (!res.success) {
-        setResendError(res.error || "Impossible de renvoyer l'invitation.");
+        const errorMessage = res.error || "Impossible de renvoyer l'invitation.";
+        setResendError(errorMessage);
+        notify.error("Envoi impossible", errorMessage);
         return;
       }
-      setResendSuccess(`Invitation élève renvoyée à ${student.full_name}.`);
+      const successMessage = res.message || `Invitation élève renvoyée à ${student.full_name}.`;
+      setResendSuccess(successMessage);
+      notify.success("Invitation renvoyée", successMessage);
       if (res.inviteUrl) {
         setResendInviteUrl(res.inviteUrl);
       }
     } catch (err: any) {
       console.error(err);
-      setResendError(err.message || "Erreur lors de l'envoi de l'invitation.");
+      const errorMessage = err.message || "Erreur lors de l'envoi de l'invitation.";
+      setResendError(errorMessage);
+      notify.error("Envoi impossible", errorMessage);
     } finally {
       setResendLoadingId(null);
     }
@@ -593,20 +600,25 @@ export default function AdminStudentsPage() {
       setParentResendLoadingId(student.user_id);
       const res = await resendParentInviteApi(student.user_id);
       if (!res.success) {
-        setParentResendError(res.error || "Impossible de renvoyer l'invitation parent.");
+        const errorMessage = res.error || "Impossible de renvoyer l'invitation parent.";
+        setParentResendError(errorMessage);
+        notify.error("Envoi impossible", errorMessage);
         return;
       }
       const targetEmail = res.targetEmail || res.loginEmail || student.full_name;
-      setParentResendSuccess(
-        res.message || `Invitation parent renvoyée (destinataire : ${targetEmail}).`
-      );
+      const successMessage =
+        res.message || `Invitation parent renvoyée (destinataire : ${targetEmail}).`;
+      setParentResendSuccess(successMessage);
+      notify.success("Invitation parent renvoyée", successMessage);
       if (res.inviteUrl) {
         setParentResendInviteUrl(res.inviteUrl);
       }
       setParentResendSmtpConfigured(res.smtpConfigured ?? true);
     } catch (err: any) {
       console.error(err);
-      setParentResendError(err.message || "Erreur lors de l'envoi de l'invitation parent.");
+      const errorMessage = err.message || "Erreur lors de l'envoi de l'invitation parent.";
+      setParentResendError(errorMessage);
+      notify.error("Envoi impossible", errorMessage);
     } finally {
       setParentResendLoadingId(null);
     }
@@ -1113,7 +1125,7 @@ export default function AdminStudentsPage() {
       {/* Modale ajout élève */}
       {isModalOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-xl bg-background p-6 shadow-lg">
+          <div className="flex h-full max-h-[90vh] w-full max-w-md flex-col rounded-xl bg-background p-6 shadow-lg">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold">Ajouter un élève</h2>
               <button
@@ -1125,8 +1137,9 @@ export default function AdminStudentsPage() {
               </button>
             </div>
 
-            <form className="space-y-4" onSubmit={handleSubmit}>
-              <div>
+            <form className="flex h-full flex-col gap-4" onSubmit={handleSubmit}>
+              <div className="max-h-[65vh] space-y-4 overflow-y-auto pr-2">
+                <div>
                 <label className="mb-1 block text-xs font-medium">
                   Nom complet *
                 </label>
@@ -1399,76 +1412,84 @@ export default function AdminStudentsPage() {
               {submitSuccess && (
                 <div className="rounded-md bg-emerald-50 p-2 text-xs text-emerald-700">
                   <p>{submitSuccess}</p>
-                  {inviteUrl && (
-                    <div className="mt-2 space-y-2">
-                      <p className="font-semibold">Lien d&apos;invitation :</p>
-                      <p className="break-all font-mono text-[11px]">
-                        {inviteUrl}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            await navigator.clipboard.writeText(inviteUrl)
-                            setCopyFeedback("Lien copié dans le presse-papiers.")
-                          } catch (err) {
-                            console.error(err)
-                            setSubmitError("Impossible de copier le lien.")
-                          }
-                        }}
-                        className="rounded-md border px-2 py-1 text-[11px] font-medium hover:bg-white/60"
-                      >
-                        Copier le lien
-                      </button>
-                      {copyFeedback && (
-                        <p className="text-[11px] text-emerald-700">{copyFeedback}</p>
-                      )}
-                    </div>
-                  )}
-                  {shouldShowParentInviteLinks && (
-                    <div className="mt-3 space-y-2 rounded-md border border-emerald-200 bg-white/70 p-2 text-[11px] text-emerald-900">
-                      <p className="font-semibold text-xs text-emerald-900">
-                        Liens parent (mode dev ou SMTP absent)
-                      </p>
-                      <p className="text-[11px] text-emerald-700">
-                        À utiliser uniquement pour tester l&apos;activation parent en l&apos;absence d&apos;emails.
-                      </p>
-                      <div className="space-y-2">
-                        {parentInviteUrls.map((url, index) => (
-                          <div key={`${url}-${index}`} className="rounded border border-emerald-100 p-2">
-                            {parentLoginEmails[index] && (
-                              <p className="mb-1 font-medium text-emerald-900">
-                                Identifiant parent : {parentLoginEmails[index]}
+                  {(inviteUrl || shouldShowParentInviteLinks) && (
+                    <Accordion type="single" collapsible className="mt-3">
+                      <AccordionItem value="dev-links">
+                        <AccordionTrigger className="text-left text-xs font-semibold text-emerald-900">
+                          Liens d&apos;activation (dev / SMTP off)
+                        </AccordionTrigger>
+                        <AccordionContent className="space-y-3 text-[11px]">
+                          {inviteUrl && (
+                            <div className="space-y-2 rounded border border-emerald-200 bg-white/70 p-2">
+                              <p className="font-semibold">Lien élève</p>
+                              <p className="break-all font-mono text-[11px] text-emerald-900">{inviteUrl}</p>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    await navigator.clipboard.writeText(inviteUrl)
+                                    setCopyFeedback("Lien copié dans le presse-papiers.")
+                                  } catch (err) {
+                                    console.error(err)
+                                    setSubmitError("Impossible de copier le lien.")
+                                  }
+                                }}
+                                className="rounded-md border px-2 py-1 text-[11px] font-medium hover:bg-white/60"
+                              >
+                                Copier le lien élève
+                              </button>
+                              {copyFeedback && (
+                                <p className="text-[11px] text-emerald-700">{copyFeedback}</p>
+                              )}
+                            </div>
+                          )}
+                          {shouldShowParentInviteLinks && (
+                            <div className="space-y-2 rounded border border-emerald-200 bg-white/70 p-2 text-emerald-900">
+                              <p className="font-semibold text-xs">Liens parent</p>
+                              <p className="text-[11px] text-emerald-700">
+                                À utiliser uniquement pour tester l&apos;activation parent en l&apos;absence d&apos;emails.
                               </p>
-                            )}
-                            <p className="break-all font-mono text-[11px] text-emerald-900">{url}</p>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                try {
-                                  await navigator.clipboard.writeText(url)
-                                  setParentCopyFeedback("Lien parent copié.")
-                                } catch (err) {
-                                  console.error(err)
-                                  setParentCopyFeedback("Impossible de copier ce lien.")
-                                }
-                              }}
-                              className="mt-2 rounded-md border px-2 py-1 text-[11px] font-medium text-emerald-900 hover:bg-white"
-                            >
-                              Copier le lien parent
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                      {parentCopyFeedback && (
-                        <p className="text-[11px] text-emerald-600">{parentCopyFeedback}</p>
-                      )}
-                    </div>
+                              <div className="space-y-2">
+                                {parentInviteUrls.map((url, index) => (
+                                  <div key={`${url}-${index}`} className="rounded border border-emerald-100 p-2">
+                                    {parentLoginEmails[index] && (
+                                      <p className="mb-1 font-medium">
+                                        Identifiant parent : {parentLoginEmails[index]}
+                                      </p>
+                                    )}
+                                    <p className="break-all font-mono text-[11px] text-emerald-900">{url}</p>
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        try {
+                                          await navigator.clipboard.writeText(url)
+                                          setParentCopyFeedback("Lien parent copié.")
+                                        } catch (err) {
+                                          console.error(err)
+                                          setParentCopyFeedback("Impossible de copier ce lien.")
+                                        }
+                                      }}
+                                      className="mt-2 rounded-md border px-2 py-1 text-[11px] font-medium text-emerald-900 hover:bg-white"
+                                    >
+                                      Copier le lien parent
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                              {parentCopyFeedback && (
+                                <p className="text-[11px] text-emerald-600">{parentCopyFeedback}</p>
+                              )}
+                            </div>
+                          )}
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
                   )}
                 </div>
               )}
+              </div>
 
-              <div className="mt-4 flex justify-end gap-2">
+              <div className="mt-auto flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={closeModal}

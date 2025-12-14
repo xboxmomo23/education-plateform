@@ -24,7 +24,7 @@ export function ParentChildSelector() {
     return (
       <Alert>
         <AlertDescription>
-          Aucun enfant associé à ce compte.
+          Aucun enfant activé n’est associé à ce compte (les invitations peuvent être en attente d’activation).
           {settings?.contactEmail
             ? ` Contactez ${settings.contactEmail} si vous pensez qu'il s'agit d'une erreur.`
             : " Contactez l'administration si vous pensez qu'il s'agit d'une erreur."}
