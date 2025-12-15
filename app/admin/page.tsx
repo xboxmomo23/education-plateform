@@ -1,10 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AdminBackButton } from "@/components/admin/AdminBackButton";
 import { apiFetch } from "@/lib/api/api-client";
 import { getUserSession, User } from "@/lib/auth-new";
+import { dashboardAdminApi, type AdminDashboardKpis } from "@/lib/api/dashboard-admin";
+import { useEstablishmentSettings } from "@/hooks/useEstablishmentSettings";
+import { PageLoader } from "@/components/ui/page-loader";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Button } from "@/components/ui/button";
+import { Loader2, ShieldAlert } from "lucide-react";
 
 interface AdminDashboardData {
   establishment: {
@@ -37,9 +43,30 @@ export default function AdminDashboardPage() {
   const [data, setData] = useState<AdminDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { settings } = useEstablishmentSettings();
+  const [kpis, setKpis] = useState<AdminDashboardKpis | null>(null);
+  const [kpiLoading, setKpiLoading] = useState(true);
+  const [kpiError, setKpiError] = useState<string | null>(null);
+
+  const refreshKpis = useCallback(async () => {
+    try {
+      setKpiLoading(true);
+      setKpiError(null);
+      const response = await dashboardAdminApi.getKpis();
+      if (response.success) {
+        setKpis(response.data);
+      } else {
+        setKpiError(response.error || "Impossible de charger les KPI");
+      }
+    } catch (error: any) {
+      console.error("Erreur KPIs admin:", error);
+      setKpiError(error.message || "Erreur lors du chargement des KPI");
+    } finally {
+      setKpiLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    // Récupérer l'utilisateur depuis la session (localStorage)
     const sessionUser = getUserSession();
     setUser(sessionUser);
 
@@ -66,7 +93,8 @@ export default function AdminDashboardPage() {
     }
 
     load();
-  }, []);
+    refreshKpis();
+  }, [refreshKpis]);
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-8">
@@ -90,16 +118,71 @@ export default function AdminDashboardPage() {
         )}
       </header>
 
-      {loading && (
-        <p className="text-sm text-muted-foreground">
-          Chargement du tableau de bord...
-        </p>
-      )}
+      {loading && <PageLoader label="Chargement du tableau de bord..." />}
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {!loading && !error && data && (
         <>
+          <section className="mb-6 flex flex-col gap-2 rounded-xl border bg-card p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs uppercase text-muted-foreground">Établissement</p>
+              <p className="text-lg font-semibold">
+                {settings?.displayName || data.establishment.name}
+              </p>
+              {settings?.schoolYear && (
+                <p className="text-xs text-muted-foreground">Année scolaire : {settings.schoolYear}</p>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Dernière mise à jour : {kpis?.date ?? "—"}
+            </div>
+          </section>
+
+          <section className="mb-6 rounded-xl border bg-card p-4 shadow-sm">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-base font-semibold">Indicateurs clés</h2>
+              <Button size="sm" variant="outline" disabled={kpiLoading} onClick={refreshKpis}>
+                {kpiLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Actualisation…
+                  </>
+                ) : (
+                  "Actualiser"
+                )}
+              </Button>
+            </div>
+
+            {kpiError ? (
+              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {kpiError}
+              </div>
+            ) : kpiLoading && !kpis ? (
+              <PageLoader label="Chargement des indicateurs..." />
+            ) : kpis ? (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <DashboardStat label="Élèves actifs" value={kpis.students_active} />
+                <DashboardStat label="Professeurs actifs" value={kpis.teachers_active} />
+                <DashboardStat label="Staff actif" value={kpis.staff_active} />
+                <DashboardStat label="Parents actifs" value={kpis.parents_active} />
+                <DashboardStat label="Absences aujourd'hui" value={kpis.absences_today_total} />
+                <DashboardStat label="Absences non justifiées" value={kpis.absences_today_not_justified} />
+              </div>
+            ) : (
+              <EmptyState
+                Icon={ShieldAlert}
+                title="Aucun indicateur"
+                description="Impossible de charger les indicateurs."
+                className="border-none"
+              />
+            )}
+          </section>
+
           {/* Carte établissement */}
           <section className="mb-6 rounded-xl border bg-card p-4 shadow-sm">
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -197,6 +280,11 @@ export default function AdminDashboardPage() {
               title="Journal d'audit"
               description="Consultez les actions sensibles et exports."
               href="/admin/audit"
+            />
+            <QuickLink
+              title="Performance scolaire"
+              description="Analyse globale des résultats et moyennes."
+              href="/admin/performance"
             />
           </section>
         </>

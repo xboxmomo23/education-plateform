@@ -149,11 +149,12 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
         ]
       case "admin":
         return [
-          { icon: BookOpen, label: "Tableau de bord", href: "/dashboard-admin" },
+          { icon: BookOpen, label: "Tableau de bord", href: "/admin" },
+          { icon: BarChart, label: "Performance", href: "/admin/performance" },
           { icon: Users, label: "Utilisateurs", href: "#" },
           { icon: GraduationCap, label: "Professeurs", href: "#" },
           { icon: BookOpen, label: "Cours", href: "#" },
-          { icon: Mail, label: "Messages", href: "/admin/messages", badge: unreadCount > 0 ? unreadCount : undefined },  // ✨ NOUVEAU
+          { icon: Mail, label: "Messages", href: "/admin/messages", badge: unreadCount > 0 ? unreadCount : undefined },
           { icon: BarChart, label: "Statistiques", href: "#" },
           { icon: Settings, label: "Paramètres", href: "#" },
         ]
