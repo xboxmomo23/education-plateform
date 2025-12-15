@@ -1,3 +1,4 @@
+import { PoolClient } from 'pg';
 import { pool } from '../config/database';
 import { ParentChildSummary, ParentForStudentInput, User } from '../types';
 import { createUser } from './user.model';
@@ -147,6 +148,7 @@ async function upsertParentProfile(params: {
   canViewGrades?: boolean;
   canViewAttendance?: boolean;
   contactEmail?: string | null;
+  client?: PoolClient;
 }): Promise<void> {
   const {
     parentId,
@@ -157,12 +159,14 @@ async function upsertParentProfile(params: {
     canViewGrades,
     canViewAttendance,
     contactEmail,
+    client,
   } = params;
 
   const safePhone =
     typeof phone === 'string' && phone.trim().length > 0 ? phone.trim() : FALLBACK_PARENT_PHONE;
+  const db = client ?? pool;
 
-  await pool.query(
+  await db.query(
     `
       INSERT INTO parent_profiles (
         user_id,
@@ -205,10 +209,12 @@ async function upsertStudentParentRelation(params: {
   relationType?: string | null;
   isPrimary?: boolean;
   receiveNotifications?: boolean;
+  client?: PoolClient;
 }): Promise<void> {
-  const { studentId, parentId, relationType, isPrimary, receiveNotifications } = params;
+  const { studentId, parentId, relationType, isPrimary, receiveNotifications, client } = params;
+  const db = client ?? pool;
 
-  await pool.query(
+  await db.query(
     `
       INSERT INTO student_parents (
         student_id,
@@ -234,8 +240,9 @@ async function upsertStudentParentRelation(params: {
   );
 }
 
-async function findParentUserByEmail(email: string, establishmentId: string) {
-  const userResult = await pool.query(
+async function findParentUserByEmail(email: string, establishmentId: string, client?: PoolClient) {
+  const db = client ?? pool;
+  const userResult = await db.query(
     `
       SELECT *
       FROM users
@@ -269,8 +276,9 @@ export async function syncParentsForStudent(params: {
   studentId: string;
   establishmentId: string;
   parents: ParentForStudentInput[];
+  client?: PoolClient;
 }): Promise<SyncParentsResult[]> {
-  const { studentId, establishmentId, parents } = params;
+  const { studentId, establishmentId, parents, client } = params;
   if (!parents || parents.length === 0) {
     return [];
   }
@@ -291,7 +299,7 @@ export async function syncParentsForStudent(params: {
     let isNewUser = false;
 
     if (email) {
-      user = await findParentUserByEmail(email, establishmentId);
+      user = await findParentUserByEmail(email, establishmentId, client);
     }
 
     if (!user) {
@@ -310,14 +318,17 @@ export async function syncParentsForStudent(params: {
         }));
       const tempPassword = generateTemporaryPassword();
 
-      user = await createUser({
-        email: loginEmail,
-        password: tempPassword,
-        role: 'parent',
-        full_name: fullName,
-        establishmentId,
-        mustChangePassword: true,
-      });
+      user = await createUser(
+        {
+          email: loginEmail,
+          password: tempPassword,
+          role: 'parent',
+          full_name: fullName,
+          establishmentId,
+          mustChangePassword: true,
+        },
+        client
+      );
 
       isNewUser = true;
       email = user.email;
@@ -344,6 +355,7 @@ export async function syncParentsForStudent(params: {
       canViewGrades,
       canViewAttendance,
       contactEmail: parentPayload.contact_email || null,
+      client,
     });
 
     await upsertStudentParentRelation({
@@ -352,6 +364,7 @@ export async function syncParentsForStudent(params: {
       relationType,
       isPrimary,
       receiveNotifications,
+      client,
     });
 
     seenParentIds.add(user.id);
@@ -377,6 +390,7 @@ export async function linkExistingParentToStudent(params: {
   canViewGrades?: boolean;
   canViewAttendance?: boolean;
   contactEmail?: string | null;
+  client?: PoolClient;
 }): Promise<void> {
   const {
     studentId,
@@ -387,6 +401,7 @@ export async function linkExistingParentToStudent(params: {
     canViewGrades = true,
     canViewAttendance = true,
     contactEmail = null,
+    client,
   } = params;
 
   await upsertParentProfile({
@@ -396,6 +411,7 @@ export async function linkExistingParentToStudent(params: {
     canViewGrades,
     canViewAttendance,
     contactEmail: contactEmail || null,
+    client,
   });
 
   await upsertStudentParentRelation({
@@ -404,6 +420,7 @@ export async function linkExistingParentToStudent(params: {
     relationType,
     isPrimary,
     receiveNotifications,
+    client,
   });
 }
 

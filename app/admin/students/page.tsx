@@ -18,6 +18,7 @@ import {
 } from "@/lib/api/students";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { StudentImportModal } from "./StudentImportModal";
 
 interface ClassOption {
   id: string;
@@ -124,6 +125,7 @@ export default function AdminStudentsPage() {
   const [classChangesError, setClassChangesError] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
@@ -759,14 +761,32 @@ export default function AdminStudentsPage() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={openModal}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          + Ajouter un élève
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={() => setIsImportModalOpen(true)}
+            className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted"
+          >
+            Importer un CSV
+          </button>
+          <button
+            type="button"
+            onClick={openModal}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            + Ajouter un élève
+          </button>
+        </div>
       </header>
+
+      <StudentImportModal
+        open={isImportModalOpen}
+        onOpenChange={setIsImportModalOpen}
+        classes={classes}
+        onImportCompleted={async () => {
+          await loadData();
+        }}
+      />
 
       <div className="mb-4 flex flex-wrap items-center gap-3 text-sm">
         <button

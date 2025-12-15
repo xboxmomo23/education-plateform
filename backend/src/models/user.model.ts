@@ -1,3 +1,4 @@
+import { PoolClient } from 'pg';
 import { pool } from '../config/database';
 import { User, UserRole, StudentProfile, TeacherProfile, StaffProfile, ParentProfile } from '../types';
 import { hashPassword } from '../utils/auth.utils';
@@ -33,11 +34,12 @@ export interface CreateUserData {
   mustChangePassword?: boolean;
 }
 
-export async function createUser(userData: CreateUserData): Promise<User> {
+export async function createUser(userData: CreateUserData, client?: PoolClient): Promise<User> {
   const { email, password, role, full_name, establishmentId, mustChangePassword } = userData;
   
   const password_hash = await hashPassword(password);
   const must_change_password = mustChangePassword ?? true;
+  const db = client ?? pool;
   
   const query = `
     INSERT INTO users (
@@ -51,7 +53,7 @@ export async function createUser(userData: CreateUserData): Promise<User> {
   const values = [email, password_hash, role, full_name, false, must_change_password];
   if (establishmentId) values.push(establishmentId);
   
-  const result = await pool.query(query, values);
+  const result = await db.query(query, values);
   return result.rows[0];
 }
 

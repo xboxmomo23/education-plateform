@@ -39,6 +39,10 @@ import {
   updateStaffClassesHandler,
   searchParentsForAdminHandler,
 } from "../controllers/admin.controller";
+import {
+  previewStudentImportHandler,
+  commitStudentImportHandler,
+} from "../controllers/studentImport.controller";
 
 
 import { body, query } from "express-validator";
@@ -177,6 +181,42 @@ router.post(
   ],
   validateRequest,
   createStudentForAdminHandler
+);
+
+router.post(
+  "/students/import/preview",
+  [
+    body("csvData")
+      .isString()
+      .notEmpty()
+      .withMessage("Le contenu CSV est obligatoire"),
+    body("defaultClassId")
+      .optional({ nullable: true, checkFalsy: true })
+      .isUUID()
+      .withMessage("defaultClassId doit être un UUID"),
+  ],
+  validateRequest,
+  previewStudentImportHandler
+);
+
+router.post(
+  "/students/import/commit",
+  [
+    body("csvData")
+      .isString()
+      .notEmpty()
+      .withMessage("Le contenu CSV est obligatoire"),
+    body("defaultClassId")
+      .optional({ nullable: true, checkFalsy: true })
+      .isUUID()
+      .withMessage("defaultClassId doit être un UUID"),
+    body("sendInvites")
+      .optional()
+      .isBoolean()
+      .withMessage("sendInvites doit être un booléen"),
+  ],
+  validateRequest,
+  commitStudentImportHandler
 );
 
 router.patch(
