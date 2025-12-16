@@ -158,6 +158,128 @@ async function processInviteResend(
   return { ok: true, inviteUrl, loginEmail: userRow.email, targetEmail, smtpConfigured };
 }
 
+async function legacySearchParents(estId: string, req: Request) {
+  const rawSearch = typeof req.query.search === "string" ? req.query.search.trim() : "";
+  const limitParam = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 20;
+  const limit = Math.min(50, Math.max(1, Number.isNaN(limitParam) ? 20 : limitParam));
+
+  if (!rawSearch) {
+    return [];
+  }
+
+  const pattern = `%${rawSearch}%`;
+  const result = await pool.query(
+    `
+      SELECT 
+        u.id,
+        u.full_name,
+        u.email,
+        pp.contact_email,
+        COUNT(sp.student_id)::INT AS children_count
+      FROM users u
+      LEFT JOIN parent_profiles pp ON pp.user_id = u.id
+      LEFT JOIN student_parents sp ON sp.parent_id = u.id
+      WHERE u.role = 'parent'
+        AND u.establishment_id = $1
+        AND (
+          u.full_name ILIKE $2
+          OR u.email ILIKE $2
+          OR COALESCE(pp.contact_email, '') ILIKE $2
+        )
+      GROUP BY u.id, pp.contact_email
+      ORDER BY u.full_name ASC
+      LIMIT $3
+    `,
+    [estId, pattern, limit]
+  );
+
+  return result.rows;
+}
+
+async function listParentsDirectory(estId: string, req: Request) {
+  const rawSearch = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const limitParam = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 100;
+  const limit = Math.min(200, Math.max(1, Number.isNaN(limitParam) ? 100 : limitParam));
+
+  const params: any[] = [estId];
+  let searchClause = "";
+  if (rawSearch) {
+    params.push(`%${rawSearch}%`);
+    searchClause = `
+      AND (
+        u.full_name ILIKE $2
+        OR u.email ILIKE $2
+        OR COALESCE(pp.contact_email, '') ILIKE $2
+        OR COALESCE(student_users.full_name, '') ILIKE $2
+        OR COALESCE(classes.label, '') ILIKE $2
+        OR COALESCE(classes.code, '') ILIKE $2
+      )
+    `;
+  }
+  const limitIndex = params.length + 1;
+  params.push(limit);
+
+  const result = await pool.query(
+    `
+      SELECT
+        u.id AS parent_id,
+        u.full_name,
+        u.email AS login_email,
+        u.active,
+        pp.contact_email,
+        COALESCE(
+          jsonb_agg(
+            DISTINCT jsonb_build_object(
+              'student_id', student_users.id,
+              'full_name', student_users.full_name,
+              'class_label', classes.label,
+              'class_code', classes.code
+            )
+          ) FILTER (WHERE student_users.id IS NOT NULL),
+          '[]'::jsonb
+        ) AS students
+      FROM users u
+      LEFT JOIN parent_profiles pp ON pp.user_id = u.id
+      LEFT JOIN student_parents sp ON sp.parent_id = u.id
+      LEFT JOIN users student_users ON student_users.id = sp.student_id
+      LEFT JOIN students st ON st.user_id = sp.student_id
+      LEFT JOIN classes ON classes.id = st.class_id
+      WHERE u.role = 'parent'
+        AND u.establishment_id = $1
+        ${searchClause}
+      GROUP BY u.id, pp.contact_email
+      ORDER BY u.full_name ASC
+      LIMIT $${limitIndex}
+    `,
+    params
+  );
+
+  return result.rows.map((row) => {
+    const fullName: string = row.full_name || "";
+    const nameParts = fullName.trim().split(/\s+/);
+    const firstName = nameParts.shift() || fullName;
+    const lastName = nameParts.join(" ").trim();
+
+    const students = Array.isArray(row.students)
+      ? row.students.map((student: any) => ({
+          student_id: student.student_id,
+          full_name: student.full_name,
+          class_label: student.class_label || student.class_code || null,
+        }))
+      : [];
+
+    return {
+      parent_id: row.parent_id,
+      first_name: firstName,
+      last_name: lastName || null,
+      login_email: row.login_email,
+      contact_email: row.contact_email,
+      active: row.active,
+      students,
+    };
+  });
+}
+
 export async function searchParentsForAdminHandler(req: Request, res: Response) {
   try {
     const { userId } = req.user!;
@@ -170,54 +292,26 @@ export async function searchParentsForAdminHandler(req: Request, res: Response) 
       });
     }
 
-    const rawSearch =
-      typeof req.query.search === "string" ? req.query.search.trim() : "";
-    const limitParam =
-      typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 20;
-    const limit = Math.min(50, Math.max(1, Number.isNaN(limitParam) ? 20 : limitParam));
+    const legacyMode = typeof req.query.search === "string";
 
-    if (!rawSearch) {
+    if (legacyMode) {
+      const rows = await legacySearchParents(estId, req);
       return res.json({
         success: true,
-        data: [],
+        data: rows,
       });
     }
 
-    const pattern = `%${rawSearch}%`;
-    const result = await pool.query(
-      `
-        SELECT 
-          u.id,
-          u.full_name,
-          u.email,
-          pp.contact_email,
-          COUNT(sp.student_id)::INT AS children_count
-        FROM users u
-        LEFT JOIN parent_profiles pp ON pp.user_id = u.id
-        LEFT JOIN student_parents sp ON sp.parent_id = u.id
-        WHERE u.role = 'parent'
-          AND u.establishment_id = $1
-          AND (
-            u.full_name ILIKE $2
-            OR u.email ILIKE $2
-            OR COALESCE(pp.contact_email, '') ILIKE $2
-          )
-        GROUP BY u.id, pp.contact_email
-        ORDER BY u.full_name ASC
-        LIMIT $3
-      `,
-      [estId, pattern, limit]
-    );
-
+    const directory = await listParentsDirectory(estId, req);
     return res.json({
       success: true,
-      data: result.rows,
+      data: directory,
     });
   } catch (error) {
     console.error("Erreur searchParentsForAdminHandler:", error);
     return res.status(500).json({
       success: false,
-      error: "Erreur lors de la recherche de parents",
+      error: "Erreur lors de la récupération des parents",
     });
   }
 }

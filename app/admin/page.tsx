@@ -262,6 +262,11 @@ export default function AdminDashboardPage() {
               href="/admin/teachers"
             />
             <QuickLink
+              title="Parents"
+              description="Consultez les comptes parents existants."
+              href="/admin/parents"
+            />
+            <QuickLink
               title="Matières & cours"
               description="Configurer les matières enseignées et les cours associés."
               href="/admin/subjects"

@@ -308,10 +308,11 @@ router.get(
   "/parents",
   [
     query("search").optional().isString().withMessage("search doit être une chaîne"),
+    query("q").optional().isString().withMessage("q doit être une chaîne"),
     query("limit")
       .optional()
-      .isInt({ min: 1, max: 50 })
-      .withMessage("limit doit être un entier entre 1 et 50"),
+      .isInt({ min: 1, max: 200 })
+      .withMessage("limit doit être un entier entre 1 et 200"),
   ],
   validateRequest,
   searchParentsForAdminHandler
