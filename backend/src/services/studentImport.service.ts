@@ -351,13 +351,13 @@ export async function processStudentImport(
     let existingParentId: string | null = null;
     if (row.existingParentEmail) {
       if (!isValidEmail(row.existingParentEmail)) {
-        rowWarnings.push("existing_parent_email invalide, ignoré");
+        errors.push("existing_parent_email invalide");
       } else {
         const parent = existingParents.get(row.existingParentEmail);
         if (parent) {
           existingParentId = parent.id;
         } else {
-          rowWarnings.push("Parent introuvable pour existing_parent_email, un nouveau parent sera créé");
+          errors.push("existing_parent_email introuvable dans votre établissement");
         }
       }
     }

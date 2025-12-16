@@ -11,8 +11,8 @@
   - `student_number` (optionnel)
   - `login_email` (optionnel)
   - `class_code` ou `class_label` (optionnel) – sinon choisissez une classe par défaut dans l’UI
-  - `existing_parent_email` (optionnel) – tentative de liaison avec un parent existant de l’établissement
-  - `parent_first_name`, `parent_last_name` (optionnels) – utilisés uniquement si aucun parent existant n’est trouvé
+- `existing_parent_email` (optionnel) – doit correspondre à un parent existant de l’établissement, sinon la ligne est en erreur
+- `parent_first_name`, `parent_last_name` (optionnels) – permettent la création d’un parent (login généré automatiquement) uniquement si aucun `existing_parent_email` n’est fourni
 
 Exemple minimal :
 
@@ -27,7 +27,7 @@ Bruno Durant;bruno.contact@example.com;3A;;
 - `dryRun` (preview) : `strict=false`, `sendInvites=false`, aucune écriture persistée
 - Import réel : transaction par ligne via `createStudentAccount`, `strict=false`, `sendInvites` contrôlé par la case à cocher (OFF par défaut)
 - Si `login_email` existe déjà dans l’établissement → ligne ignorée avec warning
-- Si `existing_parent_email` est introuvable → warning, puis création éventuelle d’un nouveau parent (si données prénom/nom fournies)
+- Si `existing_parent_email` est introuvable → erreur bloquante (aucune création pour la ligne)
 - Invitations + audit sont déclenchés uniquement après le commit effectif (jamais en dry-run)
 
 ## Endpoints
