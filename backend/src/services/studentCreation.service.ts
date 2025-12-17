@@ -13,6 +13,7 @@ import {
 } from "../models/parent.model";
 import { ParentForStudentInput } from "../types";
 import { sendParentInvitesForNewAccounts, ParentInviteInfo } from "./parentInvite.service";
+import { getEstablishmentSettings } from "../models/establishmentSettings.model";
 import { isSmtpConfigured } from "../utils/email.utils";
 
 interface LinkedParentSummary {
@@ -140,6 +141,10 @@ export async function createStudentAccount(input: CreateStudentInput): Promise<C
     actorRole,
     actorName,
   } = input;
+
+  const establishmentSettings = await getEstablishmentSettings(establishmentId);
+  const resolvedEstablishmentName = establishmentName ?? establishmentSettings.displayName ?? null;
+  const establishmentLocale = establishmentSettings.defaultLocale;
 
   if (client && !allowExternalClient) {
     throw new Error("External client usage requires allowExternalClient=true");
@@ -418,8 +423,9 @@ export async function createStudentAccount(input: CreateStudentInput): Promise<C
             to: targetEmail,
             loginEmail: user.email,
             role: "student",
-            establishmentName: establishmentName || undefined,
+            establishmentName: resolvedEstablishmentName || undefined,
             inviteUrl,
+            locale: establishmentLocale,
           }).catch((err) => {
             console.error("[MAIL] Erreur envoi email d'invitation élève:", err);
           });
@@ -445,7 +451,8 @@ export async function createStudentAccount(input: CreateStudentInput): Promise<C
           for (const parentResult of parentsNeedingInvite) {
             const invites = await sendParentInvitesForNewAccounts(
               [parentResult],
-              establishmentName || null,
+              resolvedEstablishmentName || null,
+              establishmentLocale,
               parentResult.contactEmailOverride || undefined
             );
             if (invites.length > 0) {

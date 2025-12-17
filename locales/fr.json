@@ -1,0 +1,205 @@
+{
+  "language": {
+    "label": "Langue",
+    "fr": "Français",
+    "en": "Anglais"
+  },
+  "common": {
+    "actions": {
+      "refresh": "Actualiser",
+      "export": "Exporter",
+      "send": "Envoyer",
+      "logout": "Déconnexion",
+      "resetFilters": "Réinitialiser",
+      "retry": "Réessayer",
+      "edit": "Modifier",
+      "view": "Voir",
+      "archive": "Archiver"
+    },
+    "filters": {
+      "title": "Filtres",
+      "class": "Classe",
+      "status": "Statut",
+      "from": "Du",
+      "to": "Au"
+    },
+    "states": {
+      "loading": "Chargement...",
+      "empty": "Aucune donnée disponible",
+      "error": "Une erreur est survenue"
+    }
+  },
+  "navigation": {
+    "dashboard": "Tableau de bord",
+    "assignments": "Devoirs",
+    "schedule": "Emploi du temps",
+    "attendance": "Assiduité",
+    "presence": "Présence",
+    "absences": "Absences",
+    "grades": "Notes",
+    "messages": "Messages",
+    "classes": "Mes classes",
+    "students": "Élèves",
+    "contact": "Contact",
+    "courses": "Cours",
+    "performance": "Performance",
+    "users": "Utilisateurs",
+    "teachers": "Professeurs",
+    "statistics": "Statistiques",
+    "settings": "Paramètres",
+    "bulletins": "Bulletins",
+    "periods": "Périodes"
+  },
+  "roles": {
+    "student": "Espace Élève",
+    "teacher": "Espace Professeur",
+    "staff": "Espace Staff",
+    "admin": "Espace Administrateur",
+    "parent": "Espace Parent"
+  },
+  "parent": {
+    "spaceLabel": "Espace parent",
+    "schoolYear": "Année scolaire",
+    "defaultName": "Parent",
+    "accountDisabled": "Votre compte parent a été désactivé car aucun enfant actif n'est associé.",
+    "accountDisabledContact": "Contactez l'établissement pour plus d'informations.",
+    "accountDisabledContactEmail": "Contactez {{email}} pour plus d'informations.",
+    "redirect": "Redirection vers la page de connexion parent..."
+  },
+  "teacher": {
+    "assignments": {
+      "title": "Mes devoirs",
+      "subtitle": "Gérez les devoirs et exercices pour vos classes",
+      "filters": {
+        "allClasses": "Toutes les classes",
+        "allStatuses": "Tous",
+        "drafts": "Brouillons",
+        "published": "Publiés"
+      },
+      "actions": {
+        "new": "Nouveau devoir",
+        "applyFilters": "Appliquer",
+        "createFirst": "Créer mon premier devoir",
+        "viewResource": "Voir la ressource",
+        "publish": "Publier",
+        "unpublish": "Retirer"
+      },
+      "states": {
+        "loading": "Chargement des devoirs...",
+        "empty": "Aucun devoir trouvé"
+      },
+      "sections": {
+        "drafts": "Brouillons ({{count}})",
+        "upcoming": "Publiés - À venir ({{count}})",
+        "overdue": "Date limite passée ({{count}})"
+      },
+      "errors": {
+        "loadAssignments": "Erreur lors du chargement des devoirs",
+        "generic": "Erreur lors du chargement",
+        "publish": "Erreur lors de la publication",
+        "unpublish": "Erreur lors du retrait",
+        "archive": "Erreur lors de l'archivage"
+      },
+      "confirmArchive": "Êtes-vous sûr de vouloir archiver ce devoir ?",
+      "labels": {
+        "wasDue": "Était à rendre le ",
+        "dueBy": "À rendre pour le ",
+        "points": "/ {{points}} pts"
+      }
+    },
+    "dashboard": {
+      "loading": "Chargement de votre espace...",
+      "errors": {
+        "generic": "Erreur lors du chargement"
+      },
+      "greetings": {
+        "morning": "Bonjour",
+        "afternoon": "Bon après-midi",
+        "evening": "Bonsoir"
+      },
+      "greetingFallback": "Professeur",
+      "actions": {
+        "newAssignment": "Nouveau devoir"
+      },
+      "kpis": {
+        "coursesToday": {
+          "title": "Cours aujourd'hui",
+          "empty": "Aucun cours"
+        },
+        "homework": {
+          "title": "Devoirs à corriger",
+          "pending": "date limite passée",
+          "empty": "Aucun en attente"
+        },
+        "attendance": {
+          "title": "Appels à faire",
+          "pending": "cours non pointés",
+          "empty": "Tout est fait !"
+        },
+        "messages": {
+          "title": "Messages",
+          "unread": "non lus",
+          "empty": "Tout est lu"
+        }
+      },
+      "sections": {
+        "todayCourses": {
+          "title": "Mes cours aujourd'hui",
+          "viewWeek": "Voir la semaine",
+          "empty": "Pas de cours aujourd'hui 🎉"
+        },
+        "todo": {
+          "title": "À traiter",
+          "homework": {
+            "title": "Devoirs en retard",
+            "description": "{{count}} devoir{{s}} dont la date limite est passée"
+          },
+          "messages": {
+            "title": "Messages non lus",
+            "description": "{{count}} message{{s}} en attente"
+          },
+          "empty": "Tout est à jour ! 🎉"
+        },
+        "classes": {
+          "title": "Mes classes"
+        },
+        "absences": {
+          "title": "Absences & retards récents"
+        },
+        "homework": {
+          "title": "Devoirs publiés",
+          "new": "Nouveau",
+          "empty": "Aucun devoir publié"
+        },
+        "messages": {
+          "title": "Messages récents",
+          "viewAll": "Voir tout",
+          "empty": "Aucun message"
+        }
+      },
+      "courseCard": {
+        "ongoing": "En cours",
+        "attendanceDone": "Appel fait",
+        "attendanceDo": "Faire l'appel",
+        "students": "Élèves",
+        "createAssignment": "Devoir"
+      }
+    }
+  },
+  "pages": {
+    "staffDashboard": {
+      "greetingFallback": "Personnel",
+      "quickActions": {
+        "absences": "Gérer les absences",
+        "timetable": "Emplois du temps",
+        "messages": "Envoyer un message"
+      }
+    },
+    "teacherDashboard": {
+      "greetingFallback": "Professeur"
+    },
+    "adminDashboard": {
+      "title": "Vue d'ensemble"
+    }
+  }
+}

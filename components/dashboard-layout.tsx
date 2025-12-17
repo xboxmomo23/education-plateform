@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -26,7 +26,10 @@ import {
   Mail,
   Menu,
 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import Link from "next/link"
+import { useI18n } from "@/components/providers/i18n-provider"
+import { LanguageSelector } from "@/components/language-selector"
 
 
 interface DashboardLayoutProps {
@@ -34,9 +37,61 @@ interface DashboardLayoutProps {
   requiredRole: UserRole
 }
 
+type DashboardRole = "student" | "teacher" | "staff" | "admin"
+
+type MenuDefinition = {
+  icon: LucideIcon
+  labelKey: string
+  href: string
+  withBadge?: boolean
+}
+
+const dashboardMenu: Record<DashboardRole, MenuDefinition[]> = {
+  student: [
+    { icon: BookOpen, labelKey: "navigation.dashboard", href: "/dashboard-eleve" },
+    { icon: FileText, labelKey: "navigation.assignments", href: "/eleve/devoirs" },
+    { icon: Calendar, labelKey: "navigation.schedule", href: "/eleve/emplois-du-temps" },
+    { icon: ClipboardCheck, labelKey: "navigation.attendance", href: "/eleve/assiduite" },
+    { icon: BarChart, labelKey: "navigation.grades", href: "/eleve/notes" },
+    { icon: Mail, labelKey: "navigation.messages", href: "/eleve/messages", withBadge: true },
+  ],
+  teacher: [
+    { icon: BookOpen, labelKey: "navigation.dashboard", href: "/dashboard-professeur" },
+    { icon: ClipboardCheck, labelKey: "navigation.presence", href: "/professeur/presence" },
+    { icon: BarChart, labelKey: "navigation.grades", href: "/professeur/notes" },
+    { icon: FileText, labelKey: "navigation.assignments", href: "/professeur/devoirs" },
+    { icon: Calendar, labelKey: "navigation.schedule", href: "/professeur/emplois-du-temps" },
+    { icon: Mail, labelKey: "navigation.messages", href: "/professeur/messages", withBadge: true },
+    { icon: BookOpen, labelKey: "navigation.classes", href: "/professeur/classes" },
+    { icon: Users, labelKey: "navigation.students", href: "#" },
+  ],
+  staff: [
+    { icon: BookOpen, labelKey: "navigation.dashboard", href: "/dashboard-staff" },
+    { icon: AlertCircle, labelKey: "navigation.absences", href: "/staff/absences" },
+    { icon: Calendar, labelKey: "navigation.schedule", href: "/staff/emplois-du-temps" },
+    { icon: Layers, labelKey: "navigation.courses", href: "/staff/cours" },
+    { icon: BarChart, labelKey: "navigation.grades", href: "/staff/notes" },
+    { icon: Mail, labelKey: "navigation.messages", href: "/staff/messages", withBadge: true },
+    { icon: Users, labelKey: "navigation.bulletins", href: "/staff/bulletins" },
+    { icon: Users, labelKey: "navigation.periods", href: "/staff/periodes" },
+    { icon: Settings, labelKey: "navigation.settings", href: "/staff/parametres" },
+  ],
+  admin: [
+    { icon: BookOpen, labelKey: "navigation.dashboard", href: "/admin" },
+    { icon: BarChart, labelKey: "navigation.performance", href: "/admin/performance" },
+    { icon: Users, labelKey: "navigation.users", href: "#" },
+    { icon: GraduationCap, labelKey: "navigation.teachers", href: "#" },
+    { icon: BookOpen, labelKey: "navigation.courses", href: "#" },
+    { icon: Mail, labelKey: "navigation.messages", href: "/admin/messages", withBadge: true },
+    { icon: BarChart, labelKey: "navigation.statistics", href: "#" },
+    { icon: Settings, labelKey: "navigation.settings", href: "#" },
+  ],
+}
+
 export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps) {
   const router = useRouter()
   const pathname = usePathname()
+  const { t } = useI18n()
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)  // ✨ NOUVEAU: compteur messages non lus
@@ -112,54 +167,18 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
     router.push(`/login-${loginPath}`)
   }
 
-  // ✨ MODIFIÉ: getMenuItems avec Messages et badge
-  const getMenuItems = () => {
-    switch (requiredRole) {
-      case "student":
-        return [
-          { icon: BookOpen, label: "Tableau de bord", href: "/dashboard-eleve" },
-          { icon: FileText, label: "Devoirs", href: "/eleve/devoirs" },
-          { icon: Calendar, label: "Emploi du temps", href: "/eleve/emplois-du-temps" },
-          { icon: ClipboardCheck, label: "Assiduité", href: "/eleve/assiduite" },
-          { icon: BarChart, label: "Notes", href: "/eleve/notes" },
-          { icon: Mail, label: "Messages", href: "/eleve/messages", badge: unreadCount > 0 ? unreadCount : undefined },  // ✨ NOUVEAU
-        ]
-      case "teacher":
-        return [
-          { icon: BookOpen, label: "Tableau de bord", href: "/dashboard-professeur" },
-          { icon: ClipboardCheck, label: "Présence", href: "/professeur/presence" },
-          { icon: BarChart, label: "Notes", href: "/professeur/notes" },
-          { icon: FileText, label: "Devoirs", href: "/professeur/devoirs" },
-          { icon: Calendar, label: "Emploi du temps", href: "/professeur/emplois-du-temps" },
-          { icon: Mail, label: "Messages", href: "/professeur/messages", badge: unreadCount > 0 ? unreadCount : undefined },  // ✨ NOUVEAU
-          { icon: BookOpen, label: "Mes classes", href: "/professeur/classes" },
-          { icon: Users, label: "Élèves", href: "#" },
-        ]
-      case "staff":
-        return [
-          { icon: BookOpen, label: "Tableau de bord", href: "/dashboard-staff" },
-          { icon: AlertCircle, label: "Absences", href: "/staff/absences" },
-          { icon: Calendar, label: "Emplois du temps", href: "/staff/emplois-du-temps" },
-          { icon: Layers, label: "Cours", href: "/staff/cours" },
-          { icon: BarChart, label: "Notes", href: "/staff/notes" },
-          { icon: Mail, label: "Messages", href: "/staff/messages", badge: unreadCount > 0 ? unreadCount : undefined },  // ✨ NOUVEAU
-          { icon: Users, label: "Bulletins", href: "/staff/bulletins" },
-          { icon: Users, label: "Periodes", href: "/staff/periodes" },
-          { icon: Settings, label: "Paramètres", href: "/staff/parametres" },
-        ]
-      case "admin":
-        return [
-          { icon: BookOpen, label: "Tableau de bord", href: "/admin" },
-          { icon: BarChart, label: "Performance", href: "/admin/performance" },
-          { icon: Users, label: "Utilisateurs", href: "#" },
-          { icon: GraduationCap, label: "Professeurs", href: "#" },
-          { icon: BookOpen, label: "Cours", href: "#" },
-          { icon: Mail, label: "Messages", href: "/admin/messages", badge: unreadCount > 0 ? unreadCount : undefined },
-          { icon: BarChart, label: "Statistiques", href: "#" },
-          { icon: Settings, label: "Paramètres", href: "#" },
-        ]
-    }
-  }
+  const menuItems = useMemo(() => {
+    const roleKey = (["student", "teacher", "staff", "admin"] as DashboardRole[]).includes(
+      requiredRole as DashboardRole
+    )
+      ? (requiredRole as DashboardRole)
+      : "student"
+    return dashboardMenu[roleKey].map((item) => ({
+      ...item,
+      label: t(item.labelKey),
+      badge: item.withBadge && unreadCount > 0 ? unreadCount : undefined,
+    }))
+  }, [requiredRole, t, unreadCount])
 
   const getRoleIcon = () => {
     switch (requiredRole) {
@@ -177,24 +196,26 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
   const getRoleLabel = () => {
     switch (requiredRole) {
       case "student":
-        return "Espace Élève"
+        return t("roles.student")
       case "teacher":
-        return "Espace Professeur"
+        return t("roles.teacher")
       case "staff":
-        return "Espace staff"
+        return t("roles.staff")
       case "admin":
-        return "Espace Administrateur"
+        return t("roles.admin")
     }
   }
 
-  const menuItems = getMenuItems()
   const isResponsiveRole = requiredRole === "student" || requiredRole === "teacher"
 
   const SidebarContent = ({ onNavigate }: { onNavigate?: () => void }) => (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b p-6">
-        {getRoleIcon()}
-        <h1 className="text-lg font-semibold">{getRoleLabel()}</h1>
+      <div className="flex items-center justify-between gap-2 border-b p-6">
+        <div className="flex items-center gap-2">
+          {getRoleIcon()}
+          <h1 className="text-lg font-semibold">{getRoleLabel()}</h1>
+        </div>
+        <LanguageSelector compact />
       </div>
 
       <nav className="flex-1 space-y-1 p-4">
@@ -236,7 +257,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
           </div>
           <Button variant="outline" className="w-full bg-transparent" onClick={handleLogout}>
             <LogOut className="mr-2 h-4 w-4" />
-            Déconnexion
+            {t("common.actions.logout")}
           </Button>
         </div>
       )}
@@ -246,7 +267,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <p>Chargement...</p>
+        <p>{t("common.states.loading")}</p>
       </div>
     )
   }
@@ -277,10 +298,11 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
             <div className="min-w-0">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">{getRoleLabel()}</p>
               <p className="truncate text-sm font-semibold">
-                {user?.full_name || user?.email || "Mon espace"}
+                {user?.full_name || user?.email || getRoleLabel()}
               </p>
             </div>
           </div>
+          <LanguageSelector compact />
 
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild>

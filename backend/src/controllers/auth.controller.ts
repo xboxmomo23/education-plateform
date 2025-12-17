@@ -404,6 +404,7 @@ export async function requestPasswordReset(req: Request, res: Response): Promise
         resetUrl,
         establishmentName: establishmentSettings.displayName,
         userName: user.full_name,
+        locale: establishmentSettings.defaultLocale,
       }).catch((err) => {
         console.error('[MAIL] Erreur envoi email reset:', err);
       });

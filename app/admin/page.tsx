@@ -11,6 +11,7 @@ import { PageLoader } from "@/components/ui/page-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Loader2, ShieldAlert } from "lucide-react";
+import { useI18n } from "@/components/providers/i18n-provider";
 
 interface AdminDashboardData {
   establishment: {
@@ -47,6 +48,7 @@ export default function AdminDashboardPage() {
   const [kpis, setKpis] = useState<AdminDashboardKpis | null>(null);
   const [kpiLoading, setKpiLoading] = useState(true);
   const [kpiError, setKpiError] = useState<string | null>(null);
+  const { t } = useI18n();
 
   const refreshKpis = useCallback(async () => {
     try {
@@ -101,7 +103,7 @@ export default function AdminDashboardPage() {
       <AdminBackButton className="mb-4" />
       <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Tableau de bord établissement</h1>
+          <h1 className="text-2xl font-bold">{t("pages.adminDashboard.title")}</h1>
           <p className="text-sm text-muted-foreground">
             Vue d&apos;ensemble de votre école dans EduPilot.
           </p>
@@ -118,7 +120,7 @@ export default function AdminDashboardPage() {
         )}
       </header>
 
-      {loading && <PageLoader label="Chargement du tableau de bord..." />}
+      {loading && <PageLoader label={t("common.states.loading")} />}
 
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -150,10 +152,10 @@ export default function AdminDashboardPage() {
                 {kpiLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Actualisation…
+                    {t("common.states.loading")}
                   </>
                 ) : (
-                  "Actualiser"
+                  t("common.actions.refresh")
                 )}
               </Button>
             </div>
@@ -176,8 +178,8 @@ export default function AdminDashboardPage() {
             ) : (
               <EmptyState
                 Icon={ShieldAlert}
-                title="Aucun indicateur"
-                description="Impossible de charger les indicateurs."
+                title={t("common.states.empty")}
+                description={t("common.states.error")}
                 className="border-none"
               />
             )}

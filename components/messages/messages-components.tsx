@@ -46,6 +46,7 @@ import {
   getRoleLabel,
   truncateText,
 } from '@/lib/api/messages'
+import { useI18n } from "@/components/providers/i18n-provider"
 
 // =========================
 // TYPES PROPS
@@ -85,11 +86,12 @@ export function MessagesList({
   onRefresh,
   selectedMessageId,
 }: MessagesListProps) {
+  const { t } = useI18n()
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12 text-muted-foreground">
         <RefreshCw className="h-5 w-5 animate-spin mr-2" />
-        Chargement des messages...
+        {t("common.states.loading")}
       </div>
     )
   }
@@ -98,10 +100,10 @@ export function MessagesList({
     return (
       <div className="text-center py-12">
         <Mail className="h-12 w-12 mx-auto text-gray-300 mb-4" />
-        <p className="text-muted-foreground">Aucun message</p>
+        <p className="text-muted-foreground">{t("common.states.empty")}</p>
         <Button variant="outline" onClick={onRefresh} className="mt-4">
           <RefreshCw className="h-4 w-4 mr-2" />
-          Actualiser
+          {t("common.actions.refresh")}
         </Button>
       </div>
     )
@@ -256,6 +258,7 @@ export function ComposeMessage({
   const [loadingRecipients, setLoadingRecipients] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { t } = useI18n()
 
   // Formulaire
   const [targetType, setTargetType] = useState<string>('')
@@ -572,12 +575,12 @@ export function ComposeMessage({
             {sending ? (
               <>
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                Envoi...
+                {t("common.states.loading")}
               </>
             ) : (
               <>
                 <Send className="h-4 w-4 mr-2" />
-                Envoyer
+                {t("common.actions.send")}
               </>
             )}
           </Button>
@@ -603,6 +606,7 @@ export function MessagesInbox({ userRole }: MessagesInboxProps) {
   const [composeOpen, setComposeOpen] = useState(false)
   const [replyTo, setReplyTo] = useState<InboxMessage | null>(null)
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
+  const { t } = useI18n()
 
   // Charger les messages au montage
   useEffect(() => {
@@ -729,7 +733,7 @@ export function MessagesInbox({ userRole }: MessagesInboxProps) {
 
             <Button variant="ghost" size="sm" onClick={loadMessages} className="ml-auto">
               <RefreshCw className="h-4 w-4 mr-1" />
-              Actualiser
+              {t("common.actions.refresh")}
             </Button>
           </div>
         </CardContent>

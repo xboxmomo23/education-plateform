@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useMemo } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { ParentChildSelector } from "@/components/parent-child-selector"
@@ -8,20 +8,14 @@ import { useAuth } from "@/hooks/useAuth"
 import { cn } from "@/lib/utils"
 import { ParentChildProvider, useParentChild } from "@/components/parent/ParentChildContext"
 import { useEstablishmentSettings } from "@/hooks/useEstablishmentSettings"
-
-const navItems = [
-  { href: "/parent/dashboard", label: "Tableau de bord" },
-  { href: "/parent/notes", label: "Notes" },
-  { href: "/parent/devoirs", label: "Devoirs" },
-  { href: "/parent/absences", label: "Absences" },
-  { href: "/parent/emploi-du-temps", label: "Emploi du temps" },
-  { href: "/parent/contact", label: "Contact" },
-]
+import { LanguageSelector } from "@/components/language-selector"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 export default function ParentLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
   const { user, userRole, fullName } = useAuth()
+  const { t } = useI18n()
 
   useEffect(() => {
     if (!user) {
@@ -43,7 +37,7 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/20 px-4">
         <div className="text-center text-muted-foreground">
-          Redirection vers la page de connexion parent...
+          {t("parent.redirect")}
         </div>
       </div>
     )
@@ -69,6 +63,21 @@ function ParentLayoutContent({
 }) {
   const { accountDisabled } = useParentChild()
   const { settings } = useEstablishmentSettings()
+  const { t } = useI18n()
+  const navItems = useMemo(
+    () => [
+      { href: "/parent/dashboard", label: t("navigation.dashboard") },
+      { href: "/parent/notes", label: t("navigation.grades") },
+      { href: "/parent/devoirs", label: t("navigation.assignments") },
+      { href: "/parent/absences", label: t("navigation.absences") },
+      { href: "/parent/emploi-du-temps", label: t("navigation.schedule") },
+      { href: "/parent/contact", label: t("navigation.contact") },
+    ],
+    [t]
+  )
+  const contactMessage = settings?.contactEmail
+    ? t("parent.accountDisabledContactEmail", { email: settings.contactEmail })
+    : t("parent.accountDisabledContact")
 
   return (
     <div className="min-h-screen bg-muted/20">
@@ -77,13 +86,18 @@ function ParentLayoutContent({
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm uppercase text-muted-foreground">
-                {settings?.displayName ?? "Espace parent"}
+                {settings?.displayName ?? t("parent.spaceLabel")}
               </p>
-              <h1 className="text-2xl font-semibold">{fullName ?? "Parent"}</h1>
+              <h1 className="text-2xl font-semibold">{fullName ?? t("parent.defaultName")}</h1>
               {settings?.schoolYear && (
-                <p className="text-xs text-muted-foreground">Année scolaire {settings.schoolYear}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t("parent.schoolYear")} {settings.schoolYear}
+                </p>
               )}
             </div>
+            <LanguageSelector compact />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
             <nav className="flex flex-wrap gap-2">
               {navItems.map((item) => (
                 <Link
@@ -103,10 +117,8 @@ function ParentLayoutContent({
           </div>
           {accountDisabled && (
             <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
-              Votre compte parent a été désactivé car aucun enfant actif n'est associé.
-              {settings?.contactEmail
-                ? ` Contactez ${settings.contactEmail} pour plus d'informations.`
-                : " Contactez l'établissement pour plus d'informations."}
+              <p>{t("parent.accountDisabled")}</p>
+              <p>{contactMessage}</p>
             </div>
           )}
           <ParentChildSelector />

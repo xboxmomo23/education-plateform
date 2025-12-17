@@ -1,0 +1,205 @@
+{
+  "language": {
+    "label": "Language",
+    "fr": "French",
+    "en": "English"
+  },
+  "common": {
+    "actions": {
+      "refresh": "Refresh",
+      "export": "Export",
+      "send": "Send",
+      "logout": "Logout",
+      "resetFilters": "Reset",
+      "retry": "Try again",
+      "edit": "Edit",
+      "view": "View",
+      "archive": "Archive"
+    },
+    "filters": {
+      "title": "Filters",
+      "class": "Class",
+      "status": "Status",
+      "from": "From",
+      "to": "To"
+    },
+    "states": {
+      "loading": "Loading...",
+      "empty": "No data available",
+      "error": "Something went wrong"
+    }
+  },
+  "navigation": {
+    "dashboard": "Dashboard",
+    "assignments": "Assignments",
+    "schedule": "Schedule",
+    "attendance": "Attendance",
+    "presence": "Attendance",
+    "absences": "Absences",
+    "grades": "Grades",
+    "messages": "Messages",
+    "classes": "My classes",
+    "students": "Students",
+    "contact": "Contact",
+    "courses": "Courses",
+    "performance": "Performance",
+    "users": "Users",
+    "teachers": "Teachers",
+    "statistics": "Analytics",
+    "settings": "Settings",
+    "bulletins": "Report cards",
+    "periods": "Terms"
+  },
+  "roles": {
+    "student": "Student space",
+    "teacher": "Teacher space",
+    "staff": "Staff space",
+    "admin": "Admin space",
+    "parent": "Parent space"
+  },
+  "parent": {
+    "spaceLabel": "Parent area",
+    "schoolYear": "School year",
+    "defaultName": "Parent",
+    "accountDisabled": "Your parent account has been disabled because no active child is linked.",
+    "accountDisabledContact": "Contact the school for more information.",
+    "accountDisabledContactEmail": "Contact {{email}} for more information.",
+    "redirect": "Redirecting to the parent login page..."
+  },
+  "teacher": {
+    "assignments": {
+      "title": "My assignments",
+      "subtitle": "Manage assignments and exercises for your classes",
+      "filters": {
+        "allClasses": "All classes",
+        "allStatuses": "All",
+        "drafts": "Drafts",
+        "published": "Published"
+      },
+      "actions": {
+        "new": "New assignment",
+        "applyFilters": "Apply",
+        "createFirst": "Create my first assignment",
+        "viewResource": "View resource",
+        "publish": "Publish",
+        "unpublish": "Unpublish"
+      },
+      "states": {
+        "loading": "Loading assignments...",
+        "empty": "No assignments found"
+      },
+      "sections": {
+        "drafts": "Drafts ({{count}})",
+        "upcoming": "Published – upcoming ({{count}})",
+        "overdue": "Past due ({{count}})"
+      },
+      "errors": {
+        "loadAssignments": "Unable to load assignments",
+        "generic": "Unable to load data",
+        "publish": "Failed to publish assignment",
+        "unpublish": "Failed to unpublish assignment",
+        "archive": "Failed to archive assignment"
+      },
+      "confirmArchive": "Are you sure you want to archive this assignment?",
+      "labels": {
+        "wasDue": "Was due on ",
+        "dueBy": "Due by ",
+        "points": "/ {{points}} pts"
+      }
+    },
+    "dashboard": {
+      "loading": "Loading your workspace...",
+      "errors": {
+        "generic": "Unable to load the dashboard"
+      },
+      "greetings": {
+        "morning": "Good morning",
+        "afternoon": "Good afternoon",
+        "evening": "Good evening"
+      },
+      "greetingFallback": "Teacher",
+      "actions": {
+        "newAssignment": "New assignment"
+      },
+      "kpis": {
+        "coursesToday": {
+          "title": "Classes today",
+          "empty": "No classes"
+        },
+        "homework": {
+          "title": "Assignments to grade",
+          "pending": "past due",
+          "empty": "None pending"
+        },
+        "attendance": {
+          "title": "Attendance to take",
+          "pending": "sessions pending",
+          "empty": "All done!"
+        },
+        "messages": {
+          "title": "Messages",
+          "unread": "unread",
+          "empty": "All read"
+        }
+      },
+      "sections": {
+        "todayCourses": {
+          "title": "Today's classes",
+          "viewWeek": "View week",
+          "empty": "No classes today 🎉"
+        },
+        "todo": {
+          "title": "Needs attention",
+          "homework": {
+            "title": "Late assignments",
+            "description": "{{count}} assignment{{s}} past due"
+          },
+          "messages": {
+            "title": "Unread messages",
+            "description": "{{count}} message{{s}} waiting"
+          },
+          "empty": "You're all caught up! 🎉"
+        },
+        "classes": {
+          "title": "My classes"
+        },
+        "absences": {
+          "title": "Recent absences & tardies"
+        },
+        "homework": {
+          "title": "Published assignments",
+          "new": "New",
+          "empty": "No published assignments"
+        },
+        "messages": {
+          "title": "Recent messages",
+          "viewAll": "View all",
+          "empty": "No messages"
+        }
+      },
+      "courseCard": {
+        "ongoing": "In progress",
+        "attendanceDone": "Attendance done",
+        "attendanceDo": "Take attendance",
+        "students": "Students",
+        "createAssignment": "Assignment"
+      }
+    }
+  },
+  "pages": {
+    "staffDashboard": {
+      "greetingFallback": "Staff",
+      "quickActions": {
+        "absences": "Manage absences",
+        "timetable": "Class schedules",
+        "messages": "Send a message"
+      }
+    },
+    "teacherDashboard": {
+      "greetingFallback": "Teacher"
+    },
+    "adminDashboard": {
+      "title": "Overview"
+    }
+  }
+}

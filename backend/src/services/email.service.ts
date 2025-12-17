@@ -1,6 +1,7 @@
 import type { UserRole } from "../types";
 import { buildInviteEmail } from "../templates/email/invite";
 import { buildResetEmail } from "../templates/email/password-reset";
+import type { SupportedLocale } from "../models/establishmentSettings.model";
 
 type MailPayload = {
   to: string;
@@ -24,6 +25,7 @@ const {
 const DEFAULT_APP_NAME = APP_NAME || "EduPilot";
 const DEFAULT_FROM_EMAIL = EMAIL_FROM || "no-reply@edupilot.test";
 const DEFAULT_FROM_NAME = EMAIL_FROM_NAME || DEFAULT_APP_NAME;
+const DEFAULT_LOCALE: SupportedLocale = "fr";
 const DEFAULT_FROM = EMAIL_FROM
   ? EMAIL_FROM_NAME
     ? `${EMAIL_FROM_NAME} <${EMAIL_FROM}>`
@@ -101,13 +103,23 @@ async function deliverEmail(payload: MailPayload): Promise<void> {
   });
 }
 
-const roleLabels: Record<UserRole, string> = {
-  student: "élève",
-  teacher: "professeur",
-  staff: "staff",
-  admin: "administrateur",
-  parent: "parent",
-  super_admin: "super administrateur",
+const roleLabels: Record<SupportedLocale, Record<UserRole, string>> = {
+  fr: {
+    student: "élève",
+    teacher: "professeur",
+    staff: "staff",
+    admin: "administrateur",
+    parent: "parent",
+    super_admin: "super administrateur",
+  },
+  en: {
+    student: "student",
+    teacher: "teacher",
+    staff: "staff",
+    admin: "administrator",
+    parent: "parent",
+    super_admin: "super admin",
+  },
 };
 
 interface InviteEmailParams {
@@ -117,10 +129,15 @@ interface InviteEmailParams {
   establishmentName?: string;
   inviteUrl: string;
   expiresInDays?: number;
+  locale?: SupportedLocale;
 }
 
 export async function sendInviteEmail(params: InviteEmailParams): Promise<void> {
-  const label = roleLabels[params.role] || "utilisateur";
+  const locale: SupportedLocale = params.locale === "en" ? "en" : DEFAULT_LOCALE;
+  const label =
+    roleLabels[locale][params.role] ||
+    roleLabels[DEFAULT_LOCALE][params.role] ||
+    (locale === "en" ? "user" : "utilisateur");
   const expiresIn = params.expiresInDays ?? 7;
   const inviteContent = buildInviteEmail({
     userName: undefined,
@@ -129,6 +146,7 @@ export async function sendInviteEmail(params: InviteEmailParams): Promise<void> 
     loginEmail: params.loginEmail,
     actionUrl: params.inviteUrl,
     expiresInDays: expiresIn,
+    locale,
   });
 
   await deliverEmail({
@@ -146,14 +164,17 @@ interface ResetEmailParams {
   resetUrl: string;
   establishmentName?: string | null;
   userName?: string | null;
+  locale?: SupportedLocale;
 }
 
 export async function sendPasswordResetEmail(params: ResetEmailParams): Promise<void> {
+  const locale: SupportedLocale = params.locale === "en" ? "en" : DEFAULT_LOCALE;
   const resetContent = buildResetEmail({
     userName: params.userName ?? undefined,
     establishmentName: params.establishmentName ?? DEFAULT_APP_NAME,
     loginEmail: params.loginEmail,
     actionUrl: params.resetUrl,
+    locale,
   });
 
   await deliverEmail({

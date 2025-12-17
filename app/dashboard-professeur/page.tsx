@@ -44,6 +44,7 @@ import {
   formatTime,
   formatRelativeDate
 } from "@/lib/api/dashboard"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 // =========================
 // HELPERS
@@ -93,6 +94,7 @@ function transformAssignmentToHomework(assignment: Assignment): UpcomingHomework
 
 export default function TeacherDashboardPage() {
   const router = useRouter()
+  const { t, locale } = useI18n()
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -254,7 +256,7 @@ export default function TeacherDashboardPage() {
 
     } catch (err: any) {
       console.error('Erreur chargement dashboard:', err)
-      setError(err.message || 'Erreur lors du chargement')
+      setError(err.message || t('teacher.dashboard.errors.generic'))
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -286,7 +288,7 @@ export default function TeacherDashboardPage() {
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="text-center">
             <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-            <p className="text-muted-foreground">Chargement de votre espace...</p>
+            <p className="text-muted-foreground">{t("teacher.dashboard.loading")}</p>
           </div>
         </div>
       </DashboardLayout>
@@ -302,7 +304,7 @@ export default function TeacherDashboardPage() {
             <p className="text-red-600 mb-4">{error}</p>
             <Button onClick={() => loadData()}>
               <RefreshCw className="h-4 w-4 mr-2" />
-              Réessayer
+              {t("common.actions.retry")}
             </Button>
           </div>
         </div>
@@ -311,7 +313,23 @@ export default function TeacherDashboardPage() {
   }
 
   const user = getUserSession()
-  const greeting = getGreeting()
+  const greetingKey = getGreetingKey()
+  const greeting = t(`teacher.dashboard.greetings.${greetingKey}`)
+  const displayName = user?.full_name?.split(" ")[0] || t("teacher.dashboard.greetingFallback")
+  const dateFormatter = new Intl.DateTimeFormat(locale === "fr" ? "fr-FR" : "en-US", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  })
+  const formattedDate = dateFormatter.format(new Date())
+  const courseCardLabels = {
+    ongoing: t("teacher.dashboard.courseCard.ongoing"),
+    attendanceDone: t("teacher.dashboard.courseCard.attendanceDone"),
+    attendanceDo: t("teacher.dashboard.courseCard.attendanceDo"),
+    students: t("teacher.dashboard.courseCard.students"),
+    createAssignment: t("teacher.dashboard.courseCard.createAssignment"),
+  }
 
   return (
     <DashboardLayout requiredRole="teacher">
@@ -321,15 +339,10 @@ export default function TeacherDashboardPage() {
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-2xl font-bold">
-              {greeting}, {user?.full_name?.split(' ')[0] || 'Professeur'} 👋
+              {greeting}, {displayName} 👋
             </h1>
             <p className="text-muted-foreground mt-1">
-              {new Date().toLocaleDateString('fr-FR', { 
-                weekday: 'long', 
-                day: 'numeric', 
-                month: 'long', 
-                year: 'numeric' 
-              })}
+              {formattedDate}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -340,12 +353,12 @@ export default function TeacherDashboardPage() {
               disabled={refreshing}
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-              Actualiser
+              {t("common.actions.refresh")}
             </Button>
             <Link href="/professeur/devoirs">
               <Button size="sm">
                 <Plus className="h-4 w-4 mr-2" />
-                Nouveau devoir
+                {t("teacher.dashboard.actions.newAssignment")}
               </Button>
             </Link>
           </div>
@@ -354,36 +367,52 @@ export default function TeacherDashboardPage() {
         {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <KpiCard
-            title="Cours aujourd'hui"
+            title={t("teacher.dashboard.kpis.coursesToday.title")}
             value={kpis.coursesToday}
-            subtitle={kpis.totalDuration > 0 ? formatDuration(kpis.totalDuration) : 'Aucun cours'}
+            subtitle={
+              kpis.totalDuration > 0
+                ? formatDuration(kpis.totalDuration)
+                : t("teacher.dashboard.kpis.coursesToday.empty")
+            }
             icon={BookOpen}
             iconColor="text-blue-600"
             iconBgColor="bg-blue-100 dark:bg-blue-900/30"
             onClick={() => router.push('/professeur/emplois-du-temps')}
           />
           <KpiCard
-            title="Devoirs à corriger"
+            title={t("teacher.dashboard.kpis.homework.title")}
             value={kpis.homeworkToCorrect}
-            subtitle={kpis.homeworkToCorrect > 0 ? 'date limite passée' : 'Aucun en attente'}
+            subtitle={
+              kpis.homeworkToCorrect > 0
+                ? t("teacher.dashboard.kpis.homework.pending")
+                : t("teacher.dashboard.kpis.homework.empty")
+            }
             icon={FileText}
             iconColor="text-amber-600"
             iconBgColor="bg-amber-100 dark:bg-amber-900/30"
             onClick={() => router.push('/professeur/devoirs')}
           />
           <KpiCard
-            title="Appels à faire"
+            title={t("teacher.dashboard.kpis.attendance.title")}
             value={kpis.pendingAttendance}
-            subtitle={kpis.pendingAttendance > 0 ? 'cours non pointés' : 'Tout est fait !'}
+            subtitle={
+              kpis.pendingAttendance > 0
+                ? t("teacher.dashboard.kpis.attendance.pending")
+                : t("teacher.dashboard.kpis.attendance.empty")
+            }
             icon={ClipboardCheck}
             iconColor={kpis.pendingAttendance > 0 ? "text-red-600" : "text-emerald-600"}
             iconBgColor={kpis.pendingAttendance > 0 ? "bg-red-100 dark:bg-red-900/30" : "bg-emerald-100 dark:bg-emerald-900/30"}
             onClick={() => router.push('/professeur/presence')}
           />
           <KpiCard
-            title="Messages"
+            title={t("teacher.dashboard.kpis.messages.title")}
             value={kpis.unreadMessages}
-            subtitle={kpis.unreadMessages > 0 ? 'non lus' : 'Tout est lu'}
+            subtitle={
+              kpis.unreadMessages > 0
+                ? t("teacher.dashboard.kpis.messages.unread")
+                : t("teacher.dashboard.kpis.messages.empty")
+            }
             icon={Mail}
             iconColor="text-violet-600"
             iconBgColor="bg-violet-100 dark:bg-violet-900/30"
@@ -403,11 +432,11 @@ export default function TeacherDashboardPage() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base font-semibold flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-muted-foreground" />
-                    Mes cours aujourd'hui
+                    {t("teacher.dashboard.sections.todayCourses.title")}
                   </CardTitle>
                   <Link href="/professeur/emplois-du-temps">
                     <Button variant="ghost" size="sm">
-                      Voir la semaine
+                      {t("teacher.dashboard.sections.todayCourses.viewWeek")}
                       <ChevronRight className="h-3 w-3 ml-1" />
                     </Button>
                   </Link>
@@ -417,7 +446,7 @@ export default function TeacherDashboardPage() {
                 {todayCourses.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">Pas de cours aujourd'hui 🎉</p>
+                    <p className="text-sm">{t("teacher.dashboard.sections.todayCourses.empty")}</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -427,6 +456,7 @@ export default function TeacherDashboardPage() {
                         course={course}
                         onAttendanceClick={() => handleAttendanceClick(course.id)}
                         onViewClick={() => handleViewStudents(course.id)}
+                        labels={courseCardLabels}
                       />
                     ))}
                   </div>
@@ -439,7 +469,7 @@ export default function TeacherDashboardPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-semibold flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 text-amber-500" />
-                  À traiter
+                  {t("teacher.dashboard.sections.todo.title")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -450,15 +480,18 @@ export default function TeacherDashboardPage() {
                       <div className="flex items-center gap-3">
                         <FileText className="h-5 w-5 text-amber-600" />
                         <div>
-                          <p className="font-medium text-sm">Devoirs en retard</p>
+                          <p className="font-medium text-sm">{t("teacher.dashboard.sections.todo.homework.title")}</p>
                           <p className="text-xs text-muted-foreground">
-                            {kpis.homeworkToCorrect} devoir{kpis.homeworkToCorrect > 1 ? 's' : ''} dont la date limite est passée
+                            {t("teacher.dashboard.sections.todo.homework.description", {
+                              count: kpis.homeworkToCorrect,
+                              s: kpis.homeworkToCorrect > 1 ? 's' : '',
+                            })}
                           </p>
                         </div>
                       </div>
                       <Link href="/professeur/devoirs">
                         <Button size="sm" variant="outline">
-                          Voir
+                          {t("common.actions.view")}
                         </Button>
                       </Link>
                     </div>
@@ -472,15 +505,18 @@ export default function TeacherDashboardPage() {
                       <div className="flex items-center gap-3">
                         <Mail className="h-5 w-5 text-violet-600" />
                         <div>
-                          <p className="font-medium text-sm">Messages non lus</p>
+                          <p className="font-medium text-sm">{t("teacher.dashboard.sections.todo.messages.title")}</p>
                           <p className="text-xs text-muted-foreground">
-                            {kpis.unreadMessages} message{kpis.unreadMessages > 1 ? 's' : ''} en attente
+                            {t("teacher.dashboard.sections.todo.messages.description", {
+                              count: kpis.unreadMessages,
+                              s: kpis.unreadMessages > 1 ? 's' : '',
+                            })}
                           </p>
                         </div>
                       </div>
                       <Link href="/professeur/messages">
                         <Button size="sm" variant="outline">
-                          Voir
+                          {t("common.actions.view")}
                         </Button>
                       </Link>
                     </div>
@@ -490,7 +526,7 @@ export default function TeacherDashboardPage() {
                 {kpis.homeworkToCorrect === 0 && kpis.unreadMessages === 0 && (
                   <div className="text-center py-4 text-muted-foreground">
                     <UserCheck className="h-6 w-6 mx-auto mb-2 text-green-500" />
-                    <p className="text-sm">Tout est à jour ! 🎉</p>
+                    <p className="text-sm">{t("teacher.dashboard.sections.todo.empty")}</p>
                   </div>
                 )}
               </CardContent>
@@ -505,7 +541,7 @@ export default function TeacherDashboardPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-semibold flex items-center gap-2">
                   <GraduationCap className="h-4 w-4 text-muted-foreground" />
-                  Mes classes
+                  {t("teacher.dashboard.sections.classes.title")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -521,7 +557,7 @@ export default function TeacherDashboardPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-semibold flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 text-muted-foreground" />
-                  Absences & retards récents
+                  {t("teacher.dashboard.sections.absences.title")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -539,12 +575,12 @@ export default function TeacherDashboardPage() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base font-semibold flex items-center gap-2">
                     <FileText className="h-4 w-4 text-muted-foreground" />
-                    Devoirs publiés
+                    {t("teacher.dashboard.sections.homework.title")}
                   </CardTitle>
                   <Link href="/professeur/devoirs">
                     <Button variant="ghost" size="sm">
                       <Plus className="h-3 w-3 mr-1" />
-                      Nouveau
+                      {t("teacher.dashboard.sections.homework.new")}
                     </Button>
                   </Link>
                 </div>
@@ -553,7 +589,7 @@ export default function TeacherDashboardPage() {
                 {recentHomework.length === 0 ? (
                   <div className="text-center py-4 text-muted-foreground">
                     <FileText className="h-6 w-6 mx-auto mb-2 opacity-50" />
-                    <p className="text-xs">Aucun devoir publié</p>
+                    <p className="text-xs">{t("teacher.dashboard.sections.homework.empty")}</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -585,11 +621,11 @@ export default function TeacherDashboardPage() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base font-semibold flex items-center gap-2">
                     <Mail className="h-4 w-4 text-muted-foreground" />
-                    Messages récents
+                    {t("teacher.dashboard.sections.messages.title")}
                   </CardTitle>
                   <Link href="/professeur/messages">
                     <Button variant="ghost" size="sm">
-                      Voir tout
+                      {t("teacher.dashboard.sections.messages.viewAll")}
                       <ChevronRight className="h-3 w-3 ml-1" />
                     </Button>
                   </Link>
@@ -599,7 +635,7 @@ export default function TeacherDashboardPage() {
                 {recentMessages.length === 0 ? (
                   <div className="text-center py-4 text-muted-foreground">
                     <Mail className="h-6 w-6 mx-auto mb-2 opacity-50" />
-                    <p className="text-xs">Aucun message</p>
+                    <p className="text-xs">{t("teacher.dashboard.sections.messages.empty")}</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -644,9 +680,16 @@ interface TeacherCourseCardProps {
   course: TodayCourse
   onAttendanceClick: () => void
   onViewClick: () => void
+  labels: {
+    ongoing: string
+    attendanceDone: string
+    attendanceDo: string
+    students: string
+    createAssignment: string
+  }
 }
 
-function TeacherCourseCard({ course, onAttendanceClick, onViewClick }: TeacherCourseCardProps) {
+function TeacherCourseCard({ course, onAttendanceClick, onViewClick, labels }: TeacherCourseCardProps) {
   const now = new Date()
   const [startH, startM] = course.start_time.split(':').map(Number)
   const [endH, endM] = course.end_time.split(':').map(Number)
@@ -690,7 +733,7 @@ function TeacherCourseCard({ course, onAttendanceClick, onViewClick }: TeacherCo
               <p className="text-sm text-muted-foreground">{course.class_label}</p>
             </div>
             {isOngoing && (
-              <Badge className="bg-primary text-primary-foreground">En cours</Badge>
+              <Badge className="bg-primary text-primary-foreground">{labels.ongoing}</Badge>
             )}
           </div>
 
@@ -712,16 +755,16 @@ function TeacherCourseCard({ course, onAttendanceClick, onViewClick }: TeacherCo
               onClick={onAttendanceClick}
             >
               <ClipboardCheck className="h-4 w-4 mr-1" />
-              {course.attendance_status === 'completed' ? 'Appel fait' : 'Faire l\'appel'}
+              {course.attendance_status === 'completed' ? labels.attendanceDone : labels.attendanceDo}
             </Button>
             <Button size="sm" variant="outline" onClick={onViewClick}>
               <Users className="h-4 w-4 mr-1" />
-              Élèves
+              {labels.students}
             </Button>
             <Link href="/professeur/devoirs">
               <Button size="sm" variant="ghost">
                 <Plus className="h-4 w-4 mr-1" />
-                Devoir
+                {labels.createAssignment}
               </Button>
             </Link>
           </div>
@@ -735,9 +778,9 @@ function TeacherCourseCard({ course, onAttendanceClick, onViewClick }: TeacherCo
 // HELPER
 // =========================
 
-function getGreeting(): string {
+function getGreetingKey(): "morning" | "afternoon" | "evening" {
   const hour = new Date().getHours()
-  if (hour < 12) return 'Bonjour'
-  if (hour < 18) return 'Bon après-midi'
-  return 'Bonsoir'
+  if (hour < 12) return "morning"
+  if (hour < 18) return "afternoon"
+  return "evening"
 }

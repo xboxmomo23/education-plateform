@@ -34,6 +34,7 @@ import {
 //import { timetableApi } from "@/lib/api/timetable"
 import { CreateAssignmentModal } from "@/components/assignments/CreateAssignmentModal"
 import { EditAssignmentModal } from "@/components/assignments/EditAssignmentModal"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 interface ClassInfo {
   id: string;
@@ -42,6 +43,7 @@ interface ClassInfo {
 }
 
 export default function TeacherAssignmentsPage() {
+  const { t } = useI18n()
   // États
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [classes, setClasses] = useState<ClassInfo[]>([])
@@ -100,11 +102,11 @@ export default function TeacherAssignmentsPage() {
       if (response.success) {
         setAssignments(response.data)
       } else {
-        setError('Erreur lors du chargement des devoirs')
+        setError(t('teacher.assignments.errors.loadAssignments'))
       }
     } catch (err: any) {
       console.error('Erreur chargement devoirs:', err)
-      setError(err.message || 'Erreur lors du chargement')
+      setError(err.message || t('teacher.assignments.errors.generic'))
     } finally {
       setLoading(false)
     }
@@ -145,7 +147,7 @@ export default function TeacherAssignmentsPage() {
       await assignmentsApi.publishAssignment(assignment.id)
       loadAssignments()
     } catch (err: any) {
-      alert(err.message || 'Erreur lors de la publication')
+      alert(err.message || t('teacher.assignments.errors.publish'))
     }
   }
 
@@ -154,18 +156,18 @@ export default function TeacherAssignmentsPage() {
       await assignmentsApi.unpublishAssignment(assignment.id)
       loadAssignments()
     } catch (err: any) {
-      alert(err.message || 'Erreur lors du retrait')
+      alert(err.message || t('teacher.assignments.errors.unpublish'))
     }
   }
 
   const handleArchive = async (assignment: Assignment) => {
-    if (!confirm('Êtes-vous sûr de vouloir archiver ce devoir ?')) return
+    if (!confirm(t('teacher.assignments.confirmArchive'))) return
 
     try {
       await assignmentsApi.deleteAssignment(assignment.id)
       loadAssignments()
     } catch (err: any) {
-      alert(err.message || 'Erreur lors de l\'archivage')
+      alert(err.message || t('teacher.assignments.errors.archive'))
     }
   }
 
@@ -174,6 +176,16 @@ export default function TeacherAssignmentsPage() {
   const publishedAssignments = assignments.filter(a => a.status === 'published')
   const overduePublished = publishedAssignments.filter(isAssignmentOverdue)
   const upcomingPublished = publishedAssignments.filter(a => !isAssignmentOverdue(a))
+  const assignmentCardLabels = {
+    duePast: t("teacher.assignments.labels.wasDue"),
+    dueFuture: t("teacher.assignments.labels.dueBy"),
+    viewResource: t("teacher.assignments.actions.viewResource"),
+    edit: t("common.actions.edit"),
+    publish: t("teacher.assignments.actions.publish"),
+    unpublish: t("teacher.assignments.actions.unpublish"),
+    archive: t("common.actions.archive"),
+    formatPoints: (points: number) => t("teacher.assignments.labels.points", { points }),
+  }
 
   return (
     <DashboardLayout requiredRole="teacher">
@@ -183,15 +195,15 @@ export default function TeacherAssignmentsPage() {
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <FileText className="h-6 w-6" />
-              Mes devoirs
+              {t("teacher.assignments.title")}
             </h1>
             <p className="text-muted-foreground mt-1">
-              Gérez les devoirs et exercices pour vos classes
+              {t("teacher.assignments.subtitle")}
             </p>
           </div>
           <Button onClick={() => setShowCreateModal(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            Nouveau devoir
+            {t("teacher.assignments.actions.new")}
           </Button>
         </div>
 
@@ -200,20 +212,22 @@ export default function TeacherAssignmentsPage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Filter className="h-4 w-4" />
-              Filtres
+              {t("common.filters.title")}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               {/* Classe */}
               <div>
-                <label className="text-sm font-medium mb-1 block">Classe</label>
+                <label className="text-sm font-medium mb-1 block">
+                  {t("common.filters.class")}
+                </label>
                 <Select value={selectedClassId} onValueChange={setSelectedClassId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Toutes les classes" />
+                    <SelectValue placeholder={t("teacher.assignments.filters.allClasses")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Toutes les classes</SelectItem>
+                    <SelectItem value="all">{t("teacher.assignments.filters.allClasses")}</SelectItem>
                     {classes.map((cls) => (
                       <SelectItem key={cls.id} value={cls.id}>
                         {cls.label}
@@ -225,22 +239,26 @@ export default function TeacherAssignmentsPage() {
 
               {/* Statut */}
               <div>
-                <label className="text-sm font-medium mb-1 block">Statut</label>
+                <label className="text-sm font-medium mb-1 block">
+                  {t("common.filters.status")}
+                </label>
                 <Select value={selectedStatus} onValueChange={setSelectedStatus}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Tous" />
+                    <SelectValue placeholder={t("teacher.assignments.filters.allStatuses")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Tous</SelectItem>
-                    <SelectItem value="draft">Brouillons</SelectItem>
-                    <SelectItem value="published">Publiés</SelectItem>
+                    <SelectItem value="all">{t("teacher.assignments.filters.allStatuses")}</SelectItem>
+                    <SelectItem value="draft">{t("teacher.assignments.filters.drafts")}</SelectItem>
+                    <SelectItem value="published">{t("teacher.assignments.filters.published")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               {/* Date début */}
               <div>
-                <label className="text-sm font-medium mb-1 block">Du</label>
+                <label className="text-sm font-medium mb-1 block">
+                  {t("common.filters.from")}
+                </label>
                 <Input
                   type="date"
                   value={fromDate}
@@ -250,7 +268,9 @@ export default function TeacherAssignmentsPage() {
 
               {/* Date fin */}
               <div>
-                <label className="text-sm font-medium mb-1 block">Au</label>
+                <label className="text-sm font-medium mb-1 block">
+                  {t("common.filters.to")}
+                </label>
                 <Input
                   type="date"
                   value={toDate}
@@ -261,9 +281,13 @@ export default function TeacherAssignmentsPage() {
               {/* Actions filtres */}
               <div className="flex items-end gap-2">
                 <Button onClick={applyFilters} className="flex-1">
-                  Appliquer
+                  {t("teacher.assignments.actions.applyFilters")}
                 </Button>
-                <Button variant="outline" onClick={resetFilters}>
+                <Button
+                  variant="outline"
+                  onClick={resetFilters}
+                  aria-label={t("common.actions.resetFilters")}
+                >
                   <RefreshCw className="h-4 w-4" />
                 </Button>
               </div>
@@ -274,23 +298,23 @@ export default function TeacherAssignmentsPage() {
         {/* Contenu principal */}
         {loading ? (
           <div className="text-center py-12 text-muted-foreground">
-            Chargement des devoirs...
+            {t("teacher.assignments.states.loading")}
           </div>
         ) : error ? (
           <div className="text-center py-12">
             <AlertCircle className="h-12 w-12 mx-auto text-red-500 mb-4" />
             <p className="text-red-600">{error}</p>
             <Button variant="outline" onClick={loadAssignments} className="mt-4">
-              Réessayer
+              {t("common.actions.retry")}
             </Button>
           </div>
         ) : assignments.length === 0 ? (
           <div className="text-center py-12">
             <FileText className="h-12 w-12 mx-auto text-gray-300 mb-4" />
-            <p className="text-muted-foreground">Aucun devoir trouvé</p>
+            <p className="text-muted-foreground">{t("teacher.assignments.states.empty")}</p>
             <Button onClick={() => setShowCreateModal(true)} className="mt-4">
               <Plus className="h-4 w-4 mr-2" />
-              Créer mon premier devoir
+              {t("teacher.assignments.actions.createFirst")}
             </Button>
           </div>
         ) : (
@@ -300,7 +324,7 @@ export default function TeacherAssignmentsPage() {
               <div>
                 <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
                   <EyeOff className="h-5 w-5 text-yellow-600" />
-                  Brouillons ({draftAssignments.length})
+                  {t("teacher.assignments.sections.drafts", { count: draftAssignments.length })}
                 </h2>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {draftAssignments.map((assignment) => (
@@ -310,6 +334,7 @@ export default function TeacherAssignmentsPage() {
                       onEdit={() => setEditingAssignment(assignment)}
                       onPublish={() => handlePublish(assignment)}
                       onArchive={() => handleArchive(assignment)}
+                      labels={assignmentCardLabels}
                     />
                   ))}
                 </div>
@@ -321,7 +346,7 @@ export default function TeacherAssignmentsPage() {
               <div>
                 <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
                   <Eye className="h-5 w-5 text-green-600" />
-                  Publiés - À venir ({upcomingPublished.length})
+                  {t("teacher.assignments.sections.upcoming", { count: upcomingPublished.length })}
                 </h2>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {upcomingPublished.map((assignment) => (
@@ -331,6 +356,7 @@ export default function TeacherAssignmentsPage() {
                       onEdit={() => setEditingAssignment(assignment)}
                       onUnpublish={() => handleUnpublish(assignment)}
                       onArchive={() => handleArchive(assignment)}
+                      labels={assignmentCardLabels}
                     />
                   ))}
                 </div>
@@ -342,7 +368,7 @@ export default function TeacherAssignmentsPage() {
               <div>
                 <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
                   <Clock className="h-5 w-5 text-red-600" />
-                  Date limite passée ({overduePublished.length})
+                  {t("teacher.assignments.sections.overdue", { count: overduePublished.length })}
                 </h2>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {overduePublished.map((assignment) => (
@@ -352,6 +378,7 @@ export default function TeacherAssignmentsPage() {
                       onEdit={() => setEditingAssignment(assignment)}
                       onUnpublish={() => handleUnpublish(assignment)}
                       onArchive={() => handleArchive(assignment)}
+                      labels={assignmentCardLabels}
                       isOverdue
                     />
                   ))}
@@ -398,6 +425,16 @@ interface AssignmentCardProps {
   onUnpublish?: () => void;
   onArchive: () => void;
   isOverdue?: boolean;
+  labels: {
+    duePast: string
+    dueFuture: string
+    viewResource: string
+    edit: string
+    publish: string
+    unpublish: string
+    archive: string
+    formatPoints: (points: number) => string
+  }
 }
 
 function AssignmentCard({ 
@@ -406,7 +443,8 @@ function AssignmentCard({
   onPublish, 
   onUnpublish, 
   onArchive,
-  isOverdue 
+  isOverdue,
+  labels
 }: AssignmentCardProps) {
   return (
     <Card className={`hover:shadow-md transition-shadow ${isOverdue ? 'border-red-200' : ''}`}>
@@ -441,7 +479,7 @@ function AssignmentCard({
         <div className={`flex items-center gap-2 text-sm mb-3 ${isOverdue ? 'text-red-600' : 'text-gray-600'}`}>
           <Calendar className="h-4 w-4" />
           <span>
-            {isOverdue ? 'Était à rendre le ' : 'À rendre pour le '}
+            {isOverdue ? labels.duePast : labels.dueFuture}
             {formatDueDateShort(assignment.due_at)}
           </span>
         </div>
@@ -450,7 +488,7 @@ function AssignmentCard({
         {assignment.max_points && (
           <div className="flex items-center gap-2 text-sm text-gray-600 mb-3">
             <Award className="h-4 w-4" />
-            <span>/ {assignment.max_points} pts</span>
+            <span>{labels.formatPoints(assignment.max_points)}</span>
           </div>
         )}
 
@@ -463,7 +501,7 @@ function AssignmentCard({
             className="flex items-center gap-1 text-sm text-blue-600 hover:underline mb-3"
           >
             <ExternalLink className="h-3 w-3" />
-            Voir la ressource
+            {labels.viewResource}
           </a>
         )}
 
@@ -471,25 +509,32 @@ function AssignmentCard({
         <div className="flex items-center gap-2 pt-3 border-t">
           <Button size="sm" variant="outline" onClick={onEdit} className="flex-1">
             <Edit2 className="h-3 w-3 mr-1" />
-            Modifier
+            {labels.edit}
           </Button>
           
           {onPublish && (
             <Button size="sm" variant="default" onClick={onPublish}>
               <Eye className="h-3 w-3 mr-1" />
-              Publier
+              {labels.publish}
             </Button>
           )}
           
           {onUnpublish && (
             <Button size="sm" variant="secondary" onClick={onUnpublish}>
               <EyeOff className="h-3 w-3 mr-1" />
-              Retirer
+              {labels.unpublish}
             </Button>
           )}
           
-          <Button size="sm" variant="ghost" onClick={onArchive} className="text-red-600 hover:text-red-700">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onArchive}
+            className="text-red-600 hover:text-red-700"
+            aria-label={labels.archive}
+          >
             <Archive className="h-3 w-3" />
+            <span className="sr-only">{labels.archive}</span>
           </Button>
         </div>
       </CardContent>

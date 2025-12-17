@@ -38,9 +38,15 @@ async function getAdminEstablishmentId(adminUserId: string): Promise<string | nu
   return result.rows[0].id as string;
 }
 
-async function getEstablishmentName(establishmentId: string): Promise<string | null> {
+async function getEstablishmentInfo(establishmentId: string): Promise<{
+  name: string | null;
+  locale: "fr" | "en";
+}> {
   const settings = await getEstablishmentSettings(establishmentId);
-  return settings.displayName || null;
+  return {
+    name: settings.displayName || null,
+    locale: settings.defaultLocale,
+  };
 }
 
 type BasicUserRole = "student" | "teacher" | "staff" | "parent";
@@ -138,7 +144,7 @@ async function processInviteResend(
   }
 
   const contactEmail = await getContactEmailForRole(userRow.id, role);
-  const establishmentName = await getEstablishmentName(estId);
+  const { name: establishmentName, locale: establishmentLocale } = await getEstablishmentInfo(estId);
   const targetEmail = contactEmail || userRow.email;
 
   const smtpConfigured = isSmtpConfigured();
@@ -150,6 +156,7 @@ async function processInviteResend(
       role,
       establishmentName: establishmentName || undefined,
       inviteUrl,
+      locale: establishmentLocale,
     }).catch((err) => {
       console.error("[MAIL] Erreur envoi email d'invitation:", err);
     });
@@ -743,7 +750,7 @@ export async function createStudentForAdminHandler(req: Request, res: Response) 
       });
     }
 
-    const establishmentName = await getEstablishmentName(estId);
+    const { name: establishmentName } = await getEstablishmentInfo(estId);
     const parentsPayload = normalizeParentsPayload(parents);
 
     let normalizedClassId: string | null = null;
@@ -1096,11 +1103,12 @@ export async function updateStudentClassHandler(req: Request, res: Response) {
         (parent) => parent.isNewUser && parent.email
       );
       if (shouldInviteParents) {
-        const establishmentName = await getEstablishmentName(estId);
+        const { name: establishmentName, locale: establishmentLocale } = await getEstablishmentInfo(estId);
         for (const parentResult of parentResults) {
           const invites = await sendParentInvitesForNewAccounts(
             [parentResult],
             establishmentName,
+            establishmentLocale,
             parentResult.contactEmailOverride || undefined
           );
           for (const inviteInfo of invites) {
@@ -1967,7 +1975,7 @@ export async function createStaffForAdminHandler(req: Request, res: Response) {
       email: newUser.email,
       full_name: newUser.full_name,
     });
-    const establishmentName = await getEstablishmentName(estId);
+    const { name: establishmentName, locale: establishmentLocale } = await getEstablishmentInfo(estId);
     const targetEmail = contactEmail || newUser.email;
     if (targetEmail) {
       await sendInviteEmail({
@@ -1976,6 +1984,7 @@ export async function createStaffForAdminHandler(req: Request, res: Response) {
         role: "staff",
         establishmentName: establishmentName || undefined,
         inviteUrl: invite.inviteUrl,
+        locale: establishmentLocale,
       }).catch((err) => {
         console.error("[MAIL] Erreur envoi email d'invitation staff:", err);
       });
@@ -2555,7 +2564,7 @@ export async function createTeacherForAdminHandler(req: Request, res: Response) 
       email: user.email,
       full_name: user.full_name,
     });
-    const establishmentName = await getEstablishmentName(estId);
+    const { name: establishmentName, locale: establishmentLocale } = await getEstablishmentInfo(estId);
     const targetEmail = profile.contact_email || user.email;
     if (targetEmail) {
       await sendInviteEmail({
@@ -2564,6 +2573,7 @@ export async function createTeacherForAdminHandler(req: Request, res: Response) 
         role: "teacher",
         establishmentName: establishmentName || undefined,
         inviteUrl: invite.inviteUrl,
+        locale: establishmentLocale,
       }).catch((err) => {
         console.error("[MAIL] Erreur envoi email d'invitation professeur:", err);
       });

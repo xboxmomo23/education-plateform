@@ -12,6 +12,7 @@ export interface ParentInviteInfo {
 export async function sendParentInvitesForNewAccounts(
   parents: SyncParentsResult[],
   establishmentName: string | null,
+  locale: "fr" | "en",
   toEmailOverride?: string | null
 ): Promise<ParentInviteInfo[]> {
   const invites: ParentInviteInfo[] = [];
@@ -39,6 +40,7 @@ export async function sendParentInvitesForNewAccounts(
         role: "parent",
         establishmentName: establishmentName || undefined,
         inviteUrl: invite.inviteUrl,
+        locale,
       });
 
       invites.push({

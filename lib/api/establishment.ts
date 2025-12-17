@@ -18,6 +18,7 @@ export interface EstablishmentSettings {
   displayName: string;
   contactEmail: string;
   schoolYear: string;
+  defaultLocale: 'fr' | 'en';
 }
 
 export const establishmentApi = {
@@ -42,7 +43,7 @@ export const establishmentApi = {
     return apiCall<EstablishmentSettings>('/establishment/settings');
   },
 
-  async updateSettings(settings: Partial<{ displayName: string | null; contactEmail: string | null; schoolYear: string | null }>) {
+  async updateSettings(settings: Partial<{ displayName: string | null; contactEmail: string | null; schoolYear: string | null; defaultLocale: 'fr' | 'en' | null }>) {
     const payload: Record<string, string | null> = {}
     if (settings.displayName !== undefined) {
       payload.display_name = settings.displayName
@@ -52,6 +53,9 @@ export const establishmentApi = {
     }
     if (settings.schoolYear !== undefined) {
       payload.school_year = settings.schoolYear
+    }
+    if (settings.defaultLocale !== undefined) {
+      payload.default_locale = settings.defaultLocale
     }
 
     return apiCall<EstablishmentSettings>('/establishment/settings', {
