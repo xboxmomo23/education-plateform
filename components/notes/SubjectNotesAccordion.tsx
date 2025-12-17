@@ -134,6 +134,44 @@ export function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) 
                 id={`subject-${subject.subjectId}-content`}
                 className="pt-0 pb-4 border-t"
               >
+                <div className="grid gap-3 py-4 md:grid-cols-5">
+                  <SummaryStat
+                    label={t("notes.table.headers.studentAverage")}
+                    value={
+                      subject.subjectAvgStudent
+                        ? `${subject.subjectAvgStudent.toFixed(2)}/20`
+                        : "—"
+                    }
+                  />
+                  <SummaryStat
+                    label={t("notes.table.headers.classAverage")}
+                    value={
+                      subject.subjectAvgClass !== undefined
+                        ? `${subject.subjectAvgClass.toFixed(2)}/20`
+                        : "—"
+                    }
+                  />
+                  <SummaryStat
+                    label={t("notes.table.headers.min")}
+                    value={
+                      subject.subjectMin !== undefined
+                        ? subject.subjectMin.toFixed(2)
+                        : "—"
+                    }
+                  />
+                  <SummaryStat
+                    label={t("notes.table.headers.max")}
+                    value={
+                      subject.subjectMax !== undefined
+                        ? subject.subjectMax.toFixed(2)
+                        : "—"
+                    }
+                  />
+                  <SummaryStat
+                    label={t("notes.table.headers.coefficient")}
+                    value={subject.subjectCoeffTotal.toFixed(2)}
+                  />
+                </div>
                 {subject.evaluations.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">
                     {t("notes.accordion.noEvaluations")}
@@ -155,18 +193,6 @@ export function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) 
                           <th className="text-center py-2 px-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
                             {t("notes.accordion.headers.grade")}
                           </th>
-                          <th className="text-center py-2 px-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                            {t("notes.accordion.headers.classAverage")}
-                          </th>
-                          <th className="text-center py-2 px-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                            {t("notes.accordion.headers.min")}
-                          </th>
-                          <th className="text-center py-2 px-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                            {t("notes.accordion.headers.max")}
-                          </th>
-                          <th className="text-left py-2 px-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                            {t("notes.accordion.headers.appreciation")}
-                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -183,6 +209,11 @@ export function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) 
                                   {evaluation.title}
                                 </span>
                               </div>
+                              {evaluation.appreciation && (
+                                <p className="mt-1 text-xs italic text-muted-foreground">
+                                  {evaluation.appreciation}
+                                </p>
+                              )}
                             </td>
 
                             {/* Date */}
@@ -226,51 +257,6 @@ export function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) 
                               )}
                             </td>
 
-                            {/* Class average */}
-                            <td className="py-3 px-3 text-center">
-                              {evaluation.avgClass !== undefined ? (
-                                <span className="text-sm text-slate-600">
-                                  {evaluation.avgClass.toFixed(2)}
-                                </span>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              )}
-                            </td>
-
-                            {/* Min */}
-                            <td className="py-3 px-3 text-center">
-                              {evaluation.min !== undefined ? (
-                                <span className="text-sm text-red-600">
-                                  {evaluation.min.toFixed(2)}
-                                </span>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              )}
-                            </td>
-
-                            {/* Max */}
-                            <td className="py-3 px-3 text-center">
-                              {evaluation.max !== undefined ? (
-                                <span className="text-sm text-green-600">
-                                  {evaluation.max.toFixed(2)}
-                                </span>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              )}
-                            </td>
-
-                            {/* Appreciation */}
-                            <td className="py-3 px-3">
-                              {evaluation.appreciation ? (
-                                <p className="text-xs text-slate-600 italic max-w-xs">
-                                  {evaluation.appreciation}
-                                </p>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">
-                                  {t("notes.table.none")}
-                                </span>
-                              )}
-                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -282,6 +268,15 @@ export function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) 
           </Card>
         )
       })}
+    </div>
+  )
+}
+
+function SummaryStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border bg-slate-50 px-3 py-2">
+      <p className="text-xs text-muted-foreground uppercase tracking-wide">{label}</p>
+      <p className="text-sm font-semibold text-slate-900">{value}</p>
     </div>
   )
 }

@@ -24,6 +24,7 @@ import { NotesSummaryCard } from "@/components/notes/NotesSummaryCard"
 import { SubjectSummTable } from "@/components/notes/SubjectSummTable"
 import { SubjectNotesAccordion } from "@/components/notes/SubjectNotesAccordion"
 import { StatsPanel } from "@/components/notes/StatsPanel"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 const getCurrentAcademicYear = (): number => {
   const now = new Date()
@@ -107,6 +108,7 @@ function transformSummaryToUI(summary: GradesSummary): StudentNotesResponse {
 // ============================================
 
 export default function StudentNotesPage() {
+  const { t, locale } = useI18n()
   const [data, setData] = useState<StudentNotesResponse | null>(null)
   const [summaryData, setSummaryData] = useState<GradesSummary | null>(null)
   const [terms, setTerms] = useState<Term[]>([])
@@ -124,6 +126,7 @@ export default function StudentNotesPage() {
   const now = new Date()
   const currentYear =
     now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1
+  const localeCode = locale === "fr" ? "fr-FR" : "en-US"
 
 
   // Guard pour éviter double fetch en React 18 StrictMode
@@ -137,11 +140,11 @@ export default function StudentNotesPage() {
       hasFetchedRef.current = true
       loadTerms()
     } else if (!user?.id) {
-      setError("Utilisateur non connecté")
+      setError(t("student.notes.errors.notAuthenticated"))
       setIsLoading(false)
       setIsLoadingTerms(false)
     }
-  }, [user?.id])
+  }, [user?.id, t])
 
   // Charger les notes quand la période change
   // Charger les notes et les statuts quand la période change
@@ -206,7 +209,7 @@ export default function StudentNotesPage() {
       console.log("[API] Summary response:", response)
 
       if (!response.success || !response.data) {
-        setError(response.error || "Erreur lors du chargement des notes")
+        setError(response.error || t("student.notes.errors.load"))
         return
       }
 
@@ -217,7 +220,7 @@ export default function StudentNotesPage() {
       setData(transformedData)
     } catch (err) {
       console.error("[API] Error loading student notes:", err)
-      setError("Erreur lors du chargement des notes")
+      setError(t("student.notes.errors.generic"))
     } finally {
       setIsLoading(false)
     }
@@ -252,7 +255,7 @@ export default function StudentNotesPage() {
     // Vérifier si le bulletin est validé
     const status = reportCardStatuses[termId]
     if (!status?.validated) {
-      alert("Ce bulletin n'est pas encore disponible. Il sera accessible après validation par l'équipe pédagogique.")
+      alert(t("student.notes.alerts.notAvailable"))
       return
     }
 
@@ -260,7 +263,7 @@ export default function StudentNotesPage() {
     const token = localStorage.getItem('auth_token')
     
     if (!token) {
-      alert("Session expirée. Veuillez vous reconnecter.")
+      alert(t("student.notes.alerts.sessionExpired"))
       return
     }
 
@@ -269,7 +272,7 @@ export default function StudentNotesPage() {
       await reportsApi.downloadReport(user.id, termId, token)
     } catch (err) {
       console.error("Error downloading report:", err)
-      alert("Erreur lors du téléchargement du bulletin")
+      alert(t("student.notes.alerts.downloadError"))
     } finally {
       setDownloadingReport(null)
     }
@@ -281,15 +284,15 @@ export default function StudentNotesPage() {
     const status = reportCardStatuses[term.id]
 
     if (status?.validated) {
-      return { canDownload: true, reason: "Télécharger" }
+      return { canDownload: true, reason: t("student.notes.bulletins.actions.download") }
     }
 
     const isPast = new Date(term.endDate) < new Date()
     if (!isPast) {
-      return { canDownload: false, reason: "À venir" }
+      return { canDownload: false, reason: t("student.notes.bulletins.actions.upcoming") }
     }
 
-    return { canDownload: false, reason: "En attente" }
+    return { canDownload: false, reason: t("student.notes.bulletins.actions.pending") }
   }
 
   // ============================================
@@ -301,7 +304,7 @@ export default function StudentNotesPage() {
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center space-y-4">
             <div className="animate-spin rounded-full h-16 w-16 border-4 border-primary border-t-transparent mx-auto" />
-            <p className="text-muted-foreground font-medium">Chargement de vos notes...</p>
+            <p className="text-muted-foreground font-medium">{t("student.notes.loading")}</p>
           </div>
         </div>
       </DashboardLayout>
@@ -320,11 +323,11 @@ export default function StudentNotesPage() {
               <div className="flex flex-col items-center text-center space-y-4">
                 <AlertCircle className="h-12 w-12 text-red-600" />
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Erreur de chargement</h3>
+                  <h3 className="text-lg font-semibold text-slate-900">{t("student.notes.error.title")}</h3>
                   <p className="text-sm text-muted-foreground mt-2">{error}</p>
                 </div>
                 <Button onClick={loadNotes} className="w-full">
-                  Réessayer
+                  {t("common.actions.retry")}
                 </Button>
               </div>
             </CardContent>
@@ -345,9 +348,9 @@ export default function StudentNotesPage() {
           <div className="border-b pb-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
-                <h1 className="text-4xl font-bold text-slate-900">Mes notes</h1>
+                <h1 className="text-4xl font-bold text-slate-900">{t("student.notes.title")}</h1>
                 <p className="text-muted-foreground mt-2 text-lg">
-                  Consultez vos résultats, moyennes et appréciations.
+                  {t("student.notes.description")}
                 </p>
               </div>
               {/* Sélecteur de période */}
@@ -357,7 +360,7 @@ export default function StudentNotesPage() {
                   selectedTermId={selectedTermId}
                   onSelect={setSelectedTermId}
                 />
-                <Button onClick={loadNotes} variant="outline" size="icon" className="w-full sm:w-auto">
+                <Button onClick={loadNotes} variant="outline" size="icon" className="w-full sm:w-auto" title={t("common.actions.refresh")}>
                   <RefreshCw className="h-4 w-4" />
                 </Button>
               </div>
@@ -370,15 +373,15 @@ export default function StudentNotesPage() {
               <div className="text-center space-y-4">
                 <BookOpen className="h-16 w-16 text-muted-foreground mx-auto" />
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Aucune note disponible</h3>
+                  <h3 className="text-lg font-semibold text-slate-900">{t("student.notes.empty.title")}</h3>
                   <p className="text-sm text-muted-foreground mt-2">
                     {selectedTermId 
-                      ? "Aucune note pour cette période."
-                      : "Vos notes apparaîtront ici dès qu'elles seront saisies."}
+                      ? t("student.notes.empty.filtered")
+                      : t("student.notes.empty.description")}
                   </p>
                 </div>
                 <Button onClick={loadNotes} variant="outline">
-                  Actualiser
+                  {t("common.actions.refresh")}
                 </Button>
               </div>
             </CardContent>
@@ -402,9 +405,9 @@ export default function StudentNotesPage() {
         <div className="border-b pb-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
-              <h1 className="text-4xl font-bold text-slate-900">Mes notes</h1>
+              <h1 className="text-4xl font-bold text-slate-900">{t("student.notes.title")}</h1>
               <p className="text-muted-foreground mt-2 text-lg">
-                Consultez vos résultats, moyennes et appréciations.
+                {t("student.notes.description")}
               </p>
             </div>
             <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center md:w-auto md:justify-end">
@@ -414,7 +417,7 @@ export default function StudentNotesPage() {
                 selectedTermId={selectedTermId}
                 onSelect={setSelectedTermId}
               />
-              <Button onClick={loadNotes} variant="outline" size="icon" className="w-full sm:w-auto">
+              <Button onClick={loadNotes} variant="outline" size="icon" className="w-full sm:w-auto" title={t("common.actions.refresh")}>
                 <RefreshCw className="h-4 w-4" />
               </Button>
             </div>
@@ -425,17 +428,18 @@ export default function StudentNotesPage() {
             <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <Calendar className="h-4 w-4 text-muted-foreground" />
               <span>
-                Période : <strong>{summaryData.term.name}</strong>
-                {" "}({new Date(summaryData.term.startDate).toLocaleDateString('fr-FR')} - {new Date(summaryData.term.endDate).toLocaleDateString('fr-FR')})
+                {t("student.notes.period.range", {
+                  term: summaryData.term.name,
+                  start: new Date(summaryData.term.startDate).toLocaleDateString(localeCode),
+                  end: new Date(summaryData.term.endDate).toLocaleDateString(localeCode),
+                })}
               </span>
             </div>
           )}
           {!selectedTermId && (
             <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span>
-                Période : <strong>Année complète</strong>
-              </span>
+              <span>{t("student.notes.period.fullYear")}</span>
             </div>
           )}
         </div>
@@ -460,7 +464,7 @@ export default function StudentNotesPage() {
 
             {/* Notes détaillées (Accordion) */}
             <div>
-              <h2 className="text-2xl font-bold text-slate-900 mb-4">Notes détaillées</h2>
+              <h2 className="text-2xl font-bold text-slate-900 mb-4">{t("student.notes.sections.details")}</h2>
               <SubjectNotesAccordion subjects={data.subjects} />
             </div>
           </div>
@@ -474,16 +478,16 @@ export default function StudentNotesPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <FileText className="h-4 w-4" />
-                  Bulletins
+                  {t("student.notes.bulletins.title")}
                 </CardTitle>
                 <CardDescription>
-                  Téléchargez vos bulletins de notes
+                  {t("student.notes.bulletins.description")}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {terms.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">
-                    Aucune période configurée
+                    {t("student.notes.bulletins.empty")}
                   </p>
                 ) : (
                   terms.map((term) => {
@@ -503,20 +507,20 @@ export default function StudentNotesPage() {
                         <div className="space-y-1">
                           <p className="font-medium text-sm">{term.name}</p>
                           <p className="text-xs text-muted-foreground">
-                            {new Date(term.startDate).toLocaleDateString('fr-FR')} - {new Date(term.endDate).toLocaleDateString('fr-FR')}
+                            {new Date(term.startDate).toLocaleDateString(localeCode)} - {new Date(term.endDate).toLocaleDateString(localeCode)}
                           </p>
                           {/* Afficher le statut */}
                           {status?.validated ? (
                             <p className="text-xs text-emerald-600 mt-1">
-                              Bulletin validé
+                              {t("student.notes.bulletins.status.validated")}
                             </p>
                           ) : new Date(term.endDate) >= new Date() ? (
                             <p className="text-xs text-muted-foreground mt-1">
-                              À venir
+                              {t("student.notes.bulletins.status.upcoming")}
                             </p>
                           ) : (
                             <p className="text-xs text-orange-600 mt-1">
-                              En cours de préparation
+                              {t("student.notes.bulletins.status.preparing")}
                             </p>
                           )}
                         </div>
@@ -563,9 +567,11 @@ interface PeriodSelectorProps {
 
 function PeriodSelector({ terms, selectedTermId, onSelect }: PeriodSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const { t, locale } = useI18n()
+  const localeCode = locale === "fr" ? "fr-FR" : "en-US"
 
   const selectedTerm = terms.find((t) => t.id === selectedTermId)
-  const label = selectedTerm ? selectedTerm.name : "Année complète"
+  const label = selectedTerm ? selectedTerm.name : t("student.notes.periodSelector.fullYear")
 
   return (
     <div className="relative w-full sm:w-auto">
@@ -604,7 +610,7 @@ function PeriodSelector({ terms, selectedTermId, onSelect }: PeriodSelectorProps
               >
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
-                  Année complète
+                  {t("student.notes.periodSelector.fullYear")}
                 </div>
               </button>
 
@@ -627,12 +633,12 @@ function PeriodSelector({ terms, selectedTermId, onSelect }: PeriodSelectorProps
                     <span>{term.name}</span>
                     {term.isCurrent && (
                       <Badge variant="secondary" className="text-xs">
-                        En cours
+                        {t("student.notes.periodSelector.current")}
                       </Badge>
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {new Date(term.startDate).toLocaleDateString('fr-FR')} - {new Date(term.endDate).toLocaleDateString('fr-FR')}
+                    {new Date(term.startDate).toLocaleDateString(localeCode)} - {new Date(term.endDate).toLocaleDateString(localeCode)}
                   </p>
                 </button>
               ))}

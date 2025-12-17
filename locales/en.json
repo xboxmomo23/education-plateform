@@ -670,7 +670,55 @@
         "lateMinutes": "+{{minutes}} min"
       }
     },
-    "notes": {},
+    "notes": {
+      "title": "My grades",
+      "description": "Review your results, averages, and teacher comments.",
+      "loading": "Loading your grades...",
+      "errors": {
+        "notAuthenticated": "User not authenticated",
+        "load": "Unable to load grades",
+        "generic": "Unable to load data"
+      },
+      "error": {
+        "title": "Unable to load"
+      },
+      "empty": {
+        "title": "No grades available",
+        "description": "Your grades will appear here as soon as they are published.",
+        "filtered": "No grade for this period."
+      },
+      "period": {
+        "range": "Period: {{term}} ({{start}} - {{end}})",
+        "fullYear": "Period: Full year"
+      },
+      "sections": {
+        "details": "Detailed grades"
+      },
+      "alerts": {
+        "notAvailable": "This report card isn't available yet. It will be published after validation.",
+        "sessionExpired": "Session expired. Please sign in again.",
+        "downloadError": "Unable to download the report card"
+      },
+      "bulletins": {
+        "title": "Report cards",
+        "description": "Download your report cards",
+        "empty": "No term configured",
+        "actions": {
+          "download": "Download",
+          "upcoming": "Upcoming",
+          "pending": "Pending"
+        },
+        "status": {
+          "validated": "Report card validated",
+          "upcoming": "Upcoming",
+          "preparing": "In preparation"
+        }
+      },
+      "periodSelector": {
+        "fullYear": "Full year",
+        "current": "Current"
+      }
+    },
     "timetable": {},
     "messages": {}
   },

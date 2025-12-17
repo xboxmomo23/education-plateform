@@ -670,7 +670,55 @@
         "lateMinutes": "+{{minutes}} min"
       }
     },
-    "notes": {},
+    "notes": {
+      "title": "Mes notes",
+      "description": "Consultez vos résultats, moyennes et appréciations.",
+      "loading": "Chargement de vos notes...",
+      "errors": {
+        "notAuthenticated": "Utilisateur non connecté",
+        "load": "Erreur lors du chargement des notes",
+        "generic": "Erreur lors du chargement"
+      },
+      "error": {
+        "title": "Erreur de chargement"
+      },
+      "empty": {
+        "title": "Aucune note disponible",
+        "description": "Vos notes apparaîtront ici dès qu'elles seront saisies.",
+        "filtered": "Aucune note pour cette période."
+      },
+      "period": {
+        "range": "Période : {{term}} ({{start}} - {{end}})",
+        "fullYear": "Période : Année complète"
+      },
+      "sections": {
+        "details": "Notes détaillées"
+      },
+      "alerts": {
+        "notAvailable": "Ce bulletin n'est pas encore disponible. Il sera accessible après validation par l'équipe pédagogique.",
+        "sessionExpired": "Session expirée. Veuillez vous reconnecter.",
+        "downloadError": "Erreur lors du téléchargement du bulletin"
+      },
+      "bulletins": {
+        "title": "Bulletins",
+        "description": "Téléchargez vos bulletins de notes",
+        "empty": "Aucune période configurée",
+        "actions": {
+          "download": "Télécharger",
+          "upcoming": "À venir",
+          "pending": "En attente"
+        },
+        "status": {
+          "validated": "Bulletin validé",
+          "upcoming": "À venir",
+          "preparing": "En cours de préparation"
+        }
+      },
+      "periodSelector": {
+        "fullYear": "Année complète",
+        "current": "En cours"
+      }
+    },
     "timetable": {},
     "messages": {}
   },
