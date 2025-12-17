@@ -206,6 +206,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
     }
   }
 
+  const isStudent = requiredRole === "student"
   const isResponsiveRole = requiredRole === "student" || requiredRole === "teacher"
 
   const SidebarContent = ({ onNavigate }: { onNavigate?: () => void }) => (
@@ -215,7 +216,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
           {getRoleIcon()}
           <h1 className="text-lg font-semibold">{getRoleLabel()}</h1>
         </div>
-        <LanguageSelector compact />
+        {!isStudent && <LanguageSelector compact />}
       </div>
 
       <nav className="flex-1 space-y-1 p-4">
@@ -303,7 +304,6 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
             </div>
           </div>
           <LanguageSelector compact />
-
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild>
               <Button variant="outline" size="icon">
@@ -318,6 +318,13 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
         </header>
 
         <main className="flex-1 overflow-y-auto">
+          {isStudent && (
+            <div className="hidden border-b bg-background md:flex">
+              <div className="container flex justify-end py-3">
+                <LanguageSelector compact />
+              </div>
+            </div>
+          )}
           <div className="container py-6 md:py-8">{children}</div>
         </main>
       </div>
