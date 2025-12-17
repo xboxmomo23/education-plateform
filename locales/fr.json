@@ -14,7 +14,8 @@
       "retry": "Réessayer",
       "edit": "Modifier",
       "view": "Voir",
-      "archive": "Archiver"
+      "archive": "Archiver",
+      "cancel": "Annuler"
     },
     "filters": {
       "title": "Filtres",
@@ -64,7 +65,334 @@
     "accountDisabled": "Votre compte parent a été désactivé car aucun enfant actif n'est associé.",
     "accountDisabledContact": "Contactez l'établissement pour plus d'informations.",
     "accountDisabledContactEmail": "Contactez {{email}} pour plus d'informations.",
-    "redirect": "Redirection vers la page de connexion parent..."
+    "redirect": "Redirection vers la page de connexion parent...",
+    "layout": {
+      "childSelector": {
+        "contactEmail": "Contactez {{email}} pour lier votre compte parent à un élève.",
+        "contactDefault": "Contactez l'établissement pour lier votre compte parent à un élève.",
+        "noChild": "Aucun enfant actif n'est associé à votre compte. {{contact}}",
+        "singleChildLabel": "Enfant associé à votre compte",
+        "classLabel": "Classe : {{value}}",
+        "studentNumber": "Numéro élève : {{value}}",
+        "selectLabel": "Choisir l'enfant à afficher",
+        "selectPlaceholder": "Sélectionnez un enfant"
+      }
+    },
+    "dashboard": {
+      "common": {
+        "schoolYear": "Année {{year}}"
+      },
+      "childFallback": "votre enfant",
+      "errors": {
+        "load": "Erreur lors du chargement du tableau de bord",
+        "title": "Impossible d'afficher les données"
+      },
+      "noChild": {
+        "title": "Aucun enfant activé",
+        "subtitle": "Bonjour {{name}}, aucun enfant n'est encore lié pour {{schoolYear}}.",
+        "alertTitle": "Action requise",
+        "alertDescription": "Merci de contacter l'établissement ({{contact}}).",
+        "contactEmail": "Contactez {{email}} pour associer votre compte.",
+        "contactDefault": "Contactez l'établissement pour associer votre compte."
+      },
+      "header": {
+        "withSchool": "Tableau de bord - {{school}}",
+        "default": "Tableau de bord parent",
+        "subtitle": "Responsable : {{name}} — Élève suivi : {{child}}."
+      },
+      "loader": "Chargement du tableau de bord...",
+      "studentCard": {
+        "title": "Informations élève",
+        "studentNumber": "Numéro élève : {{value}}",
+        "classLabel": "Classe : {{value}}",
+        "classFallback": "Non renseignée"
+      },
+      "quickLinks": {
+        "notes": "Notes",
+        "assignments": "Devoirs",
+        "timetable": "Emploi du temps",
+        "attendance": "Assiduité"
+      },
+      "attendanceStats": {
+        "title": "Assiduité",
+        "empty": "Aucune donnée d'assiduité",
+        "present": "Présences",
+        "absent": "Absences",
+        "late": "Retards",
+        "excused": "Justifiées",
+        "rate": "Taux de présence"
+      },
+      "grades": {
+        "title": "Dernières notes",
+        "viewAll": "Voir toutes les notes"
+      },
+      "homework": {
+        "title": "Devoirs à venir",
+        "empty": "Aucun devoir prévu"
+      },
+      "lessons": {
+        "title": "Cours à venir",
+        "empty": "Aucun cours planifié"
+      }
+    },
+    "assignments": {
+      "errors": {
+        "load": "Erreur lors du chargement des devoirs",
+        "generic": "Erreur lors du chargement"
+      },
+      "classFallback": "Classe non précisée",
+      "noChild": {
+        "contactEmail": "Contactez {{email}} pour lier votre compte parent à un élève.",
+        "contactDefault": "Contactez l'établissement pour lier votre compte parent à un élève.",
+        "description": "Aucun enfant activé n'est associé à ce compte (les invitations peuvent être en attente)."
+      },
+      "title": "Devoirs",
+      "childTitle": "Devoirs de {{child}}",
+      "headerSubtitle": "Classe {{className}} — {{year}}",
+      "yearFallback": "Année scolaire en cours",
+      "filters": {
+        "label": "Filtrer :",
+        "period": "Période",
+        "subject": "Matière",
+        "allSubjects": "Toutes les matières",
+        "periods": {
+          "all": "Tous les devoirs",
+          "week": "Cette semaine",
+          "month": "Ce mois"
+        },
+        "count": "{{count}} devoir{{plural}}"
+      },
+      "states": {
+        "empty": "Aucun devoir à afficher",
+        "adjustFilters": "Essayez de modifier les filtres",
+        "allGood": "Vous êtes à jour !"
+      },
+      "sections": {
+        "overdue": "En retard",
+        "today": "Aujourd'hui",
+        "upcoming": "À venir"
+      },
+      "card": {
+        "points": "{{value}} pts",
+        "wasDue": "Était à rendre le ",
+        "dueBy": "À rendre pour le ",
+        "showMore": "Voir plus",
+        "showLess": "Voir moins",
+        "openResource": "Ouvrir la ressource"
+      }
+    },
+    "attendance": {
+      "errors": {
+        "load": "Erreur lors du chargement des données",
+        "generic": "Erreur lors du chargement"
+      },
+      "noChild": {
+        "contactEmail": "Contactez {{email}} pour lier votre compte parent à un élève.",
+        "contactDefault": "Contactez l'établissement pour lier votre compte parent à un élève.",
+        "description": "Aucun enfant activé n'est associé à ce compte (les invitations peuvent être en attente)."
+      },
+      "title": "Assiduité",
+      "childTitle": "Assiduité de {{child}}",
+      "subtitle": "Année {{year}} — Classe {{className}}",
+      "classFallback": "non précisée",
+      "states": {
+        "loading": "Chargement..."
+      },
+      "donut": {
+        "label": "présence"
+      },
+      "legend": {
+        "present": "Présences",
+        "absent": "Absences",
+        "late": "Retards",
+        "excused": "Justifiées",
+        "sessions": "{{count}} séance{{plural}}"
+      },
+      "list": {
+        "title": "Absences et retards",
+        "emptyTitle": "Aucune absence ni retard !",
+        "emptySubtitle": "Continuez comme ça 🎉"
+      },
+      "info": "En cas d'absence, fournissez un justificatif à la vie scolaire sous 48h.",
+      "status": {
+        "absent": "Absent",
+        "late": "Retard",
+        "excused": "Justifié",
+        "present": "Présent",
+        "lateMinutes": "+{{minutes}} min"
+      }
+    },
+    "timetable": {
+      "errors": {
+        "class": "Impossible de récupérer la classe de votre enfant.",
+        "load": "Erreur lors du chargement de l'emploi du temps"
+      },
+      "days": {
+        "sunday": "Dimanche",
+        "monday": "Lundi",
+        "tuesday": "Mardi",
+        "wednesday": "Mercredi",
+        "thursday": "Jeudi"
+      },
+      "noChild": {
+        "title": "Aucun enfant sélectionné",
+        "description": "Sélectionnez un enfant pour afficher l'emploi du temps. {{contact}}",
+        "contactEmail": "Contactez {{email}} pour associer votre compte.",
+        "contactDefault": "Contactez l'établissement pour associer votre compte."
+      },
+      "noClass": {
+        "title": "Classe introuvable pour {{child}}",
+        "contactEmail": "Contactez {{email}} pour vérifier l'inscription.",
+        "contactDefault": "Contactez l'établissement pour vérifier l'inscription.",
+        "loading": "Récupération des informations classe..."
+      },
+      "titleWithChild": "Emploi du temps de {{child}}",
+      "classLabel": "Classe : {{className}}",
+      "actions": {
+        "export": "Exporter",
+        "today": "Cette semaine"
+      },
+      "weekRange": "Semaine du {{range}}",
+      "loader": "Chargement de l'emploi du temps...",
+      "hoursLabel": "Heures",
+      "mobile": {
+        "noCourses": "Aucun cours",
+        "sessionFallback": "Cours",
+        "withTeacher": "Avec {{name}}",
+        "room": "Salle {{room}}"
+      },
+      "badges": {
+        "cancelled": "Annulé",
+        "modified": "Modifié"
+      },
+      "legend": {
+        "title": "Légende",
+        "cancelled": "Séance annulée",
+        "modified": "Séance modifiée"
+      },
+      "modified": {
+        "title": "Cours modifiés cette semaine :"
+      },
+      "stats": {
+        "courses": "Cours cette semaine",
+        "hours": "Heures totales",
+        "subjects": "Matières"
+      }
+    },
+    "notes": {
+      "childFallback": "votre enfant",
+      "title": "Notes de {{child}}",
+      "description": "Consultez ses résultats, moyennes et appréciations.",
+      "errors": {
+        "load": "Erreur lors du chargement des notes",
+        "generic": "Erreur lors du chargement"
+      },
+      "alerts": {
+        "notAvailable": "Ce bulletin n'est pas encore disponible. Il sera accessible après validation.",
+        "sessionExpired": "Session expirée. Veuillez vous reconnecter.",
+        "downloadError": "Erreur lors du téléchargement du bulletin"
+      },
+      "noChild": {
+        "title": "Notes",
+        "description": "Aucun enfant activé n'est associé à ce compte (les invitations peuvent être en attente). {{contact}}",
+        "contactEmail": "Contactez {{email}} pour lier votre compte parent à un élève.",
+        "contactDefault": "Contactez l'établissement pour lier votre compte parent à un élève."
+      },
+      "loading": "Chargement des notes de {{name}}...",
+      "error": {
+        "title": "Erreur de chargement"
+      },
+      "empty": {
+        "title": "Aucune note disponible",
+        "filtered": "Aucune note pour cette période.",
+        "description": "Les notes apparaîtront ici dès qu'elles seront saisies."
+      },
+      "periodRange": "Période : {{term}} ({{start}} - {{end}})",
+      "periodFullYear": "Période : Année complète",
+      "sections": {
+        "details": "Notes détaillées"
+      },
+      "bulletins": {
+        "title": "Bulletins",
+        "description": "Téléchargez les bulletins validés",
+        "empty": "Aucune période configurée",
+        "actions": {
+          "download": "Télécharger",
+          "upcoming": "À venir",
+          "pending": "En attente"
+        },
+        "status": {
+          "validated": "Bulletin validé",
+          "upcoming": "À venir",
+          "preparing": "En cours de préparation"
+        }
+      },
+      "periodSelector": {
+        "fullYear": "Année complète",
+        "current": "En cours"
+      }
+    },
+    "messages": {
+      "errors": {
+        "loadThreads": "Erreur lors du chargement des conversations",
+        "generic": "Erreur lors du chargement"
+      },
+      "noChild": {
+        "title": "Messages parent",
+        "description": "Aucun enfant activé n'est associé à ce compte (les invitations peuvent être en attente). {{contact}}",
+        "contactEmail": "Contactez {{email}} pour lier votre compte parent à un élève.",
+        "contactDefault": "Contactez l'établissement pour lier votre compte parent à un élève."
+      },
+      "header": {
+        "title": "Messages concernant {{child}}",
+      "unread": "{{count}} message{{plural}} non lu{{plural}}",
+        "allRead": "Tous les messages sont lus"
+      },
+      "actions": {
+        "new": "Nouveau message"
+      },
+      "filter": {
+        "label": "Afficher :",
+        "all": "Tous",
+        "unread": "Non lus"
+      },
+      "list": {
+        "title": "Conversations",
+        "loading": "Chargement des conversations...",
+        "empty": "Aucune conversation"
+      },
+      "detail": {
+        "placeholder": "Sélectionnez une conversation pour l'afficher",
+      "count": "{{count}} message{{plural}}",
+        "loading": "Chargement...",
+        "noMessages": "Aucun message dans cette conversation.",
+        "reply": "Répondre"
+      },
+      "compose": {
+        "replySubject": "Re: {{subject}}",
+        "replyQuote": "Message de {{name}} :",
+        "replyTitle": "Répondre au message",
+        "newTitle": "Nouveau message",
+        "replyDescription": "Réponse à {{name}}",
+        "description": "Envoyer un message aux professeurs ou au staff",
+        "recipientLabel": "Destinataire",
+        "refreshContacts": "Actualiser les contacts",
+        "contactsLoading": "Chargement des contacts...",
+        "recipientPlaceholder": "Sélectionner un destinataire",
+        "noContacts": "Aucun contact disponible.",
+        "subjectLabel": "Sujet",
+        "subjectPlaceholder": "Entrez le sujet",
+        "bodyLabel": "Message",
+        "bodyPlaceholder": "Écrivez votre message...",
+        "errors": {
+          "subject": "Le sujet est obligatoire",
+          "body": "Le message est obligatoire",
+          "recipient": "Veuillez choisir un destinataire",
+          "send": "Erreur lors de l'envoi"
+        },
+        "sending": "Envoi..."
+      }
+    }
   },
   "teacher": {
     "assignments": {
@@ -180,11 +508,171 @@
       "courseCard": {
         "ongoing": "En cours",
         "attendanceDone": "Appel fait",
+        "attendanceContinue": "Continuer l'appel",
         "attendanceDo": "Faire l'appel",
         "students": "Élèves",
+        "viewStudents": "Voir les élèves",
         "createAssignment": "Devoir"
       }
     }
+  },
+  "student": {
+    "dashboard": {
+      "loading": "Chargement de votre espace...",
+      "errors": {
+        "generic": "Erreur lors du chargement"
+      },
+      "greetingFallback": "Élève",
+      "greetings": {
+        "morning": "Bonjour",
+        "afternoon": "Bon après-midi",
+        "evening": "Bonsoir"
+      },
+      "alerts": {
+        "title": "À traiter rapidement",
+        "overdueHomework": "{{count}} devoir{{plural}} en retard",
+        "absences": "{{count}} absence{{plural}} à justifier"
+      },
+      "kpis": {
+        "courses": {
+          "title": "Cours aujourd'hui",
+          "empty": "Aucun cours"
+        },
+        "homework": {
+          "title": "Travail à faire",
+          "pending": "devoirs en attente",
+          "empty": "Tout est à jour !"
+        },
+        "messages": {
+          "title": "Messages",
+          "unread": "non lus",
+          "empty": "Tout est lu"
+        },
+        "attendance": {
+          "title": "Absences",
+          "pending": "non justifiées",
+          "empty": "Aucune absence"
+        }
+      },
+      "todayCourses": {
+        "title": "Aujourd'hui",
+        "empty": "Pas de cours aujourd'hui 🎉",
+        "ongoing": "En cours"
+      },
+      "feed": {
+        "title": "Actualités récentes",
+        "empty": "Aucune actualité récente",
+        "viewAll": "Tout voir",
+        "homeworkDue": "À rendre pour le {{date}}",
+        "from": "De : {{name}}",
+        "labels": {
+          "assignment": "Devoir",
+          "absence": "Absence",
+          "planning": "Planning",
+          "message": "Message",
+          "grade": "Note",
+          "document": "Document"
+        }
+      },
+      "homeworkCard": {
+        "title": "Devoirs à rendre"
+      },
+      "homeworkWidget": {
+        "overdue": "{{count}} devoir{{plural}} en retard",
+        "empty": "Tout est à jour !",
+        "viewAll": "Voir tous les devoirs"
+      },
+      "gradesCard": {
+        "title": "Dernières notes"
+      },
+      "gradesWidget": {
+        "recentAverage": "Moyenne récente",
+        "empty": "Aucune note récente",
+        "viewAll": "Voir toutes les notes",
+        "coefficient": "Coef. {{value}}"
+      },
+      "upcomingSessions": {
+        "title": "Prochaines séances",
+        "description": "Consultez votre emploi du temps",
+        "cta": "Voir l'emploi du temps →"
+      }
+    },
+    "assignments": {
+      "unknownSubject": "Inconnu",
+      "title": "Mes devoirs",
+      "subtitle": "{{class}} — Année scolaire 2024-2025",
+      "classFallback": "Ma classe",
+      "filters": {
+        "label": "Filtrer :",
+        "period": "Période",
+        "subject": "Matière",
+        "allSubjects": "Toutes les matières",
+        "periods": {
+          "all": "Tous les devoirs",
+          "week": "Cette semaine",
+          "month": "Ce mois"
+        },
+        "count": "{{count}} devoir{{plural}}"
+      },
+      "states": {
+        "loading": "Chargement des devoirs...",
+        "empty": "Aucun devoir à afficher",
+        "adjustFilters": "Essayez de modifier les filtres",
+        "allGood": "Vous êtes à jour !"
+      },
+      "errors": {
+        "load": "Erreur lors du chargement des devoirs",
+        "generic": "Erreur lors du chargement"
+      },
+      "sections": {
+        "overdue": "En retard",
+        "today": "Aujourd'hui",
+        "upcoming": "À venir"
+      },
+      "card": {
+        "points": "{{value}} pts",
+        "wasDue": "Était à rendre le ",
+        "dueBy": "À rendre pour le ",
+        "showMore": "Voir plus",
+        "showLess": "Voir moins",
+        "openResource": "Ouvrir la ressource"
+      }
+    },
+    "attendance": {
+      "title": "Mon assiduité",
+      "schoolYear": "Année {{year}}",
+      "errors": {
+        "load": "Erreur lors du chargement des données",
+        "generic": "Erreur lors du chargement"
+      },
+      "states": {
+        "loading": "Chargement..."
+      },
+      "legend": {
+        "present": "Présences",
+        "absent": "Absences",
+        "late": "Retards",
+        "excused": "Excusés"
+      },
+      "donut": {
+        "label": "présence"
+      },
+      "list": {
+        "title": "Mes absences et retards",
+        "emptyTitle": "Aucune absence ni retard !",
+        "emptySubtitle": "Continuez comme ça 🎉"
+      },
+      "info": "En cas d'absence, fournissez un justificatif à la vie scolaire dans les 48h.",
+      "status": {
+        "absent": "Absent",
+        "late": "Retard",
+        "excused": "Excusé",
+        "lateMinutes": "+{{minutes}} min"
+      }
+    },
+    "notes": {},
+    "timetable": {},
+    "messages": {}
   },
   "pages": {
     "staffDashboard": {
@@ -200,6 +688,68 @@
     },
     "adminDashboard": {
       "title": "Vue d'ensemble"
+    }
+  },
+  "notes": {
+    "summary": {
+      "averageLabel": "Moyenne générale",
+      "subjects": "Matières",
+      "evaluations": "Évaluations",
+      "appreciations": {
+        "excellent": "Excellent !",
+        "veryGood": "Très bien",
+        "good": "Bien",
+        "fair": "Assez bien",
+        "needsWork": "À améliorer"
+      }
+    },
+    "table": {
+      "title": "Synthèse par matière",
+      "empty": "Aucune matière disponible",
+      "headers": {
+        "subject": "Matière",
+        "coefficient": "Coef. total",
+        "studentAverage": "Moy. élève",
+        "classAverage": "Moy. classe",
+        "min": "Min",
+        "max": "Max",
+        "appreciation": "Appréciation"
+      },
+      "evaluations": "{{count}} note{{plural}}",
+      "none": "Aucune",
+      "mobileHint": "Sur mobile, faites défiler horizontalement pour voir toutes les colonnes"
+    },
+    "accordion": {
+      "empty": "Aucune note détaillée disponible",
+    "evaluations": "{{count}} évaluation{{plural}}",
+      "subjectAverage": "Moyenne matière",
+      "noEvaluations": "Aucune évaluation pour cette matière",
+      "headers": {
+        "evaluation": "Évaluation",
+        "date": "Date",
+        "coefficient": "Coef.",
+        "grade": "Note",
+        "classAverage": "Moy. classe",
+        "min": "Min",
+        "max": "Max",
+        "appreciation": "Appréciation"
+      },
+      "status": {
+        "absent": "Absent"
+      }
+    },
+    "stats": {
+      "generalAverage": "Moyenne générale",
+      "bestSubject": "Meilleure matière",
+      "needsWork": "À améliorer",
+    "evaluations": "{{count}} évaluation{{plural}}",
+      "summary": {
+        "title": "Résumé",
+        "subjects": "Matières",
+        "evaluations": "Évaluations totales",
+        "highest": "Moy. la + haute",
+        "lowest": "Moy. la + basse"
+      }
     }
   }
 }

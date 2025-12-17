@@ -270,7 +270,13 @@ export function isMessageUnread(message: InboxMessage): boolean {
 /**
  * Formater la date d'un message
  */
-export function formatMessageDate(dateString: string): string {
+type SupportedLocale = 'fr' | 'en';
+
+function getLocale(locale: SupportedLocale): string {
+  return locale === 'fr' ? 'fr-FR' : 'en-US';
+}
+
+export function formatMessageDate(dateString: string, locale: SupportedLocale = 'fr'): string {
   const date = new Date(dateString);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -279,56 +285,65 @@ export function formatMessageDate(dateString: string): string {
   const diffDays = Math.floor(diffMs / 86400000);
 
   if (diffMins < 1) {
-    return 'À l\'instant';
+    return locale === 'fr' ? "À l'instant" : 'Just now';
   }
   if (diffMins < 60) {
-    return `Il y a ${diffMins} min`;
+    return locale === 'fr'
+      ? `Il y a ${diffMins} min`
+      : `${diffMins} min ago`;
   }
   if (diffHours < 24) {
-    return `Il y a ${diffHours}h`;
+    return locale === 'fr'
+      ? `Il y a ${diffHours}h`
+      : `${diffHours}h ago`;
   }
   if (diffDays === 1) {
-    return 'Hier';
+    return locale === 'fr' ? 'Hier' : 'Yesterday';
   }
   if (diffDays < 7) {
-    return `Il y a ${diffDays} jours`;
+    return locale === 'fr'
+      ? `Il y a ${diffDays} jours`
+      : `${diffDays} days ago`;
   }
-  
-  return date.toLocaleDateString('fr-FR', {
+
+  return new Intl.DateTimeFormat(getLocale(locale), {
     day: 'numeric',
     month: 'short',
     year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
-  });
+  }).format(date);
 }
 
 /**
  * Formater la date complète d'un message
  */
-export function formatMessageDateFull(dateString: string): string {
+export function formatMessageDateFull(
+  dateString: string,
+  locale: SupportedLocale = 'fr'
+): string {
   const date = new Date(dateString);
-  return date.toLocaleDateString('fr-FR', {
+  return new Intl.DateTimeFormat(getLocale(locale), {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-  });
+  }).format(date);
 }
 
 /**
  * Obtenir le label du rôle en français
  */
-export function getRoleLabel(role: string): string {
+export function getRoleLabel(role: string, locale: SupportedLocale = 'fr'): string {
   switch (role) {
     case 'student':
-      return 'Élève';
+      return locale === 'fr' ? 'Élève' : 'Student';
     case 'teacher':
-      return 'Professeur';
+      return locale === 'fr' ? 'Professeur' : 'Teacher';
     case 'staff':
-      return 'Personnel';
+      return locale === 'fr' ? 'Personnel' : 'Staff';
     case 'admin':
-      return 'Administrateur';
+      return locale === 'fr' ? 'Administrateur' : 'Administrator';
     default:
       return role;
   }

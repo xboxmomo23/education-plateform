@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TrendingUp, TrendingDown, BarChart3 } from "lucide-react"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 type SubjectNotes = {
   subjectId: string
@@ -14,6 +15,7 @@ interface StatsPanelProps {
 }
 
 export function StatsPanel({ generalAverage, subjects }: StatsPanelProps) {
+  const { t } = useI18n()
   // Find best and worst subjects (ignorer ceux sans notes)
   const validSubjects = subjects.filter(s => s.subjectAvgStudent > 0)
   
@@ -37,7 +39,7 @@ export function StatsPanel({ generalAverage, subjects }: StatsPanelProps) {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <BarChart3 className="h-4 w-4" />
-            Moyenne générale
+            {t("notes.stats.generalAverage")}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -54,7 +56,7 @@ export function StatsPanel({ generalAverage, subjects }: StatsPanelProps) {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2 text-green-700">
               <TrendingUp className="h-4 w-4" />
-              Meilleure matière
+              {t("notes.stats.bestSubject")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -68,8 +70,10 @@ export function StatsPanel({ generalAverage, subjects }: StatsPanelProps) {
               <p className="text-sm text-muted-foreground">/20</p>
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              {bestSubject.evaluations.length} évaluation
-              {bestSubject.evaluations.length > 1 ? "s" : ""}
+              {t("notes.stats.evaluations", {
+                count: bestSubject.evaluations.length,
+                plural: bestSubject.evaluations.length > 1 ? "s" : "",
+              })}
             </p>
           </CardContent>
         </Card>
@@ -81,7 +85,7 @@ export function StatsPanel({ generalAverage, subjects }: StatsPanelProps) {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2 text-orange-700">
               <TrendingDown className="h-4 w-4" />
-              À améliorer
+              {t("notes.stats.needsWork")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -95,8 +99,10 @@ export function StatsPanel({ generalAverage, subjects }: StatsPanelProps) {
               <p className="text-sm text-muted-foreground">/20</p>
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              {worstSubject.evaluations.length} évaluation
-              {worstSubject.evaluations.length > 1 ? "s" : ""}
+              {t("notes.stats.evaluations", {
+                count: worstSubject.evaluations.length,
+                plural: worstSubject.evaluations.length > 1 ? "s" : "",
+              })}
             </p>
           </CardContent>
         </Card>
@@ -105,15 +111,15 @@ export function StatsPanel({ generalAverage, subjects }: StatsPanelProps) {
       {/* Summary stats */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium">Résumé</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("notes.stats.summary.title")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Matières</span>
+            <span className="text-muted-foreground">{t("notes.stats.summary.subjects")}</span>
             <span className="font-semibold">{subjects.length}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Évaluations totales</span>
+            <span className="text-muted-foreground">{t("notes.stats.summary.evaluations")}</span>
             <span className="font-semibold">
               {subjects.reduce((acc, s) => acc + s.evaluations.length, 0)}
             </span>
@@ -121,14 +127,14 @@ export function StatsPanel({ generalAverage, subjects }: StatsPanelProps) {
           {validSubjects.length > 0 && (
             <>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Moy. la + haute</span>
+                <span className="text-muted-foreground">{t("notes.stats.summary.highest")}</span>
                 <span className="font-semibold text-green-600">
                   {bestSubject.subjectAvgStudent.toFixed(2)}
                 </span>
               </div>
               {validSubjects.length > 1 && (
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Moy. la + basse</span>
+                  <span className="text-muted-foreground">{t("notes.stats.summary.lowest")}</span>
                   <span className="font-semibold text-orange-600">
                     {worstSubject.subjectAvgStudent.toFixed(2)}
                   </span>

@@ -14,7 +14,8 @@
       "retry": "Try again",
       "edit": "Edit",
       "view": "View",
-      "archive": "Archive"
+      "archive": "Archive",
+      "cancel": "Cancel"
     },
     "filters": {
       "title": "Filters",
@@ -64,7 +65,334 @@
     "accountDisabled": "Your parent account has been disabled because no active child is linked.",
     "accountDisabledContact": "Contact the school for more information.",
     "accountDisabledContactEmail": "Contact {{email}} for more information.",
-    "redirect": "Redirecting to the parent login page..."
+    "redirect": "Redirecting to the parent login page...",
+    "layout": {
+      "childSelector": {
+        "contactEmail": "Contact {{email}} to link your parent account to a student.",
+        "contactDefault": "Contact the school to link your parent account to a student.",
+        "noChild": "No active child is linked to your account. {{contact}}",
+        "singleChildLabel": "Child linked to your account",
+        "classLabel": "Class: {{value}}",
+        "studentNumber": "Student number: {{value}}",
+        "selectLabel": "Choose the child to display",
+        "selectPlaceholder": "Select a child"
+      }
+    },
+    "dashboard": {
+      "common": {
+        "schoolYear": "Year {{year}}"
+      },
+      "childFallback": "your child",
+      "errors": {
+        "load": "Unable to load the dashboard",
+        "title": "We couldn't display the data"
+      },
+      "noChild": {
+        "title": "No child linked",
+        "subtitle": "Hi {{name}}, no child is linked yet for {{schoolYear}}.",
+        "alertTitle": "Action required",
+        "alertDescription": "Please contact the school ({{contact}}).",
+        "contactEmail": "Contact {{email}} to link your account.",
+        "contactDefault": "Contact the school to link your account."
+      },
+      "header": {
+        "withSchool": "Dashboard – {{school}}",
+        "default": "Parent dashboard",
+        "subtitle": "Guardian: {{name}} — Student: {{child}}."
+      },
+      "loader": "Loading the dashboard...",
+      "studentCard": {
+        "title": "Student information",
+        "studentNumber": "Student number: {{value}}",
+        "classLabel": "Class: {{value}}",
+        "classFallback": "Not available"
+      },
+      "quickLinks": {
+        "notes": "Grades",
+        "assignments": "Assignments",
+        "timetable": "Timetable",
+        "attendance": "Attendance"
+      },
+      "attendanceStats": {
+        "title": "Attendance",
+        "empty": "No attendance data",
+        "present": "Present",
+        "absent": "Absent",
+        "late": "Late",
+        "excused": "Excused",
+        "rate": "Attendance rate"
+      },
+      "grades": {
+        "title": "Latest grades",
+        "viewAll": "View all grades"
+      },
+      "homework": {
+        "title": "Upcoming homework",
+        "empty": "No homework scheduled"
+      },
+      "lessons": {
+        "title": "Upcoming classes",
+        "empty": "No class planned"
+      }
+    },
+    "assignments": {
+      "errors": {
+        "load": "Unable to load assignments",
+        "generic": "Unable to load data"
+      },
+      "classFallback": "Class not specified",
+      "noChild": {
+        "contactEmail": "Contact {{email}} to link your parent account to a student.",
+        "contactDefault": "Contact the school to link your parent account to a student.",
+        "description": "No active child is linked to this account (invitations may still be pending)."
+      },
+      "title": "Assignments",
+      "childTitle": "Assignments for {{child}}",
+      "headerSubtitle": "Class {{className}} — {{year}}",
+      "yearFallback": "Current school year",
+      "filters": {
+        "label": "Filter:",
+        "period": "Period",
+        "subject": "Subject",
+        "allSubjects": "All subjects",
+        "periods": {
+          "all": "All assignments",
+          "week": "This week",
+          "month": "This month"
+        },
+        "count": "{{count}} assignment{{plural}}"
+      },
+      "states": {
+        "empty": "No assignments to show",
+        "adjustFilters": "Try adjusting the filters",
+        "allGood": "You're all up to date!"
+      },
+      "sections": {
+        "overdue": "Overdue",
+        "today": "Today",
+        "upcoming": "Upcoming"
+      },
+      "card": {
+        "points": "{{value}} pts",
+        "wasDue": "Was due on ",
+        "dueBy": "Due by ",
+        "showMore": "Show more",
+        "showLess": "Show less",
+        "openResource": "Open resource"
+      }
+    },
+    "attendance": {
+      "errors": {
+        "load": "Unable to load attendance",
+        "generic": "Unable to load data"
+      },
+      "noChild": {
+        "contactEmail": "Contact {{email}} to link your parent account to a student.",
+        "contactDefault": "Contact the school to link your parent account to a student.",
+        "description": "No active child is linked to this account (invitations may still be pending)."
+      },
+      "title": "Attendance",
+      "childTitle": "Attendance for {{child}}",
+      "subtitle": "Year {{year}} — Class {{className}}",
+      "classFallback": "not specified",
+      "states": {
+        "loading": "Loading..."
+      },
+      "donut": {
+        "label": "attendance"
+      },
+      "legend": {
+        "present": "Present",
+        "absent": "Absent",
+        "late": "Late",
+        "excused": "Excused",
+        "sessions": "{{count}} session{{plural}}"
+      },
+      "list": {
+        "title": "Absences & tardies",
+        "emptyTitle": "No absence or tardy!",
+        "emptySubtitle": "Keep it up 🎉"
+      },
+      "info": "If your child is absent, please provide proof within 48h.",
+      "status": {
+        "absent": "Absent",
+        "late": "Late",
+        "excused": "Excused",
+        "present": "Present",
+        "lateMinutes": "+{{minutes}} min"
+      }
+    },
+    "timetable": {
+      "errors": {
+        "class": "Unable to retrieve your child's class.",
+        "load": "Unable to load the timetable"
+      },
+      "days": {
+        "sunday": "Sunday",
+        "monday": "Monday",
+        "tuesday": "Tuesday",
+        "wednesday": "Wednesday",
+        "thursday": "Thursday"
+      },
+      "noChild": {
+        "title": "No child selected",
+        "description": "Select a child to view the timetable. {{contact}}",
+        "contactEmail": "Contact {{email}} to link your account.",
+        "contactDefault": "Contact the school to link your account."
+      },
+      "noClass": {
+        "title": "No class found for {{child}}",
+        "contactEmail": "Contact {{email}} to confirm the enrollment.",
+        "contactDefault": "Contact the school to confirm the enrollment.",
+        "loading": "Fetching class information..."
+      },
+      "titleWithChild": "{{child}}'s timetable",
+      "classLabel": "Class: {{className}}",
+      "actions": {
+        "export": "Export",
+        "today": "This week"
+      },
+      "weekRange": "Week {{range}}",
+      "loader": "Loading the timetable...",
+      "hoursLabel": "Hours",
+      "mobile": {
+        "noCourses": "No classes",
+        "sessionFallback": "Class",
+        "withTeacher": "With {{name}}",
+        "room": "Room {{room}}"
+      },
+      "badges": {
+        "cancelled": "Cancelled",
+        "modified": "Modified"
+      },
+      "legend": {
+        "title": "Legend",
+        "cancelled": "Class cancelled",
+        "modified": "Class modified"
+      },
+      "modified": {
+        "title": "Classes modified this week:"
+      },
+      "stats": {
+        "courses": "Classes this week",
+        "hours": "Total hours",
+        "subjects": "Subjects"
+      }
+    },
+    "notes": {
+      "childFallback": "your child",
+      "title": "Grades for {{child}}",
+      "description": "Review results, averages, and teacher comments.",
+      "errors": {
+        "load": "Unable to load grades",
+        "generic": "Unable to load data"
+      },
+      "alerts": {
+        "notAvailable": "This report card isn't available yet. It will be published after validation.",
+        "sessionExpired": "Session expired. Please sign in again.",
+        "downloadError": "Unable to download the report card"
+      },
+      "noChild": {
+        "title": "Grades",
+        "description": "No active child is linked to this account (invitations may still be pending). {{contact}}",
+        "contactEmail": "Contact {{email}} to link your parent account to a student.",
+        "contactDefault": "Contact the school to link your parent account to a student."
+      },
+      "loading": "Loading grades for {{name}}...",
+      "error": {
+        "title": "Unable to load"
+      },
+      "empty": {
+        "title": "No grades available",
+        "filtered": "No grade for this period.",
+        "description": "Grades will appear here as soon as they are published."
+      },
+      "periodRange": "Period: {{term}} ({{start}} - {{end}})",
+      "periodFullYear": "Period: Full year",
+      "sections": {
+        "details": "Detailed grades"
+      },
+      "bulletins": {
+        "title": "Report cards",
+        "description": "Download validated report cards",
+        "empty": "No term configured",
+        "actions": {
+          "download": "Download",
+          "upcoming": "Upcoming",
+          "pending": "Pending"
+        },
+        "status": {
+          "validated": "Report card validated",
+          "upcoming": "Upcoming",
+          "preparing": "In preparation"
+        }
+      },
+      "periodSelector": {
+        "fullYear": "Full year",
+        "current": "Current"
+      }
+    },
+    "messages": {
+      "errors": {
+        "loadThreads": "Unable to load the conversations",
+        "generic": "Unable to load data"
+      },
+      "noChild": {
+        "title": "Parent messages",
+        "description": "No active child is linked to this account (invitations may still be pending). {{contact}}",
+        "contactEmail": "Contact {{email}} to link your parent account to a student.",
+        "contactDefault": "Contact the school to link your parent account to a student."
+      },
+      "header": {
+        "title": "Messages about {{child}}",
+      "unread": "{{count}} unread message{{plural}}",
+        "allRead": "All messages are read"
+      },
+      "actions": {
+        "new": "New message"
+      },
+      "filter": {
+        "label": "Show:",
+        "all": "All",
+        "unread": "Unread"
+      },
+      "list": {
+        "title": "Conversations",
+        "loading": "Loading conversations...",
+        "empty": "No conversation"
+      },
+      "detail": {
+        "placeholder": "Select a conversation to display it",
+      "count": "{{count}} message{{plural}}",
+        "loading": "Loading...",
+        "noMessages": "No message in this thread.",
+        "reply": "Reply"
+      },
+      "compose": {
+        "replySubject": "Re: {{subject}}",
+        "replyQuote": "Message from {{name}}:",
+        "replyTitle": "Reply to the message",
+        "newTitle": "New message",
+        "replyDescription": "Replying to {{name}}",
+        "description": "Send a message to teachers or staff",
+        "recipientLabel": "Recipient",
+        "refreshContacts": "Refresh contacts",
+        "contactsLoading": "Loading contacts...",
+        "recipientPlaceholder": "Select a recipient",
+        "noContacts": "No contact available.",
+        "subjectLabel": "Subject",
+        "subjectPlaceholder": "Enter the subject",
+        "bodyLabel": "Message",
+        "bodyPlaceholder": "Write your message...",
+        "errors": {
+          "subject": "Subject is required",
+          "body": "Message is required",
+          "recipient": "Please choose a recipient",
+          "send": "Unable to send the message"
+        },
+        "sending": "Sending..."
+      }
+    }
   },
   "teacher": {
     "assignments": {
@@ -180,11 +508,171 @@
       "courseCard": {
         "ongoing": "In progress",
         "attendanceDone": "Attendance done",
+        "attendanceContinue": "Continue attendance",
         "attendanceDo": "Take attendance",
         "students": "Students",
+        "viewStudents": "View students",
         "createAssignment": "Assignment"
       }
     }
+  },
+  "student": {
+    "dashboard": {
+      "loading": "Loading your workspace...",
+      "errors": {
+        "generic": "Unable to load data"
+      },
+      "greetingFallback": "Student",
+      "greetings": {
+        "morning": "Good morning",
+        "afternoon": "Good afternoon",
+        "evening": "Good evening"
+      },
+      "alerts": {
+        "title": "Needs attention",
+        "overdueHomework": "{{count}} overdue assignment{{plural}}",
+        "absences": "{{count}} absence{{plural}} to justify"
+      },
+      "kpis": {
+        "courses": {
+          "title": "Classes today",
+          "empty": "No classes"
+        },
+        "homework": {
+          "title": "Assignments to do",
+          "pending": "assignments pending",
+          "empty": "You're all caught up!"
+        },
+        "messages": {
+          "title": "Messages",
+          "unread": "unread",
+          "empty": "All read"
+        },
+        "attendance": {
+          "title": "Absences",
+          "pending": "unresolved",
+          "empty": "No absence"
+        }
+      },
+      "todayCourses": {
+        "title": "Today",
+        "empty": "No classes today 🎉",
+        "ongoing": "In progress"
+      },
+      "feed": {
+        "title": "Recent activity",
+        "empty": "No recent activity",
+        "viewAll": "View all",
+        "homeworkDue": "Due by {{date}}",
+        "from": "From: {{name}}",
+        "labels": {
+          "assignment": "Assignment",
+          "absence": "Absence",
+          "planning": "Schedule",
+          "message": "Message",
+          "grade": "Grade",
+          "document": "Document"
+        }
+      },
+      "homeworkCard": {
+        "title": "Upcoming homework"
+      },
+      "homeworkWidget": {
+        "overdue": "{{count}} overdue assignment{{plural}}",
+        "empty": "All clear!",
+        "viewAll": "View all homework"
+      },
+      "gradesCard": {
+        "title": "Latest grades"
+      },
+      "gradesWidget": {
+        "recentAverage": "Recent average",
+        "empty": "No recent grades",
+        "viewAll": "View all grades",
+        "coefficient": "Coef. {{value}}"
+      },
+      "upcomingSessions": {
+        "title": "Upcoming sessions",
+        "description": "Open your timetable",
+        "cta": "Open timetable →"
+      }
+    },
+    "assignments": {
+      "unknownSubject": "Unknown",
+      "title": "My assignments",
+      "subtitle": "{{class}} — School year 2024-2025",
+      "classFallback": "My class",
+      "filters": {
+        "label": "Filter:",
+        "period": "Period",
+        "subject": "Subject",
+        "allSubjects": "All subjects",
+        "periods": {
+          "all": "All assignments",
+          "week": "This week",
+          "month": "This month"
+        },
+        "count": "{{count}} assignment{{plural}}"
+      },
+      "states": {
+        "loading": "Loading assignments...",
+        "empty": "No assignments to show",
+        "adjustFilters": "Try adjusting the filters",
+        "allGood": "You're all up to date!"
+      },
+      "errors": {
+        "load": "Unable to load assignments",
+        "generic": "Unable to load data"
+      },
+      "sections": {
+        "overdue": "Overdue",
+        "today": "Today",
+        "upcoming": "Upcoming"
+      },
+      "card": {
+        "points": "{{value}} pts",
+        "wasDue": "Was due on ",
+        "dueBy": "Due by ",
+        "showMore": "Show more",
+        "showLess": "Show less",
+        "openResource": "Open resource"
+      }
+    },
+    "attendance": {
+      "title": "My attendance",
+      "schoolYear": "School year {{year}}",
+      "errors": {
+        "load": "Unable to load attendance",
+        "generic": "Unable to load data"
+      },
+      "states": {
+        "loading": "Loading..."
+      },
+      "legend": {
+        "present": "Present",
+        "absent": "Absent",
+        "late": "Late",
+        "excused": "Excused"
+      },
+      "donut": {
+        "label": "attendance"
+      },
+      "list": {
+        "title": "Absences & tardies",
+        "emptyTitle": "No absence or tardy!",
+        "emptySubtitle": "Keep it up 🎉"
+      },
+      "info": "If you're absent, submit proof to student affairs within 48h.",
+      "status": {
+        "absent": "Absent",
+        "late": "Late",
+        "excused": "Excused",
+        "lateMinutes": "+{{minutes}} min"
+      }
+    },
+    "notes": {},
+    "timetable": {},
+    "messages": {}
   },
   "pages": {
     "staffDashboard": {
@@ -200,6 +688,68 @@
     },
     "adminDashboard": {
       "title": "Overview"
+    }
+  },
+  "notes": {
+    "summary": {
+      "averageLabel": "General average",
+      "subjects": "Subjects",
+      "evaluations": "Evaluations",
+      "appreciations": {
+        "excellent": "Excellent!",
+        "veryGood": "Very good",
+        "good": "Good",
+        "fair": "Fair",
+        "needsWork": "Needs improvement"
+      }
+    },
+    "table": {
+      "title": "Subject overview",
+      "empty": "No subject available",
+      "headers": {
+        "subject": "Subject",
+        "coefficient": "Total coef.",
+        "studentAverage": "Student avg.",
+        "classAverage": "Class avg.",
+        "min": "Min",
+        "max": "Max",
+        "appreciation": "Comment"
+      },
+      "evaluations": "{{count}} grade{{plural}}",
+      "none": "None",
+      "mobileHint": "On mobile, swipe horizontally to view all columns"
+    },
+    "accordion": {
+      "empty": "No detailed grade available",
+    "evaluations": "{{count}} evaluation{{plural}}",
+      "subjectAverage": "Subject average",
+      "noEvaluations": "No evaluation for this subject",
+      "headers": {
+        "evaluation": "Evaluation",
+        "date": "Date",
+        "coefficient": "Coef.",
+        "grade": "Grade",
+        "classAverage": "Class avg.",
+        "min": "Min",
+        "max": "Max",
+        "appreciation": "Comment"
+      },
+      "status": {
+        "absent": "Absent"
+      }
+    },
+    "stats": {
+      "generalAverage": "General average",
+      "bestSubject": "Best subject",
+      "needsWork": "Needs attention",
+    "evaluations": "{{count}} evaluation{{plural}}",
+      "summary": {
+        "title": "Summary",
+        "subjects": "Subjects",
+        "evaluations": "Total evaluations",
+        "highest": "Highest avg.",
+        "lowest": "Lowest avg."
+      }
     }
   }
 }

@@ -1,6 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Award, TrendingUp, TrendingDown, Minus } from "lucide-react"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 interface NotesSummaryCardProps {
   generalAverage: number
@@ -13,12 +14,13 @@ export function NotesSummaryCard({
   totalSubjects,
   totalEvaluations,
 }: NotesSummaryCardProps) {
+  const { t } = useI18n()
   const getAppreciation = (avg: number) => {
-    if (avg >= 16) return { text: "Excellent !", icon: "🎉", color: "bg-green-500" }
-    if (avg >= 14) return { text: "Très bien", icon: "👏", color: "bg-blue-500" }
-    if (avg >= 12) return { text: "Bien", icon: "👍", color: "bg-cyan-500" }
-    if (avg >= 10) return { text: "Assez bien", icon: "✓", color: "bg-orange-400" }
-    return { text: "À améliorer", icon: "💪", color: "bg-red-500" }
+    if (avg >= 16) return { text: t("notes.summary.appreciations.excellent"), icon: "🎉", color: "bg-green-500" }
+    if (avg >= 14) return { text: t("notes.summary.appreciations.veryGood"), icon: "👏", color: "bg-blue-500" }
+    if (avg >= 12) return { text: t("notes.summary.appreciations.good"), icon: "👍", color: "bg-cyan-500" }
+    if (avg >= 10) return { text: t("notes.summary.appreciations.fair"), icon: "✓", color: "bg-orange-400" }
+    return { text: t("notes.summary.appreciations.needsWork"), icon: "💪", color: "bg-red-500" }
   }
 
   const getTrend = (avg: number) => {
@@ -40,7 +42,7 @@ export function NotesSummaryCard({
             </div>
             <div>
               <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                Moyenne générale
+                {t("notes.summary.averageLabel")}
               </h3>
               <div className="mt-2 flex flex-wrap items-center gap-3">
                 <div className="flex items-baseline gap-2">
@@ -64,11 +66,11 @@ export function NotesSummaryCard({
           {/* Right: Stats */}
           <div className="flex w-full flex-col gap-3 text-left sm:flex-row sm:items-stretch sm:gap-4 md:w-auto md:flex-col md:text-right">
             <div className="flex-1 rounded-lg bg-slate-50 px-4 py-2 border md:flex-none">
-              <p className="text-xs text-muted-foreground">Matières</p>
+              <p className="text-xs text-muted-foreground">{t("notes.summary.subjects")}</p>
               <p className="text-2xl font-bold text-slate-900">{totalSubjects}</p>
             </div>
             <div className="flex-1 rounded-lg bg-slate-50 px-4 py-2 border md:flex-none">
-              <p className="text-xs text-muted-foreground">Évaluations</p>
+              <p className="text-xs text-muted-foreground">{t("notes.summary.evaluations")}</p>
               <p className="text-2xl font-bold text-slate-900">{totalEvaluations}</p>
             </div>
           </div>

@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { RecentGrade, formatRelativeDate } from "@/lib/api/dashboard"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 // =========================
 // LISTE DE NOTES
@@ -26,12 +27,15 @@ interface RecentGradesListProps {
 
 export function RecentGradesList({
   grades,
-  title = "Dernières évaluations",
-  emptyMessage = "Aucune note récente",
+  title,
+  emptyMessage,
   maxItems = 5,
   viewAllLink,
 }: RecentGradesListProps) {
+  const { t } = useI18n()
   const displayedGrades = grades.slice(0, maxItems)
+  const resolvedTitle = title ?? t("student.dashboard.gradesCard.title")
+  const resolvedEmptyMessage = emptyMessage ?? t("student.dashboard.gradesWidget.empty")
 
   return (
     <Card>
@@ -39,14 +43,14 @@ export function RecentGradesList({
         <div className="flex items-center justify-between">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <BarChart className="h-4 w-4 text-muted-foreground" />
-            {title}
+            {resolvedTitle}
           </CardTitle>
           {viewAllLink && grades.length > 0 && (
             <Link 
               href={viewAllLink}
               className="text-sm text-primary hover:underline flex items-center gap-1"
             >
-              Voir tout
+              {t("student.dashboard.gradesWidget.viewAll")}
               <ChevronRight className="h-3 w-3" />
             </Link>
           )}
@@ -56,7 +60,7 @@ export function RecentGradesList({
         {displayedGrades.length === 0 ? (
           <div className="text-center py-6 text-muted-foreground">
             <BarChart className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">{emptyMessage}</p>
+            <p className="text-sm">{resolvedEmptyMessage}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -75,6 +79,7 @@ interface GradeCardProps {
 }
 
 function GradeCard({ grade }: GradeCardProps) {
+  const { t, locale } = useI18n()
   // Calcul du pourcentage pour déterminer la qualité
   const percentage = (grade.value / grade.max_value) * 100
   
@@ -136,10 +141,10 @@ function GradeCard({ grade }: GradeCardProps) {
 
         {/* Métadonnées */}
         <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-          <span>{formatRelativeDate(grade.date)}</span>
+          <span>{formatRelativeDate(grade.date, locale)}</span>
           {grade.coefficient !== 1 && (
             <Badge variant="secondary" className="text-xs">
-              Coef. {grade.coefficient}
+              {t("student.dashboard.gradesWidget.coefficient", { value: grade.coefficient })}
             </Badge>
           )}
         </div>
@@ -163,6 +168,7 @@ export function RecentGradesWidget({
   maxItems = 3,
   viewAllLink,
 }: RecentGradesWidgetProps) {
+  const { t } = useI18n()
   const displayedGrades = grades.slice(0, maxItems)
 
   // Calcul de la moyenne
@@ -175,7 +181,7 @@ export function RecentGradesWidget({
       {/* Moyenne */}
       {average !== null && (
         <div className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
-          <span className="text-sm text-muted-foreground">Moyenne récente</span>
+          <span className="text-sm text-muted-foreground">{t("student.dashboard.gradesWidget.recentAverage")}</span>
           <span className={`text-lg font-bold ${
             average >= 14 ? 'text-emerald-600' :
             average >= 10 ? 'text-blue-600' :
@@ -190,7 +196,7 @@ export function RecentGradesWidget({
       {displayedGrades.length === 0 ? (
         <div className="text-center py-4 text-muted-foreground">
           <BarChart className="h-6 w-6 mx-auto mb-1 opacity-50" />
-          <p className="text-xs">Aucune note récente</p>
+          <p className="text-xs">{t("student.dashboard.gradesWidget.empty")}</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -227,7 +233,7 @@ export function RecentGradesWidget({
       {viewAllLink && grades.length > maxItems && (
         <Link href={viewAllLink} className="block">
           <span className="text-sm text-primary hover:underline flex items-center justify-center gap-1">
-            Voir toutes les notes
+            {t("student.dashboard.gradesWidget.viewAll")}
             <ChevronRight className="h-3 w-3" />
           </span>
         </Link>

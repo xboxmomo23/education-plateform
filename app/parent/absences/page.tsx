@@ -17,11 +17,15 @@ import {
   XCircle,
 } from "lucide-react"
 import { useParentChild } from "@/components/parent/ParentChildContext"
+import { useEstablishmentSettings } from "@/hooks/useEstablishmentSettings"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 export default function ParentAbsencesPage() {
   const { selectedChild } = useParentChild()
+  const { settings } = useEstablishmentSettings()
   const child = selectedChild ?? null
   const studentId = child?.id ?? null
+  const { t, locale } = useI18n()
 
   const [history, setHistory] = useState<AttendanceHistoryItem[]>([])
   const [stats, setStats] = useState<AttendanceStats | null>(null)
@@ -47,16 +51,16 @@ export default function ParentAbsencesPage() {
         setHistory(response.data.history)
         setStats(response.data.stats)
       } else {
-        setError(response.error || "Erreur lors du chargement des données")
+        setError(response.error || t("parent.attendance.errors.load"))
       }
     } catch (err: any) {
       if (err.name === "AbortError") return
       console.error("Erreur chargement assiduité parent:", err)
-      setError(err.message || "Erreur lors du chargement")
+      setError(err.message || t("parent.attendance.errors.generic"))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     if (!studentId) {
@@ -75,13 +79,16 @@ export default function ParentAbsencesPage() {
   )
 
   if (!child || !studentId) {
+    const contactInfo = settings?.contactEmail
+      ? t("parent.attendance.noChild.contactEmail", { email: settings.contactEmail })
+      : t("parent.attendance.noChild.contactDefault")
     return (
       <div className="min-h-[60vh] bg-gray-50">
         <div className="mx-auto max-w-2xl p-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-3">Assiduité</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mb-3">{t("parent.attendance.title")}</h1>
           <Card>
             <CardContent className="py-10 text-center text-muted-foreground">
-              Aucun enfant n'est associé à ce compte. Contactez l'établissement pour lier votre espace parent à un élève.
+              {t("parent.attendance.noChild.description", { contact: contactInfo })}
             </CardContent>
           </Card>
         </div>
@@ -94,7 +101,7 @@ export default function ParentAbsencesPage() {
       <div className="min-h-[60vh] bg-gray-50 flex items-center justify-center">
         <div className="flex items-center gap-3 text-gray-500">
           <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Chargement...</span>
+          <span>{t("parent.attendance.states.loading")}</span>
         </div>
       </div>
     )
@@ -106,7 +113,7 @@ export default function ParentAbsencesPage() {
         <Card className="p-8 text-center max-w-md">
           <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <p className="text-red-600 mb-4">{error}</p>
-          <Button onClick={() => studentId && loadData(studentId)}>Réessayer</Button>
+          <Button onClick={() => studentId && loadData(studentId)}>{t("common.actions.retry")}</Button>
         </Card>
       </div>
     )
@@ -116,9 +123,14 @@ export default function ParentAbsencesPage() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-2xl mx-auto p-6">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Assiduité de {child.full_name}</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {t("parent.attendance.childTitle", { child: child.full_name })}
+          </h1>
           <p className="text-gray-500 text-sm">
-            Année {getCurrentSchoolYearLabel()} — Classe {child.class_name || "non définie"}
+            {t("parent.attendance.subtitle", {
+              year: getCurrentSchoolYearLabel(),
+              className: child.class_name || t("parent.attendance.classFallback"),
+            })}
           </p>
         </div>
 
@@ -126,12 +138,12 @@ export default function ParentAbsencesPage() {
           <Card className="mb-6">
             <CardContent className="pt-6">
               <div className="flex items-center justify-center gap-8">
-                <AttendanceDonut stats={stats} />
+                <AttendanceDonut stats={stats} centerLabel={t("parent.attendance.donut.label")} />
                 <div className="space-y-3">
-                  <LegendItem color="bg-green-500" label="Présences" value={stats.present} />
-                  <LegendItem color="bg-red-500" label="Absences" value={stats.absent} />
-                  <LegendItem color="bg-orange-500" label="Retards" value={stats.late} />
-                  <LegendItem color="bg-blue-500" label="Excusés" value={stats.excused} />
+                  <LegendItem color="bg-green-500" label={t("parent.attendance.legend.present")} value={stats.present} />
+                  <LegendItem color="bg-red-500" label={t("parent.attendance.legend.absent")} value={stats.absent} />
+                  <LegendItem color="bg-orange-500" label={t("parent.attendance.legend.late")} value={stats.late} />
+                  <LegendItem color="bg-blue-500" label={t("parent.attendance.legend.excused")} value={stats.excused} />
                 </div>
               </div>
             </CardContent>
@@ -142,7 +154,7 @@ export default function ParentAbsencesPage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-medium flex items-center gap-2">
               <Calendar className="h-4 w-4" />
-              Absences et retards
+              {t("parent.attendance.list.title")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -151,8 +163,8 @@ export default function ParentAbsencesPage() {
                 <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
                   <ShieldCheck className="h-8 w-8 text-green-600" />
                 </div>
-                <p className="text-gray-600 font-medium">Aucune absence ni retard récent.</p>
-                <p className="text-sm text-gray-400 mt-1">Tout est en ordre ✅</p>
+                <p className="text-gray-600 font-medium">{t("parent.attendance.list.emptyTitle")}</p>
+                <p className="text-sm text-gray-400 mt-1">{t("parent.attendance.list.emptySubtitle")}</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -167,7 +179,7 @@ export default function ParentAbsencesPage() {
         <div className="mt-4 p-3 bg-blue-50 rounded-lg flex items-start gap-2 text-sm">
           <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
           <p className="text-blue-700">
-            Merci de transmettre un justificatif à la vie scolaire dans les 48h suivant une absence.
+            {t("parent.attendance.info")}
           </p>
         </div>
       </div>
@@ -175,7 +187,7 @@ export default function ParentAbsencesPage() {
   )
 }
 
-function AttendanceDonut({ stats }: { stats: AttendanceStats }) {
+function AttendanceDonut({ stats, centerLabel }: { stats: AttendanceStats; centerLabel: string }) {
   const total = stats.total || 1
   const presentPercent = (stats.present / total) * 100
   const absentPercent = (stats.absent / total) * 100
@@ -240,33 +252,38 @@ function AttendanceDonut({ stats }: { stats: AttendanceStats }) {
 
       <div className="absolute text-center">
         <p className="text-3xl font-bold text-gray-900">{rate}%</p>
-        <p className="text-sm text-gray-500">Présence</p>
+        <p className="text-sm text-gray-500">{centerLabel}</p>
       </div>
     </div>
   )
 }
 
 function LegendItem({ color, label, value }: { color: string; label: string; value: number }) {
+  const { t } = useI18n()
+  const plural = value > 1 ? "s" : ""
   return (
     <div className="flex items-center gap-3">
       <span className={cn("h-3 w-3 rounded-full", color)} />
       <div>
         <p className="text-sm font-medium text-gray-700">{label}</p>
-        <p className="text-xs text-gray-500">{value} séances</p>
+        <p className="text-xs text-gray-500">
+          {t("parent.attendance.legend.sessions", { count: value, plural })}
+        </p>
       </div>
     </div>
   )
 }
 
 function AbsenceItem({ item }: { item: AttendanceHistoryItem }) {
+  const { t, locale } = useI18n()
   const date = new Date(item.session_date)
-  const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
+  const dateFormatter = new Intl.DateTimeFormat(locale === "fr" ? "fr-FR" : "en-US", {
     weekday: "long",
     month: "long",
     day: "numeric",
   })
 
-  const config = getStatusConfig(item.status)
+  const config = getStatusConfig(item.status, t)
   const isJustified = item.status === "excused"
 
   return (
@@ -289,7 +306,9 @@ function AbsenceItem({ item }: { item: AttendanceHistoryItem }) {
 
       <div className="flex items-center gap-2">
         {item.status === "late" && item.late_minutes && (
-          <span className="text-xs text-orange-600 font-medium">+{item.late_minutes}min</span>
+          <span className="text-xs text-orange-600 font-medium">
+            {t("parent.attendance.status.lateMinutes", { minutes: item.late_minutes })}
+          </span>
         )}
 
         <Badge variant="outline" className={cn("text-xs", config.text, config.border, config.bg)}>
@@ -328,32 +347,35 @@ type StatusConfig = {
   bg: string
 }
 
-function getStatusConfig(status: AttendanceHistoryItem["status"]): StatusConfig {
+function getStatusConfig(
+  status: AttendanceHistoryItem["status"],
+  t: (key: string, params?: Record<string, any>) => string
+): StatusConfig {
   switch (status) {
     case "absent":
       return {
-        label: "Absence",
+        label: t("parent.attendance.status.absent"),
         text: "text-red-600",
         border: "border-red-200",
         bg: "bg-red-50",
       }
     case "late":
       return {
-        label: "Retard",
+        label: t("parent.attendance.status.late"),
         text: "text-orange-600",
         border: "border-orange-200",
         bg: "bg-orange-50",
       }
     case "excused":
       return {
-        label: "Excusé",
+        label: t("parent.attendance.status.excused"),
         text: "text-blue-600",
         border: "border-blue-200",
         bg: "bg-blue-50",
       }
     default:
       return {
-        label: "Présence",
+        label: t("parent.attendance.status.present"),
         text: "text-green-600",
         border: "border-green-200",
         bg: "bg-green-50",

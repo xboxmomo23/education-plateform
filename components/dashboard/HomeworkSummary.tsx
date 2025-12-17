@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { UpcomingHomework, formatDueDate, isOverdue } from "@/lib/api/dashboard"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 // =========================
 // LISTE DE DEVOIRS
@@ -196,6 +197,7 @@ export function HomeworkSummaryWidget({
   maxItems = 3,
   viewAllLink,
 }: HomeworkSummaryWidgetProps) {
+  const { t, locale } = useI18n()
   const displayedHomework = homework.slice(0, maxItems)
   const overdueCount = homework.filter(h => isOverdue(h.due_at)).length
 
@@ -205,7 +207,10 @@ export function HomeworkSummaryWidget({
         <div className="flex items-center gap-2 p-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400">
           <AlertTriangle className="h-4 w-4" />
           <span className="text-sm font-medium">
-            {overdueCount} devoir{overdueCount > 1 ? 's' : ''} en retard
+            {t("student.dashboard.homeworkWidget.overdue", {
+              count: overdueCount,
+              plural: overdueCount > 1 ? "s" : "",
+            })}
           </span>
         </div>
       )}
@@ -213,7 +218,7 @@ export function HomeworkSummaryWidget({
       {displayedHomework.length === 0 ? (
         <div className="text-center py-4 text-muted-foreground">
           <CheckCircle2 className="h-6 w-6 mx-auto mb-1 text-green-500" />
-          <p className="text-xs">Tout est à jour !</p>
+          <p className="text-xs">{t("student.dashboard.homeworkWidget.empty")}</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -229,7 +234,7 @@ export function HomeworkSummaryWidget({
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{item.title}</p>
                 <p className="text-xs text-muted-foreground">
-                  {formatDueDate(item.due_at)}
+                  {formatDueDate(item.due_at, locale)}
                 </p>
               </div>
             </div>
@@ -240,7 +245,7 @@ export function HomeworkSummaryWidget({
       {viewAllLink && homework.length > maxItems && (
         <Link href={viewAllLink}>
           <Button variant="ghost" size="sm" className="w-full">
-            Voir tous les devoirs
+            {t("student.dashboard.homeworkWidget.viewAll")}
             <ChevronRight className="h-3 w-3 ml-1" />
           </Button>
         </Link>

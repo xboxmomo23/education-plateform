@@ -45,6 +45,7 @@ import {
   truncateText,
 } from "@/lib/api/messages"
 import type { SendMessagePayload } from "@/lib/api/messages"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 type FilterOption = "all" | "unread"
 
@@ -52,6 +53,7 @@ export default function ParentContactPage() {
   const { selectedChild, selectedChildId } = useParentChild()
   const { settings } = useEstablishmentSettings()
   const studentId = selectedChildId ?? null
+  const { t } = useI18n()
 
   const [threads, setThreads] = useState<ParentThreadSummary[]>([])
   const [threadsLoading, setThreadsLoading] = useState(true)
@@ -80,10 +82,10 @@ export default function ParentContactPage() {
       if (response.success) {
         setThreads(response.data)
       } else {
-        setThreadsError(response.error || "Erreur lors du chargement")
+        setThreadsError(response.error || t("parent.messages.errors.loadThreads"))
       }
     } catch (err: any) {
-      setThreadsError(err.message || "Erreur lors du chargement")
+      setThreadsError(err.message || t("parent.messages.errors.generic"))
     } finally {
       setThreadsLoading(false)
     }
@@ -160,18 +162,18 @@ export default function ParentContactPage() {
   }, [threads, filter])
 
   if (!selectedChild || !studentId) {
+    const contactInfo = settings?.contactEmail
+      ? t("parent.messages.noChild.contactEmail", { email: settings.contactEmail })
+      : t("parent.messages.noChild.contactDefault")
     return (
       <div className="space-y-4 p-6">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Mail className="h-6 w-6" />
-          Messages parent
+          {t("parent.messages.noChild.title")}
         </h1>
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
-            Aucun enfant activé n’est associé à ce compte (les invitations peuvent être en attente).
-            {settings?.contactEmail
-              ? ` Contactez ${settings.contactEmail} pour lier votre compte parent à un élève.`
-              : " Contactez l’établissement pour lier votre compte parent à un élève."}
+            {t("parent.messages.noChild.description", { contact: contactInfo })}
           </CardContent>
         </Card>
       </div>
@@ -184,37 +186,40 @@ export default function ParentContactPage() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Mail className="h-6 w-6" />
-            Messages concernant {selectedChild.full_name}
+            {t("parent.messages.header.title", { child: selectedChild.full_name })}
           </h1>
           <p className="text-muted-foreground">
             {unreadCount > 0
-              ? `${unreadCount} message${unreadCount > 1 ? "s" : ""} non lu${unreadCount > 1 ? "s" : ""}`
-              : "Tous les messages sont lus"}
+              ? t("parent.messages.header.unread", {
+                  count: unreadCount,
+                  plural: unreadCount > 1 ? "s" : "",
+                })
+              : t("parent.messages.header.allRead")}
           </p>
         </div>
         <Button onClick={() => setComposeOpen(true)}>
           <Send className="mr-2 h-4 w-4" />
-          Nouveau message
+          {t("parent.messages.actions.new")}
         </Button>
       </div>
 
       <Card>
         <CardContent className="flex flex-wrap items-center gap-4">
-          <span className="text-sm font-medium">Afficher :</span>
+          <span className="text-sm font-medium">{t("parent.messages.filter.label")}</span>
           <div className="flex gap-2">
             <Button
               variant={filter === "all" ? "default" : "outline"}
               size="sm"
               onClick={() => setFilter("all")}
             >
-              Tous
+              {t("parent.messages.filter.all")}
             </Button>
             <Button
               variant={filter === "unread" ? "default" : "outline"}
               size="sm"
               onClick={() => setFilter("unread")}
             >
-              Non lus
+              {t("parent.messages.filter.unread")}
               {unreadCount > 0 && (
                 <Badge className="ml-2 bg-blue-600">{unreadCount}</Badge>
               )}
@@ -222,7 +227,7 @@ export default function ParentContactPage() {
           </div>
           <Button variant="ghost" size="sm" className="ml-auto" onClick={loadThreads}>
             <RefreshCw className="mr-1 h-4 w-4" />
-            Actualiser
+            {t("common.actions.refresh")}
           </Button>
         </CardContent>
       </Card>
@@ -232,14 +237,14 @@ export default function ParentContactPage() {
           <AlertCircle className="mx-auto mb-4 h-12 w-12 text-red-500" />
           <p className="text-red-600">{threadsError}</p>
           <Button variant="outline" className="mt-4" onClick={loadThreads}>
-            Réessayer
+            {t("common.actions.retry")}
           </Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Conversations</CardTitle>
+              <CardTitle className="text-lg">{t("parent.messages.list.title")}</CardTitle>
             </CardHeader>
             <CardContent>
               <ParentThreadList
@@ -295,11 +300,13 @@ function ParentThreadList({
   onSelect,
   onRefresh,
 }: ThreadListProps) {
+  const { t, locale } = useI18n()
+  const currentLocale = locale === "fr" ? "fr" : "en"
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12 text-muted-foreground">
         <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
-        Chargement des conversations...
+        {t("parent.messages.list.loading")}
       </div>
     )
   }
@@ -308,10 +315,10 @@ function ParentThreadList({
     return (
       <div className="text-center py-12">
         <Mail className="mx-auto mb-4 h-12 w-12 text-gray-300" />
-        <p className="text-muted-foreground">Aucune conversation</p>
+        <p className="text-muted-foreground">{t("parent.messages.list.empty")}</p>
         <Button variant="outline" className="mt-4" onClick={onRefresh}>
           <RefreshCw className="mr-2 h-4 w-4" />
-          Actualiser
+          {t("common.actions.refresh")}
         </Button>
       </div>
     )
@@ -346,11 +353,11 @@ function ParentThreadList({
                       {thread.last_sender_name}
                     </span>
                     <Badge variant="outline" className="text-xs">
-                      {getRoleLabel(thread.last_sender_role)}
+                      {getRoleLabel(thread.last_sender_role, currentLocale)}
                     </Badge>
                   </div>
                   <span className="text-xs text-muted-foreground">
-                    {formatMessageDate(thread.last_message_at)}
+                    {formatMessageDate(thread.last_message_at, currentLocale)}
                   </span>
                 </div>
                 <h4 className={`text-sm ${unread ? "font-semibold" : "font-medium"} text-gray-900 truncate`}>
@@ -388,12 +395,14 @@ function ParentThreadDetail({
   onReply,
   onRefresh,
 }: ThreadDetailProps) {
+  const { t, locale } = useI18n()
+  const currentLocale = locale === "fr" ? "fr" : "en"
   if (!thread) {
     return (
       <Card className="flex items-center justify-center">
         <CardContent className="py-12 text-center text-muted-foreground">
           <MailOpen className="mx-auto mb-4 h-12 w-12 text-gray-300" />
-          Sélectionnez une conversation pour l’afficher
+          {t("parent.messages.detail.placeholder")}
         </CardContent>
       </Card>
     )
@@ -406,12 +415,15 @@ function ParentThreadDetail({
           <div>
             <CardTitle className="text-lg">{thread.subject}</CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
-              {thread.message_count} message{thread.message_count > 1 ? "s" : ""}
+              {t("parent.messages.detail.count", {
+                count: thread.message_count,
+                plural: thread.message_count > 1 ? "s" : "",
+              })}
             </p>
           </div>
           <Button variant="ghost" size="sm" onClick={onRefresh}>
             <RefreshCw className="mr-1 h-4 w-4" />
-            Actualiser
+            {t("common.actions.refresh")}
           </Button>
         </div>
       </CardHeader>
@@ -419,11 +431,11 @@ function ParentThreadDetail({
         {loading ? (
           <div className="flex items-center justify-center text-muted-foreground">
             <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-            Chargement...
+            {t("parent.messages.detail.loading")}
           </div>
         ) : messages.length === 0 ? (
           <div className="text-center text-muted-foreground">
-            Aucun message dans cette conversation.
+            {t("parent.messages.detail.noMessages")}
           </div>
         ) : (
           messages.map(message => (
@@ -433,16 +445,16 @@ function ParentThreadDetail({
                   <User className="h-4 w-4" />
                   {message.sender_name}
                   <Badge variant="outline" className="text-xs">
-                    {getRoleLabel(message.sender_role)}
+                    {getRoleLabel(message.sender_role, currentLocale)}
                   </Badge>
                 </div>
-                <span>{formatMessageDateFull(message.created_at)}</span>
+                <span>{formatMessageDateFull(message.created_at, currentLocale)}</span>
               </div>
               <div className="mt-3 whitespace-pre-line text-gray-800">{message.body}</div>
               <div className="mt-4 flex justify-end">
                 <Button variant="ghost" size="sm" onClick={() => onReply(message)}>
                   <Reply className="mr-1 h-4 w-4" />
-                  Répondre
+                  {t("parent.messages.detail.reply")}
                 </Button>
               </div>
             </div>
@@ -474,6 +486,7 @@ function ParentComposeDialog({
   contactsLoading,
   onRefreshContacts,
 }: ParentComposeDialogProps) {
+  const { t } = useI18n()
   const [selectedRecipient, setSelectedRecipient] = useState<string>("")
   const [subject, setSubject] = useState("")
   const [body, setBody] = useState("")
@@ -483,13 +496,15 @@ function ParentComposeDialog({
   useEffect(() => {
     if (replyTo) {
       setSelectedRecipient(replyTo.sender_id)
-      setSubject(`Re: ${replyTo.subject}`)
-      setBody(`\n\n---\nMessage de ${replyTo.sender_name} :\n${replyTo.body}`)
+      setSubject(t("parent.messages.compose.replySubject", { subject: replyTo.subject }))
+      setBody(
+        `\n\n---\n${t("parent.messages.compose.replyQuote", { name: replyTo.sender_name })}\n${replyTo.body}`
+      )
       setError(null)
     } else if (!open) {
       resetForm()
     }
-  }, [replyTo, open])
+  }, [replyTo, open, t])
 
   const resetForm = () => {
     setSelectedRecipient("")
@@ -519,18 +534,18 @@ function ParentComposeDialog({
     setError(null)
 
     if (!subject.trim()) {
-      setError("Le sujet est obligatoire")
+      setError(t("parent.messages.compose.errors.subject"))
       return
     }
 
     if (!body.trim()) {
-      setError("Le message est obligatoire")
+      setError(t("parent.messages.compose.errors.body"))
       return
     }
 
     const recipientId = replyTo?.sender_id || selectedRecipient
     if (!recipientId) {
-      setError("Veuillez choisir un destinataire")
+      setError(t("parent.messages.compose.errors.recipient"))
       return
     }
 
@@ -551,10 +566,10 @@ function ParentComposeDialog({
         resetForm()
         onSent()
       } else {
-        setError(response.error || "Erreur lors de l'envoi")
+        setError(response.error || t("parent.messages.compose.errors.send"))
       }
     } catch (err: any) {
-      setError(err.message || "Erreur lors de l'envoi")
+      setError(err.message || t("parent.messages.compose.errors.send"))
     } finally {
       setSending(false)
     }
@@ -568,83 +583,89 @@ function ParentComposeDialog({
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{replyTo ? "Répondre au message" : "Nouveau message"}</DialogTitle>
-          <DialogDescription>
-            {replyTo ? `Réponse à ${replyTo.sender_name}` : "Envoyer un message aux professeurs ou au staff"}
-          </DialogDescription>
-        </DialogHeader>
+    <DialogHeader>
+      <DialogTitle>
+        {replyTo ? t("parent.messages.compose.replyTitle") : t("parent.messages.compose.newTitle")}
+      </DialogTitle>
+      <DialogDescription>
+        {replyTo
+          ? t("parent.messages.compose.replyDescription", { name: replyTo.sender_name })
+          : t("parent.messages.compose.description")}
+      </DialogDescription>
+    </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          {!replyTo && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Destinataire</Label>
-                <Button variant="link" className="px-0 text-xs" onClick={onRefreshContacts}>
-                  Actualiser les contacts
-                </Button>
-              </div>
-              {contactsLoading ? (
-                <div className="text-sm text-muted-foreground">Chargement des contacts...</div>
-              ) : (
-                <Select value={selectedRecipient} onValueChange={setSelectedRecipient}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner un destinataire" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {usersOptions.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">
-                        Aucun contact disponible.
-                      </div>
-                    ) : (
-                      usersOptions.map(option => (
-                        <SelectItem key={option.id} value={option.id}>
-                          {option.label}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Label>Sujet</Label>
-            <Textarea
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              rows={1}
-              placeholder="Entrez le sujet"
-            />
+    <div className="space-y-4 py-4">
+      {!replyTo && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>{t("parent.messages.compose.recipientLabel")}</Label>
+            <Button variant="link" className="px-0 text-xs" onClick={onRefreshContacts}>
+              {t("parent.messages.compose.refreshContacts")}
+            </Button>
           </div>
-
-          <div className="space-y-2">
-            <Label>Message</Label>
-            <Textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              rows={8}
-              placeholder="Écrivez votre message..."
-            />
-          </div>
-
-          {error && (
-            <div className="flex items-center gap-2 text-sm text-red-600">
-              <AlertCircle className="h-4 w-4" />
-              {error}
+          {contactsLoading ? (
+            <div className="text-sm text-muted-foreground">
+              {t("parent.messages.compose.contactsLoading")}
             </div>
+          ) : (
+            <Select value={selectedRecipient} onValueChange={setSelectedRecipient}>
+              <SelectTrigger>
+                <SelectValue placeholder={t("parent.messages.compose.recipientPlaceholder")} />
+              </SelectTrigger>
+              <SelectContent>
+                {usersOptions.length === 0 ? (
+                  <div className="px-3 py-2 text-sm text-muted-foreground">
+                    {t("parent.messages.compose.noContacts")}
+                  </div>
+                ) : (
+                  usersOptions.map(option => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.label}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
           )}
         </div>
+      )}
 
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose} disabled={sending}>
-            Annuler
-          </Button>
-          <Button onClick={handleSend} disabled={sending}>
-            {sending ? "Envoi..." : "Envoyer"}
-          </Button>
-        </DialogFooter>
+      <div className="space-y-2">
+        <Label>{t("parent.messages.compose.subjectLabel")}</Label>
+        <Textarea
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          rows={1}
+          placeholder={t("parent.messages.compose.subjectPlaceholder")}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>{t("parent.messages.compose.bodyLabel")}</Label>
+        <Textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={8}
+          placeholder={t("parent.messages.compose.bodyPlaceholder")}
+        />
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 text-sm text-red-600">
+          <AlertCircle className="h-4 w-4" />
+          {error}
+        </div>
+      )}
+    </div>
+
+    <DialogFooter>
+      <Button variant="outline" onClick={handleClose} disabled={sending}>
+        {t("common.actions.cancel")}
+      </Button>
+      <Button onClick={handleSend} disabled={sending}>
+        {sending ? t("parent.messages.compose.sending") : t("common.actions.send")}
+      </Button>
+    </DialogFooter>
       </DialogContent>
     </Dialog>
   )

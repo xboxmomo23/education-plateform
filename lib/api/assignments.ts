@@ -275,9 +275,11 @@ export function isAssignmentDueThisMonth(assignment: Assignment): boolean {
 /**
  * Formater la date limite d'un devoir
  */
-export function formatDueDate(dueAt: string): string {
+type SupportedLocale = "fr" | "en"
+
+export function formatDueDate(dueAt: string, locale: SupportedLocale = "fr"): string {
   const date = new Date(dueAt);
-  return date.toLocaleDateString('fr-FR', {
+  return date.toLocaleDateString(locale === "fr" ? "fr-FR" : "en-US", {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
@@ -290,9 +292,9 @@ export function formatDueDate(dueAt: string): string {
 /**
  * Formater la date limite en version courte
  */
-export function formatDueDateShort(dueAt: string): string {
+export function formatDueDateShort(dueAt: string, locale: SupportedLocale = "fr"): string {
   const date = new Date(dueAt);
-  return date.toLocaleDateString('fr-FR', {
+  return date.toLocaleDateString(locale === "fr" ? "fr-FR" : "en-US", {
     day: 'numeric',
     month: 'short',
     hour: '2-digit',

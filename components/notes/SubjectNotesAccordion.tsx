@@ -2,16 +2,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ChevronDown, Calendar, Award } from "lucide-react"
 import { useState } from "react"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 
 type Evaluation = {
-  gradeId: string              // ✅ AJOUTÉ - ID unique de la note
+  gradeId: string
   evaluationId: string
   title: string
   date: string
   coefficient: number
   gradeStudent: number | null
-  absent: boolean  // ✅ AJOUTÉ
+  absent: boolean
   avgClass?: number
   min?: number
   max?: number
@@ -35,7 +36,9 @@ interface SubjectNotesAccordionProps {
 }
 
 export function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) {
+  const { t, locale } = useI18n()
   const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set())
+  const localeCode = locale === "fr" ? "fr-FR" : "en-US"
 
   const toggleSubject = (subjectId: string) => {
     const newExpanded = new Set(expandedSubjects)
@@ -61,7 +64,7 @@ export function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) 
 
   const formatDate = (isoDate: string) => {
     const date = new Date(isoDate)
-    return date.toLocaleDateString("fr-FR", {
+    return date.toLocaleDateString(localeCode, {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -72,7 +75,7 @@ export function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) 
     return (
       <Card>
         <CardContent className="py-12 text-center">
-          <p className="text-muted-foreground">Aucune note détaillée disponible</p>
+          <p className="text-muted-foreground">{t("notes.accordion.empty")}</p>
         </CardContent>
       </Card>
     )
@@ -103,8 +106,10 @@ export function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) 
                     <div>
                       <CardTitle className="text-lg">{subject.subjectName}</CardTitle>
                       <p className="text-sm text-muted-foreground mt-1">
-                        {subject.evaluations.length} évaluation
-                        {subject.evaluations.length > 1 ? "s" : ""}
+                        {t("notes.accordion.evaluations", {
+                          count: subject.evaluations.length,
+                          plural: subject.evaluations.length > 1 ? "s" : "",
+                        })}
                       </p>
                     </div>
                   </div>
@@ -112,7 +117,7 @@ export function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) 
                   {/* Average badge */}
                   <div className="flex items-center gap-2">
                     <div className="text-right mr-4">
-                      <p className="text-xs text-muted-foreground">Moyenne matière</p>
+                      <p className="text-xs text-muted-foreground">{t("notes.accordion.subjectAverage")}</p>
                       <p className={`text-2xl font-bold ${getGradeColor(subject.subjectAvgStudent)}`}>
                         {subject.subjectAvgStudent.toFixed(2)}
                         <span className="text-sm text-muted-foreground">/20</span>
@@ -131,7 +136,7 @@ export function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) 
               >
                 {subject.evaluations.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">
-                    Aucune évaluation pour cette matière
+                    {t("notes.accordion.noEvaluations")}
                   </p>
                 ) : (
                   <div className="overflow-x-auto">
@@ -139,28 +144,28 @@ export function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) 
                       <thead>
                         <tr className="border-b border-slate-200">
                           <th className="text-left py-2 px-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                            Évaluation
+                            {t("notes.accordion.headers.evaluation")}
                           </th>
                           <th className="text-center py-2 px-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                            Date
+                            {t("notes.accordion.headers.date")}
                           </th>
                           <th className="text-center py-2 px-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                            Coef.
+                            {t("notes.accordion.headers.coefficient")}
                           </th>
                           <th className="text-center py-2 px-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                            Note
+                            {t("notes.accordion.headers.grade")}
                           </th>
                           <th className="text-center py-2 px-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                            Moy. classe
+                            {t("notes.accordion.headers.classAverage")}
                           </th>
                           <th className="text-center py-2 px-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                            Min
+                            {t("notes.accordion.headers.min")}
                           </th>
                           <th className="text-center py-2 px-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                            Max
+                            {t("notes.accordion.headers.max")}
                           </th>
                           <th className="text-left py-2 px-3 text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                            Appréciation
+                            {t("notes.accordion.headers.appreciation")}
                           </th>
                         </tr>
                       </thead>
@@ -199,7 +204,7 @@ export function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) 
                             <td className="py-3 px-3 text-center">
                               {evaluation.absent ? (
                                 <Badge variant="secondary" className="text-sm">
-                                  Absent
+                                  {t("notes.accordion.status.absent")}
                                 </Badge>
                               ) : evaluation.gradeStudent != null ? (
                                 <div
@@ -261,7 +266,9 @@ export function SubjectNotesAccordion({ subjects }: SubjectNotesAccordionProps) 
                                   {evaluation.appreciation}
                                 </p>
                               ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {t("notes.table.none")}
+                                </span>
                               )}
                             </td>
                           </tr>

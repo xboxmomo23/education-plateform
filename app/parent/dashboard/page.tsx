@@ -15,11 +15,13 @@ import { UpcomingLessons } from "@/components/dashboard/UpcomingLessons"
 import { AttendanceStats } from "@/lib/api/attendance"
 import { useEstablishmentSettings } from "@/hooks/useEstablishmentSettings"
 import { PageLoader } from "@/components/ui/page-loader"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 export default function ParentDashboardPage() {
   const { fullName } = useAuth()
   const { selectedChild, parentChildren } = useParentChild()
   const { settings } = useEstablishmentSettings()
+  const { t } = useI18n()
   const child = selectedChild ?? null
   const studentId = child?.id ?? null
 
@@ -27,6 +29,9 @@ export default function ParentDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const schoolYearText = settings?.schoolYear ? t("parent.dashboard.common.schoolYear", { year: settings.schoolYear }) : ""
+  const parentName = fullName ?? t("parent.defaultName")
+  const childName = child?.full_name ?? t("parent.dashboard.childFallback")
 
   useEffect(() => {
     if (!studentId) {
@@ -45,12 +50,12 @@ export default function ParentDashboardPage() {
         if (response.success) {
           setDashboard(response.data)
         } else {
-          setError(response.error || "Impossible de charger le tableau de bord")
+          setError(response.error || t("parent.dashboard.errors.load"))
         }
       })
       .catch((err: any) => {
         if (err.name === "AbortError") return
-        setError(err.message || "Impossible de charger le tableau de bord")
+        setError(err.message || t("parent.dashboard.errors.load"))
       })
       .finally(() => setLoading(false))
 
@@ -60,22 +65,24 @@ export default function ParentDashboardPage() {
   const handleRefresh = () => setRefreshKey((key) => key + 1)
 
   if (!parentChildren || parentChildren.length === 0) {
+    const contactInfo = settings?.contactEmail
+      ? t("parent.dashboard.noChild.contactEmail", { email: settings.contactEmail })
+      : t("parent.dashboard.noChild.contactDefault")
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-3xl font-semibold">Tableau de bord parent</h2>
+          <h2 className="text-3xl font-semibold">{t("parent.dashboard.noChild.title")}</h2>
           <p className="text-muted-foreground">
-            Bienvenue {fullName ?? "parent"}.
-            {settings?.schoolYear && ` Année scolaire ${settings.schoolYear}.`}
+            {t("parent.dashboard.noChild.subtitle", {
+              name: parentName,
+              schoolYear: schoolYearText,
+            })}
           </p>
         </div>
         <Alert>
-          <AlertTitle>Enfant introuvable</AlertTitle>
+          <AlertTitle>{t("parent.dashboard.noChild.alertTitle")}</AlertTitle>
           <AlertDescription>
-            Aucun enfant activé n&apos;est associé à ce compte (les invitations peuvent être en attente).
-            {settings?.contactEmail
-              ? ` Contactez ${settings.contactEmail} si vous pensez qu'il s'agit d'une erreur.`
-              : " Contactez l'administration si vous pensez qu'il s'agit d'une erreur."}
+            {t("parent.dashboard.noChild.alertDescription", { contact: contactInfo })}
           </AlertDescription>
         </Alert>
       </div>
@@ -89,55 +96,64 @@ export default function ParentDashboardPage() {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-3xl font-semibold">
-            {settings?.displayName ? `Espace parent · ${settings.displayName}` : "Espace parent"}
+            {settings?.displayName
+              ? t("parent.dashboard.header.withSchool", { school: settings.displayName })
+              : t("parent.dashboard.header.default")}
           </h2>
           <p className="text-muted-foreground">
-            Bonjour {fullName ?? "parent"} — suivi de {child?.full_name ?? "votre enfant"}.
-            {settings?.schoolYear && ` Année scolaire ${settings.schoolYear}.`}
+            {t("parent.dashboard.header.subtitle", {
+              name: parentName,
+              child: childName,
+            })}
+            {schoolYearText ? ` ${schoolYearText}` : ""}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={handleRefresh} disabled={loading}>
           <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          Actualiser
+          {t("common.actions.refresh")}
         </Button>
       </div>
 
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-5 w-5" />
-          <AlertTitle>Erreur</AlertTitle>
+          <AlertTitle>{t("parent.dashboard.errors.title")}</AlertTitle>
           <AlertDescription className="flex items-center justify-between gap-4">
             <span>{error}</span>
             <Button size="sm" onClick={handleRefresh}>
-              Réessayer
+              {t("common.actions.retry")}
             </Button>
           </AlertDescription>
         </Alert>
       )}
 
       {loading ? (
-        <PageLoader label="Chargement des dernières informations..." />
+        <PageLoader label={t("parent.dashboard.loader")} />
       ) : (
         <>
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle>Enfant suivi</CardTitle>
+              <CardTitle>{t("parent.dashboard.studentCard.title")}</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-xl font-semibold">{dashboard?.student.full_name ?? child?.full_name}</p>
                 <p className="text-sm text-muted-foreground">
-                  Numéro d&apos;élève : {dashboard?.student.student_number || child?.student_number || "—"}
+                  {t("parent.dashboard.studentCard.studentNumber", {
+                    value: dashboard?.student.student_number || child?.student_number || "—",
+                  })}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Classe : {dashboard?.student.class_label || child?.class_name || "non renseignée"}
+                  {t("parent.dashboard.studentCard.classLabel", {
+                    value: dashboard?.student.class_label || child?.class_name || t("parent.dashboard.studentCard.classFallback"),
+                  })}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <QuickLinkButton href="/parent/notes" label="Notes" />
-                <QuickLinkButton href="/parent/devoirs" label="Devoirs" />
-                <QuickLinkButton href="/parent/emploi-du-temps" label="Emploi du temps" />
-                <QuickLinkButton href="/parent/absences" label="Assiduité" />
+                <QuickLinkButton href="/parent/notes" label={t("parent.dashboard.quickLinks.notes")} />
+                <QuickLinkButton href="/parent/devoirs" label={t("parent.dashboard.quickLinks.assignments")} />
+                <QuickLinkButton href="/parent/emploi-du-temps" label={t("parent.dashboard.quickLinks.timetable")} />
+                <QuickLinkButton href="/parent/absences" label={t("parent.dashboard.quickLinks.attendance")} />
               </div>
             </CardContent>
           </Card>
@@ -145,7 +161,7 @@ export default function ParentDashboardPage() {
           <div className="grid gap-4 lg:grid-cols-3">
             <Card className="lg:col-span-1">
               <CardHeader className="pb-3">
-                <CardTitle>Statistiques assiduité</CardTitle>
+                <CardTitle>{t("parent.dashboard.attendanceStats.title")}</CardTitle>
               </CardHeader>
               <CardContent>
                 {attendance ? (
@@ -153,7 +169,7 @@ export default function ParentDashboardPage() {
                 ) : (
                   <div className="flex flex-col items-center gap-2 py-6 text-sm text-muted-foreground">
                     <BookOpen className="h-8 w-8 opacity-60" />
-                    <span>Données d&apos;assiduité indisponibles.</span>
+                    <span>{t("parent.dashboard.attendanceStats.empty")}</span>
                   </div>
                 )}
               </CardContent>
@@ -161,12 +177,12 @@ export default function ParentDashboardPage() {
             <Card className="lg:col-span-2">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
-                  <CardTitle>Dernières notes</CardTitle>
+                  <CardTitle>{t("parent.dashboard.grades.title")}</CardTitle>
                   <Link
                     href="/parent/notes"
                     className="text-sm text-primary hover:underline flex items-center gap-1"
                   >
-                    Voir toutes les notes
+                    {t("parent.dashboard.grades.viewAll")}
                     <ChevronRight className="h-3 w-3" />
                   </Link>
                 </div>
@@ -180,16 +196,16 @@ export default function ParentDashboardPage() {
           <div className="grid gap-4 lg:grid-cols-2">
             <HomeworkList
               homework={dashboard?.upcoming_homework ?? []}
-              title="Devoirs à venir"
-              emptyMessage="Aucun devoir à venir pour cet enfant."
+              title={t("parent.dashboard.homework.title")}
+              emptyMessage={t("parent.dashboard.homework.empty")}
               viewAllLink="/parent/devoirs"
               role="student"
               showClass={false}
             />
             <UpcomingLessons
               lessons={dashboard?.next_sessions ?? []}
-              title="Prochaines séances"
-              emptyMessage="Aucune séance planifiée dans les prochains jours."
+              title={t("parent.dashboard.lessons.title")}
+              emptyMessage={t("parent.dashboard.lessons.empty")}
               viewAllLink="/parent/emploi-du-temps"
               role="student"
             />
@@ -211,11 +227,12 @@ function QuickLinkButton({ href, label }: { href: string; label: string }) {
 }
 
 function AttendanceStatsGrid({ stats }: { stats: AttendanceStats }) {
+  const { t } = useI18n()
   const items = [
-    { label: "Présences", value: stats.present, color: "text-emerald-600" },
-    { label: "Absences", value: stats.absent, color: "text-red-600" },
-    { label: "Retards", value: stats.late, color: "text-amber-600" },
-    { label: "Excusés", value: stats.excused, color: "text-blue-600" },
+    { label: t("parent.dashboard.attendanceStats.present"), value: stats.present, color: "text-emerald-600" },
+    { label: t("parent.dashboard.attendanceStats.absent"), value: stats.absent, color: "text-red-600" },
+    { label: t("parent.dashboard.attendanceStats.late"), value: stats.late, color: "text-amber-600" },
+    { label: t("parent.dashboard.attendanceStats.excused"), value: stats.excused, color: "text-blue-600" },
   ]
 
   return (
@@ -227,7 +244,7 @@ function AttendanceStatsGrid({ stats }: { stats: AttendanceStats }) {
         </div>
       ))}
       <div className="sm:col-span-2 rounded-lg border bg-muted/40 p-3">
-        <p className="text-sm text-muted-foreground">Taux de présence</p>
+        <p className="text-sm text-muted-foreground">{t("parent.dashboard.attendanceStats.rate")}</p>
         <p className="text-2xl font-semibold">{stats.rate ?? 0}%</p>
       </div>
     </div>

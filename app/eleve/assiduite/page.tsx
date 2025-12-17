@@ -19,14 +19,15 @@ import {
   attendanceApi, 
   type AttendanceHistoryItem,
   type AttendanceStats,
-  getStatusLabel,
 } from "@/lib/api/attendance"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 // ============================================
 // PAGE ASSIDUITÉ ÉLÈVE (SIMPLIFIÉE)
 // ============================================
 
 export default function EleveAssiduitePage() {
+  const { t, locale } = useI18n()
   const [history, setHistory] = useState<AttendanceHistoryItem[]>([])
   const [stats, setStats] = useState<AttendanceStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -50,11 +51,11 @@ export default function EleveAssiduitePage() {
         setHistory(response.data.history)
         setStats(response.data.stats)
       } else {
-        setError('Erreur lors du chargement des données')
+        setError(t("student.attendance.errors.load"))
       }
     } catch (err: any) {
       console.error('Erreur chargement assiduité:', err)
-      setError(err.message || 'Erreur lors du chargement')
+      setError(err.message || t("student.attendance.errors.generic"))
     } finally {
       setLoading(false)
     }
@@ -74,7 +75,7 @@ export default function EleveAssiduitePage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="flex items-center gap-3 text-gray-500">
           <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Chargement...</span>
+          <span>{t("student.attendance.states.loading")}</span>
         </div>
       </div>
     )
@@ -86,7 +87,7 @@ export default function EleveAssiduitePage() {
         <Card className="p-8 text-center max-w-md">
           <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <p className="text-red-600 mb-4">{error}</p>
-          <Button onClick={loadData}>Réessayer</Button>
+          <Button onClick={loadData}>{t("common.actions.retry")}</Button>
         </Card>
       </div>
     )
@@ -98,9 +99,9 @@ export default function EleveAssiduitePage() {
         <div className="max-w-2xl mx-auto p-6">
           {/* En-tête */}
           <div className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">Mon assiduité</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{t("student.attendance.title")}</h1>
             <p className="text-gray-500 text-sm">
-              Année {getCurrentSchoolYearLabel()}
+              {t("student.attendance.schoolYear", { year: getCurrentSchoolYearLabel() })}
             </p>
           </div>
 
@@ -110,28 +111,37 @@ export default function EleveAssiduitePage() {
               <CardContent className="pt-6">
                 <div className="flex items-center justify-center gap-8">
                   {/* Cercle */}
-                  <AttendanceDonut stats={stats} />
+                  <AttendanceDonut 
+                    stats={stats} 
+                    labels={{
+                      present: t("student.attendance.legend.present"),
+                      absent: t("student.attendance.legend.absent"),
+                      late: t("student.attendance.legend.late"),
+                      excused: t("student.attendance.legend.excused"),
+                    }}
+                    centerLabel={t("student.attendance.donut.label")}
+                  />
                   
                   {/* Légende */}
                   <div className="space-y-3">
                     <LegendItem 
                       color="bg-green-500" 
-                      label="Présences" 
+                      label={t("student.attendance.legend.present")} 
                       value={stats.present} 
                     />
                     <LegendItem 
                       color="bg-red-500" 
-                      label="Absences" 
+                      label={t("student.attendance.legend.absent")} 
                       value={stats.absent} 
                     />
                     <LegendItem 
                       color="bg-orange-500" 
-                      label="Retards" 
+                      label={t("student.attendance.legend.late")} 
                       value={stats.late} 
                     />
                     <LegendItem 
                       color="bg-blue-500" 
-                      label="Excusés" 
+                      label={t("student.attendance.legend.excused")} 
                       value={stats.excused} 
                     />
                   </div>
@@ -145,7 +155,7 @@ export default function EleveAssiduitePage() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-medium flex items-center gap-2">
                 <Calendar className="h-4 w-4" />
-                Mes absences et retards
+                {t("student.attendance.list.title")}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -154,8 +164,8 @@ export default function EleveAssiduitePage() {
                   <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
                     <ShieldCheck className="h-8 w-8 text-green-600" />
                   </div>
-                  <p className="text-gray-600 font-medium">Aucune absence ni retard !</p>
-                  <p className="text-sm text-gray-400 mt-1">Continuez comme ça 🎉</p>
+                  <p className="text-gray-600 font-medium">{t("student.attendance.list.emptyTitle")}</p>
+                  <p className="text-sm text-gray-400 mt-1">{t("student.attendance.list.emptySubtitle")}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -171,7 +181,7 @@ export default function EleveAssiduitePage() {
           <div className="mt-4 p-3 bg-blue-50 rounded-lg flex items-start gap-2 text-sm">
             <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
             <p className="text-blue-700">
-              En cas d'absence, fournissez un justificatif à la vie scolaire dans les 48h.
+              {t("student.attendance.info")}
             </p>
           </div>
         </div>
@@ -184,7 +194,20 @@ export default function EleveAssiduitePage() {
 // COMPOSANT CERCLE (DONUT CHART)
 // ============================================
 
-function AttendanceDonut({ stats }: { stats: AttendanceStats }) {
+function AttendanceDonut({ 
+  stats,
+  labels,
+  centerLabel,
+}: { 
+  stats: AttendanceStats
+  labels: {
+    present: string
+    absent: string
+    late: string
+    excused: string
+  }
+  centerLabel: string
+}) {
   const total = stats.total || 1 // Éviter division par 0
   
   // Calculer les pourcentages
@@ -201,10 +224,10 @@ function AttendanceDonut({ stats }: { stats: AttendanceStats }) {
   let offset = 0
   
   const segments = [
-    { percent: presentPercent, color: '#22c55e', label: 'Présent' },  // vert
-    { percent: absentPercent, color: '#ef4444', label: 'Absent' },    // rouge
-    { percent: latePercent, color: '#f97316', label: 'Retard' },      // orange
-    { percent: excusedPercent, color: '#3b82f6', label: 'Excusé' },   // bleu
+    { percent: presentPercent, color: '#22c55e', label: labels.present },  // vert
+    { percent: absentPercent, color: '#ef4444', label: labels.absent },    // rouge
+    { percent: latePercent, color: '#f97316', label: labels.late },      // orange
+    { percent: excusedPercent, color: '#3b82f6', label: labels.excused },   // bleu
   ].filter(s => s.percent > 0)
 
   // Si tout est présent, cercle entièrement vert
@@ -271,7 +294,7 @@ function AttendanceDonut({ stats }: { stats: AttendanceStats }) {
           )}>
             {stats.rate}%
           </span>
-          <p className="text-xs text-gray-500">présence</p>
+          <p className="text-xs text-gray-500">{centerLabel}</p>
         </div>
       </div>
     </div>
@@ -301,8 +324,9 @@ function LegendItem({
 }
 
 function AbsenceItem({ item }: { item: AttendanceHistoryItem }) {
+  const { t, locale } = useI18n()
   const date = new Date(item.session_date)
-  const formattedDate = date.toLocaleDateString('fr-FR', {
+  const formattedDate = date.toLocaleDateString(locale === "fr" ? "fr-FR" : "en-US", {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
@@ -317,19 +341,19 @@ function AbsenceItem({ item }: { item: AttendanceHistoryItem }) {
       bg: 'bg-red-50', 
       border: 'border-red-200', 
       text: 'text-red-700',
-      label: 'Absent'
+      label: t("student.attendance.status.absent")
     },
     late: { 
       bg: 'bg-orange-50', 
       border: 'border-orange-200', 
       text: 'text-orange-700',
-      label: 'Retard'
+      label: t("student.attendance.status.late")
     },
     excused: { 
       bg: 'bg-blue-50', 
       border: 'border-blue-200', 
       text: 'text-blue-700',
-      label: 'Excusé'
+      label: t("student.attendance.status.excused")
     },
   }
 
@@ -364,7 +388,7 @@ function AbsenceItem({ item }: { item: AttendanceHistoryItem }) {
         {/* Minutes de retard */}
         {item.status === 'late' && item.late_minutes && (
           <span className="text-xs text-orange-600 font-medium">
-            +{item.late_minutes}min
+            {t("student.attendance.status.lateMinutes", { minutes: item.late_minutes })}
           </span>
         )}
         

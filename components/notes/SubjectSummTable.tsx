@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { BookOpen } from "lucide-react"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 type SubjectNotes = {
   subjectId: string
@@ -19,6 +20,7 @@ interface SubjectSummTableProps {
 }
 
 export function SubjectSummTable({ subjects }: SubjectSummTableProps) {
+  const { t } = useI18n()
   const getGradeColor = (grade: number): string => {
     if (grade >= 15) return "text-green-600 font-bold"
     if (grade >= 10) return "text-blue-600 font-semibold"
@@ -36,7 +38,7 @@ export function SubjectSummTable({ subjects }: SubjectSummTableProps) {
       <Card>
         <CardContent className="py-12 text-center">
           <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-          <p className="text-muted-foreground">Aucune matière disponible</p>
+          <p className="text-muted-foreground">{t("notes.table.empty")}</p>
         </CardContent>
       </Card>
     )
@@ -47,7 +49,7 @@ export function SubjectSummTable({ subjects }: SubjectSummTableProps) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <BookOpen className="h-5 w-5" />
-          Synthèse par matière
+          {t("notes.table.title")}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -56,25 +58,25 @@ export function SubjectSummTable({ subjects }: SubjectSummTableProps) {
             <thead>
               <tr className="border-b-2 border-slate-200">
                 <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">
-                  Matière
+                  {t("notes.table.headers.subject")}
                 </th>
                 <th className="text-center py-3 px-3 text-sm font-semibold text-slate-700">
-                  Coef. total
+                  {t("notes.table.headers.coefficient")}
                 </th>
                 <th className="text-center py-3 px-3 text-sm font-semibold text-slate-700">
-                  Moy. élève
+                  {t("notes.table.headers.studentAverage")}
                 </th>
                 <th className="text-center py-3 px-3 text-sm font-semibold text-slate-700">
-                  Moy. classe
+                  {t("notes.table.headers.classAverage")}
                 </th>
                 <th className="text-center py-3 px-3 text-sm font-semibold text-slate-700">
-                  Min
+                  {t("notes.table.headers.min")}
                 </th>
                 <th className="text-center py-3 px-3 text-sm font-semibold text-slate-700">
-                  Max
+                  {t("notes.table.headers.max")}
                 </th>
                 <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">
-                  Appréciation
+                  {t("notes.table.headers.appreciation")}
                 </th>
               </tr>
             </thead>
@@ -86,13 +88,16 @@ export function SubjectSummTable({ subjects }: SubjectSummTableProps) {
                     index % 2 === 0 ? "bg-white" : "bg-slate-50/50"
                   }`}
                 >
-                  {/* Matière */}
+                  {/* Subject */}
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-2">
                       <div className="h-2 w-2 rounded-full bg-primary" />
                       <span className="font-medium text-slate-900">{subject.subjectName}</span>
                       <Badge variant="outline" className="text-xs">
-                        {subject.evaluations.length} note{subject.evaluations.length > 1 ? "s" : ""}
+                        {t("notes.table.evaluations", {
+                          count: subject.evaluations.length,
+                          plural: subject.evaluations.length > 1 ? "s" : "",
+                        })}
                       </Badge>
                     </div>
                   </td>
@@ -102,7 +107,7 @@ export function SubjectSummTable({ subjects }: SubjectSummTableProps) {
                     <Badge variant="secondary">{subject.subjectCoeffTotal}</Badge>
                   </td>
 
-                  {/* Moyenne élève */}
+                  {/* Student average */}
                   <td className="text-center py-3 px-3">
                     {subject.subjectAvgStudent > 0 ? (
                       <div
@@ -120,7 +125,7 @@ export function SubjectSummTable({ subjects }: SubjectSummTableProps) {
                     )}
                   </td>
 
-                  {/* Moyenne classe */}
+                  {/* Class average */}
                   <td className="text-center py-3 px-3">
                     {subject.subjectAvgClass !== undefined ? (
                       <span className="text-sm text-slate-600">
@@ -153,14 +158,14 @@ export function SubjectSummTable({ subjects }: SubjectSummTableProps) {
                     )}
                   </td>
 
-                  {/* Appréciation */}
+                  {/* Appreciation */}
                   <td className="py-3 px-4">
                     {subject.appreciation ? (
                       <p className="text-sm text-slate-600 italic truncate max-w-xs">
                         {subject.appreciation}
                       </p>
                     ) : (
-                      <span className="text-xs text-muted-foreground">Aucune</span>
+                      <span className="text-xs text-muted-foreground">{t("notes.table.none")}</span>
                     )}
                   </td>
                 </tr>
@@ -171,7 +176,7 @@ export function SubjectSummTable({ subjects }: SubjectSummTableProps) {
 
         {/* Mobile responsive note */}
         <p className="text-xs text-muted-foreground mt-4 text-center">
-          Sur mobile, faites défiler horizontalement pour voir toutes les colonnes
+          {t("notes.table.mobileHint")}
         </p>
       </CardContent>
     </Card>

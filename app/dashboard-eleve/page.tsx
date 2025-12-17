@@ -41,6 +41,7 @@ import {
   formatDuration,
   formatTime
 } from "@/lib/api/dashboard"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 // =========================
 // HELPERS
@@ -77,11 +78,14 @@ function transformCourseToTodayCourse(course: TimetableCourse): TodayCourse {
   }
 }
 
-function transformAssignmentToHomework(assignment: Assignment): UpcomingHomework {
+function transformAssignmentToHomework(
+  assignment: Assignment,
+  fallbackSubject: string
+): UpcomingHomework {
   return {
     id: assignment.id,
     title: assignment.title,
-    subject_name: assignment.subject_name || 'Inconnu',
+    subject_name: assignment.subject_name || fallbackSubject,
     subject_color: assignment.subject_color || '#666',
     class_label: assignment.class_label,
     due_at: assignment.due_at,
@@ -96,6 +100,7 @@ function transformAssignmentToHomework(assignment: Assignment): UpcomingHomework
 
 export default function StudentDashboardPage() {
   const router = useRouter()
+  const { t, locale } = useI18n()
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -119,6 +124,7 @@ export default function StudentDashboardPage() {
 
   // Charger les données
   const loadData = useCallback(async (showLoader = true) => {
+    const localeDateFormat = locale === "fr" ? "fr-FR" : "en-US"
     try {
       if (showLoader) setLoading(true)
       else setRefreshing(true)
@@ -191,9 +197,10 @@ export default function StudentDashboardPage() {
         if (homeworkRes.success && homeworkRes.data) {
           const now = new Date()
           overdueCount = homeworkRes.data.filter(a => new Date(a.due_at) < now).length
+          const unknownSubject = t("student.assignments.unknownSubject")
           homeworkData = homeworkRes.data
             .filter(a => new Date(a.due_at) >= now)
-            .map(transformAssignmentToHomework)
+            .map((assignment) => transformAssignmentToHomework(assignment, unknownSubject))
             .sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
         }
       } catch (e) {
@@ -231,7 +238,9 @@ export default function StudentDashboardPage() {
             id: `homework-${assignment.id}`,
             type: 'devoir',
             title: assignment.title,
-            description: `À rendre pour le ${new Date(assignment.due_at).toLocaleDateString('fr-FR')}`,
+            description: t("student.dashboard.feed.homeworkDue", {
+              date: new Date(assignment.due_at).toLocaleDateString(localeDateFormat),
+            }),
             date: assignment.due_at,
             link: `/eleve/devoirs`,
             metadata: {
@@ -284,12 +293,12 @@ export default function StudentDashboardPage() {
 
     } catch (err: any) {
       console.error('Erreur chargement dashboard:', err)
-      setError(err.message || 'Erreur lors du chargement')
+      setError(err.message || t("student.dashboard.errors.generic"))
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [router])
+  }, [locale, router, t])
 
   useEffect(() => {
     loadData()
@@ -310,7 +319,7 @@ export default function StudentDashboardPage() {
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="text-center">
             <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-            <p className="text-muted-foreground">Chargement de votre espace...</p>
+            <p className="text-muted-foreground">{t("student.dashboard.loading")}</p>
           </div>
         </div>
       </DashboardLayout>
@@ -326,7 +335,7 @@ export default function StudentDashboardPage() {
             <p className="text-red-600 mb-4">{error}</p>
             <Button onClick={() => loadData()}>
               <RefreshCw className="h-4 w-4 mr-2" />
-              Réessayer
+              {t("common.actions.retry")}
             </Button>
           </div>
         </div>
@@ -335,16 +344,23 @@ export default function StudentDashboardPage() {
   }
 
   const user = getUserSession()
-  const greeting = getGreeting()
+  const greeting = getGreeting(t)
+  const dateFormatterLocale = locale === "fr" ? "fr-FR" : "en-US"
   const alertReasons = []
   if (overdueHomeworkCount > 0) {
     alertReasons.push(
-      `${overdueHomeworkCount} devoir${overdueHomeworkCount > 1 ? 's' : ''} en retard`
+      t("student.dashboard.alerts.overdueHomework", {
+        count: overdueHomeworkCount,
+        plural: overdueHomeworkCount > 1 ? "s" : "",
+      })
     )
   }
   if (kpis.absencesCount > 0) {
     alertReasons.push(
-      `${kpis.absencesCount} absence${kpis.absencesCount > 1 ? 's' : ''} à justifier`
+      t("student.dashboard.alerts.absences", {
+        count: kpis.absencesCount,
+        plural: kpis.absencesCount > 1 ? "s" : "",
+      })
     )
   }
   const showAlertBanner = alertReasons.length > 0
@@ -355,10 +371,10 @@ export default function StudentDashboardPage() {
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold">
-              {greeting}, {user?.full_name?.split(' ')[0] || 'Élève'} 👋
+              {greeting}, {user?.full_name?.split(' ')[0] || t("student.dashboard.greetingFallback")} 👋
             </h1>
             <p className="mt-1 text-muted-foreground">
-              {new Date().toLocaleDateString('fr-FR', { 
+              {new Date().toLocaleDateString(dateFormatterLocale, { 
                 weekday: 'long', 
                 day: 'numeric', 
                 month: 'long', 
@@ -375,7 +391,7 @@ export default function StudentDashboardPage() {
               className="w-full sm:w-auto"
             >
               <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-              Actualiser
+              {t("common.actions.refresh")}
             </Button>
           </div>
         </div>
@@ -383,43 +399,55 @@ export default function StudentDashboardPage() {
         {showAlertBanner && (
           <Alert variant="destructive" className="md:max-w-xl">
             <AlertCircle className="h-5 w-5" />
-            <AlertTitle>À traiter rapidement</AlertTitle>
+            <AlertTitle>{t("student.dashboard.alerts.title")}</AlertTitle>
             <AlertDescription>{alertReasons.join(" • ")}</AlertDescription>
           </Alert>
         )}
 
         <div className="hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-4">
           <KpiCard
-            title="Cours aujourd'hui"
+            title={t("student.dashboard.kpis.courses.title")}
             value={kpis.coursesToday}
-            subtitle={kpis.totalDuration > 0 ? formatDuration(kpis.totalDuration) : 'Aucun cours'}
+            subtitle={kpis.totalDuration > 0 ? formatDuration(kpis.totalDuration) : t("student.dashboard.kpis.courses.empty")}
             icon={BookOpen}
             iconColor="text-blue-600"
             iconBgColor="bg-blue-100 dark:bg-blue-900/30"
             onClick={() => router.push('/eleve/emplois-du-temps')}
           />
           <KpiCard
-            title="Travail à faire"
+            title={t("student.dashboard.kpis.homework.title")}
             value={kpis.homeworkCount}
-            subtitle={kpis.homeworkCount > 0 ? 'devoirs en attente' : 'Tout est à jour !'}
+            subtitle={
+              kpis.homeworkCount > 0
+                ? t("student.dashboard.kpis.homework.pending")
+                : t("student.dashboard.kpis.homework.empty")
+            }
             icon={FileText}
             iconColor="text-amber-600"
             iconBgColor="bg-amber-100 dark:bg-amber-900/30"
             onClick={() => router.push('/eleve/devoirs')}
           />
           <KpiCard
-            title="Messages"
+            title={t("student.dashboard.kpis.messages.title")}
             value={kpis.unreadMessages}
-            subtitle={kpis.unreadMessages > 0 ? 'non lus' : 'Tout est lu'}
+            subtitle={
+              kpis.unreadMessages > 0
+                ? t("student.dashboard.kpis.messages.unread")
+                : t("student.dashboard.kpis.messages.empty")
+            }
             icon={Mail}
             iconColor="text-violet-600"
             iconBgColor="bg-violet-100 dark:bg-violet-900/30"
             onClick={() => router.push('/eleve/messages')}
           />
           <KpiCard
-            title="Absences"
+            title={t("student.dashboard.kpis.attendance.title")}
             value={kpis.absencesCount}
-            subtitle={kpis.absencesCount > 0 ? 'non justifiées' : 'Aucune absence'}
+            subtitle={
+              kpis.absencesCount > 0
+                ? t("student.dashboard.kpis.attendance.pending")
+                : t("student.dashboard.kpis.attendance.empty")
+            }
             icon={AlertCircle}
             iconColor={kpis.absencesCount > 0 ? "text-red-600" : "text-emerald-600"}
             iconBgColor={kpis.absencesCount > 0 ? "bg-red-100 dark:bg-red-900/30" : "bg-emerald-100 dark:bg-emerald-900/30"}
@@ -429,8 +457,8 @@ export default function StudentDashboardPage() {
 
         <TodayCourses
           courses={todayCourses}
-          title="Aujourd'hui"
-          emptyMessage="Pas de cours aujourd'hui 🎉"
+          title={t("student.dashboard.todayCourses.title")}
+          emptyMessage={t("student.dashboard.todayCourses.empty")}
           role="student"
         />
 
@@ -439,8 +467,8 @@ export default function StudentDashboardPage() {
             <div className="hidden md:block">
               <FeedTimeline
                 events={feedEvents}
-                title="Actualités récentes"
-                emptyMessage="Aucune actualité récente"
+                title={t("student.dashboard.feed.title")}
+                emptyMessage={t("student.dashboard.feed.empty")}
                 maxItems={8}
                 showViewAll={feedEvents.length > 8}
               />
@@ -452,7 +480,7 @@ export default function StudentDashboardPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-base font-semibold">
                   <FileText className="h-4 w-4 text-muted-foreground" />
-                  Devoirs à rendre
+                  {t("student.dashboard.homeworkCard.title")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -468,7 +496,7 @@ export default function StudentDashboardPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-base font-semibold">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
-                  Dernières notes
+                  {t("student.dashboard.gradesCard.title")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -484,19 +512,19 @@ export default function StudentDashboardPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-base font-semibold">
                   <Clock className="h-4 w-4 text-muted-foreground" />
-                  Prochaines séances
+                  {t("student.dashboard.upcomingSessions.title")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="py-4 text-center text-sm text-muted-foreground">
                   <Calendar className="mx-auto mb-2 h-6 w-6 opacity-50" />
-                  <p>Consultez votre emploi du temps</p>
+                  <p>{t("student.dashboard.upcomingSessions.description")}</p>
                   <Button 
                     variant="link" 
                     size="sm"
                     onClick={() => router.push('/eleve/emplois-du-temps')}
                   >
-                    Voir l'emploi du temps →
+                    {t("student.dashboard.upcomingSessions.cta")}
                   </Button>
                 </div>
               </CardContent>
@@ -512,9 +540,11 @@ export default function StudentDashboardPage() {
 // HELPER - Salutation
 // =========================
 
-function getGreeting(): string {
+type TranslateFn = (key: string, params?: Record<string, string | number>) => string
+
+function getGreeting(t: TranslateFn): string {
   const hour = new Date().getHours()
-  if (hour < 12) return 'Bonjour'
-  if (hour < 18) return 'Bon après-midi'
-  return 'Bonsoir'
+  if (hour < 12) return t("student.dashboard.greetings.morning")
+  if (hour < 18) return t("student.dashboard.greetings.afternoon")
+  return t("student.dashboard.greetings.evening")
 }

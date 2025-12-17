@@ -8,12 +8,13 @@ import { timetableApi, type TimetableCourse } from "@/lib/api/timetable"
 import { parentApi } from "@/lib/api/parent"
 import { Calendar, ChevronLeft, ChevronRight, Download, AlertCircle } from "lucide-react"
 import { addDays, format } from "date-fns"
-import { fr } from "date-fns/locale"
+import { fr, enUS } from "date-fns/locale"
 import { useParentChild } from "@/components/parent/ParentChildContext"
 import { useEstablishmentSettings } from "@/hooks/useEstablishmentSettings"
 import { PageLoader } from "@/components/ui/page-loader"
+import { useI18n } from "@/components/providers/i18n-provider"
 
-const DAYS = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"]
+const DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday"] as const
 const HOURS = Array.from({ length: 11 }, (_, i) => 8 + i)
 const WEEK_DAY_INDICES = [1, 2, 3, 4, 5]
 
@@ -52,6 +53,12 @@ export default function ParentEmploiDuTempsPage() {
   const { selectedChild } = useParentChild()
   const { settings } = useEstablishmentSettings()
   const child = selectedChild ?? null
+  const { t, locale } = useI18n()
+  const localeObj = locale === "fr" ? fr : enUS
+  const dayLabels = useMemo(
+    () => DAY_KEYS.map((key) => t(`parent.timetable.days.${key}`)),
+    [t]
+  )
 
   const [courses, setCourses] = useState<TimetableCourse[]>([])
   const [loading, setLoading] = useState(true)
@@ -94,7 +101,7 @@ export default function ParentEmploiDuTempsPage() {
         } else {
           setClassId(child.class_id ?? null)
           setClassLabel(child.class_name ?? child.class_id ?? "")
-          setClassError("Impossible de charger la classe de l'enfant.")
+          setClassError(t("parent.timetable.errors.class"))
         }
       } catch (err: any) {
         if (err.name === "AbortError") return
@@ -102,7 +109,7 @@ export default function ParentEmploiDuTempsPage() {
           console.error("Erreur chargement classe enfant (parent):", err)
           setClassId(child.class_id ?? null)
           setClassLabel(child.class_name ?? child.class_id ?? "")
-          setClassError("Impossible de charger la classe de l'enfant.")
+          setClassError(t("parent.timetable.errors.class"))
         }
       } finally {
         if (isMounted) {
@@ -147,7 +154,7 @@ export default function ParentEmploiDuTempsPage() {
         if (err.name === "AbortError") return
         console.error("Erreur chargement emploi du temps parent:", err)
         if (isMounted) {
-          setError("Impossible de charger l'emploi du temps")
+          setError(t("parent.timetable.errors.load"))
         }
       } finally {
         if (isMounted) {
@@ -167,7 +174,7 @@ export default function ParentEmploiDuTempsPage() {
   const getCoursesForDay = (dayOfWeek: number) => courses.filter((c) => c.day_of_week === dayOfWeek)
 
   const formatDayLabel = (date: Date) => {
-    const label = format(date, "EEEE d MMMM yyyy", { locale: fr })
+    const label = format(date, "EEEE d MMMM yyyy", { locale: localeObj })
     return label.charAt(0).toUpperCase() + label.slice(1)
   }
 
@@ -205,27 +212,32 @@ export default function ParentEmploiDuTempsPage() {
   const goToCurrentWeek = () => setWeekOffset(0)
 
   if (!child) {
+    const contactInfo = settings?.contactEmail
+      ? t("parent.timetable.noChild.contactEmail", { email: settings.contactEmail })
+      : t("parent.timetable.noChild.contactDefault")
     return (
       <div className="space-y-4">
-        <h1 className="text-3xl font-bold">Emploi du temps</h1>
+        <h1 className="text-3xl font-bold">{t("parent.timetable.noChild.title")}</h1>
         <p className="text-muted-foreground">
-          Aucun enfant activé n’est associé à ce compte (les invitations peuvent être en attente).
-          {settings?.contactEmail ? ` Contactez ${settings.contactEmail} pour lier votre compte parent à un élève.` : ""}
+          {t("parent.timetable.noChild.description", { contact: contactInfo })}
         </p>
       </div>
     )
   }
 
   if (!classId) {
+    const contactInfo = settings?.contactEmail
+      ? t("parent.timetable.noClass.contactEmail", { email: settings.contactEmail })
+      : t("parent.timetable.noClass.contactDefault")
     return (
       <div className="space-y-4">
-        <h1 className="text-3xl font-bold">Emploi du temps de {child.full_name}</h1>
+        <h1 className="text-3xl font-bold">
+          {t("parent.timetable.noClass.title", { child: child.full_name })}
+        </h1>
         <p className="text-muted-foreground">
           {classLoading
-            ? "Chargement de la classe de votre enfant..."
-            : settings?.contactEmail
-              ? `Impossible de trouver la classe associée à cet enfant. Contactez ${settings.contactEmail}.`
-              : "Impossible de trouver la classe associée à cet enfant. Contactez l’établissement."}
+            ? t("parent.timetable.noClass.loading")
+            : contactInfo}
           {classError && <span className="block text-sm text-red-500 mt-2">{classError}</span>}
         </p>
       </div>
@@ -236,12 +248,16 @@ export default function ParentEmploiDuTempsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Emploi du temps de {child.full_name}</h1>
-          <p className="text-muted-foreground">{classLabel && `Classe : ${classLabel}`}</p>
+          <h1 className="text-3xl font-bold">
+            {t("parent.timetable.titleWithChild", { child: child.full_name })}
+          </h1>
+          <p className="text-muted-foreground">
+            {classLabel ? t("parent.timetable.classLabel", { className: classLabel }) : ""}
+          </p>
         </div>
         <Button variant="outline" disabled>
           <Download className="mr-2 h-4 w-4" />
-          Exporter PDF
+          {t("parent.timetable.actions.export")}
         </Button>
       </div>
 
@@ -250,14 +266,14 @@ export default function ParentEmploiDuTempsPage() {
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5" />
-              Semaine du {formatWeekRange(currentWeekStart)}
+              {t("parent.timetable.weekRange", { range: formatWeekRange(currentWeekStart) })}
             </CardTitle>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="icon" onClick={goToPreviousWeek}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <Button variant="outline" onClick={goToCurrentWeek} disabled={weekOffset === 0}>
-                Aujourd&apos;hui
+                {t("parent.timetable.actions.today")}
               </Button>
               <Button variant="outline" size="icon" onClick={goToNextWeek}>
                 <ChevronRight className="h-4 w-4" />
@@ -268,7 +284,7 @@ export default function ParentEmploiDuTempsPage() {
 
         <CardContent>
           {loading ? (
-            <PageLoader label="Chargement de l'emploi du temps..." className="border-none" />
+            <PageLoader label={t("parent.timetable.loader")} className="border-none" />
           ) : error ? (
             <div className="py-12 text-center">
               <AlertCircle className="mx-auto mb-4 h-12 w-12 text-red-500" />
@@ -283,7 +299,9 @@ export default function ParentEmploiDuTempsPage() {
                       <div className="bg-muted px-4 py-2 text-sm font-semibold">{day.label}</div>
                       <div className="mt-2 flex flex-col gap-3 px-4">
                         {day.sessions.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">Aucun cours ce jour-là.</p>
+                          <p className="text-sm text-muted-foreground">
+                            {t("parent.timetable.mobile.noCourses")}
+                          </p>
                         ) : (
                           day.sessions.map((session) => {
                             const displayRoom =
@@ -296,17 +314,27 @@ export default function ParentEmploiDuTempsPage() {
                                 <div className="text-sm font-semibold">
                                   {session.start_time} - {session.end_time} · {session.subject_name}
                                 </div>
-                                <div className="text-xs text-muted-foreground">{session.notes || "Cours"}</div>
-                                {session.teacher_name && <div className="text-xs">Avec {session.teacher_name}</div>}
+                                <div className="text-xs text-muted-foreground">
+                                  {session.notes || t("parent.timetable.mobile.sessionFallback")}
+                                </div>
+                                {session.teacher_name && (
+                                  <div className="text-xs text-muted-foreground">
+                                    {t("parent.timetable.mobile.withTeacher", { name: session.teacher_name })}
+                                  </div>
+                                )}
                                 {displayRoom && (
-                                  <div className="text-xs text-muted-foreground">Salle {displayRoom}</div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {t("parent.timetable.mobile.room", { room: displayRoom })}
+                                  </div>
                                 )}
                                 {session.status !== "normal" && (
                                   <Badge
                                     variant={session.status === "cancelled" ? "destructive" : "secondary"}
                                     className="px-1 py-0 text-[10px]"
                                   >
-                                    {session.status === "cancelled" ? "Annulé" : "Modifié"}
+                                    {session.status === "cancelled"
+                                      ? t("parent.timetable.badges.cancelled")
+                                      : t("parent.timetable.badges.modified")}
                                   </Badge>
                                 )}
                               </div>
@@ -322,8 +350,8 @@ export default function ParentEmploiDuTempsPage() {
               <div className="hidden md:block">
                 <div className="overflow-x-auto">
                   <div className="grid min-w-[800px] grid-cols-[80px_repeat(5,1fr)] gap-2">
-                    <div className="text-sm font-medium text-muted-foreground">Heures</div>
-                    {DAYS.map((day) => (
+                    <div className="text-sm font-medium text-muted-foreground">{t("parent.timetable.hoursLabel")}</div>
+                    {dayLabels.map((day) => (
                       <div key={day} className="text-center text-sm font-medium">
                         {day}
                       </div>
@@ -366,12 +394,12 @@ export default function ParentEmploiDuTempsPage() {
                                   </div>
                                   {course.status === "cancelled" && (
                                     <Badge variant="destructive" className="mt-1 px-1 py-0 text-[10px]">
-                                      🚫 ANNULÉ
+                                      🚫 {t("parent.timetable.badges.cancelled")}
                                     </Badge>
                                   )}
                                   {course.status === "modified" && (
                                     <Badge className="mt-1 bg-orange-500 px-1 py-0 text-[10px] text-white">
-                                      ⚠️ MODIFIÉ
+                                      ⚠️ {t("parent.timetable.badges.modified")}
                                     </Badge>
                                   )}
                                 </div>
@@ -387,20 +415,20 @@ export default function ParentEmploiDuTempsPage() {
 
               {courses.some((c) => c.status !== "normal") && (
                 <div className="mt-6 rounded-lg bg-gray-50 p-4">
-                  <h4 className="mb-2 text-sm font-semibold">Légende :</h4>
+                  <h4 className="mb-2 text-sm font-semibold">{t("parent.timetable.legend.title")}</h4>
                   <div className="space-y-2 text-sm">
                     {courses.some((c) => c.status === "cancelled") && (
                       <div className="flex items-center gap-2">
                         <Badge variant="destructive" className="text-xs">
-                          🚫 ANNULÉ
+                          🚫 {t("parent.timetable.badges.cancelled")}
                         </Badge>
-                        <span className="text-muted-foreground">Cours annulé</span>
+                        <span className="text-muted-foreground">{t("parent.timetable.legend.cancelled")}</span>
                       </div>
                     )}
                     {courses.some((c) => c.status === "modified") && (
                       <div className="flex items-center gap-2">
-                        <Badge className="bg-orange-500 text-xs text-white">⚠️ MODIFIÉ</Badge>
-                        <span className="text-muted-foreground">Cours modifié (salle ou horaire changé)</span>
+                        <Badge className="bg-orange-500 text-xs text-white">⚠️ {t("parent.timetable.badges.modified")}</Badge>
+                        <span className="text-muted-foreground">{t("parent.timetable.legend.modified")}</span>
                       </div>
                     )}
                   </div>
@@ -411,7 +439,7 @@ export default function ParentEmploiDuTempsPage() {
                 <div className="mt-6 rounded-lg border border-orange-200 bg-orange-50 p-4">
                   <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold">
                     <AlertCircle className="h-4 w-4 text-orange-600" />
-                    Cours modifiés cette semaine :
+                    {t("parent.timetable.modified.title")}
                   </h4>
                   <div className="space-y-2">
                     {courses
@@ -420,7 +448,7 @@ export default function ParentEmploiDuTempsPage() {
                         <div key={course.id} className="rounded border bg-white p-3 text-sm">
                           <div className="font-medium">{course.subject_name}</div>
                           <div className="mt-1 text-xs text-muted-foreground">
-                            {DAYS[course.day_of_week - 1]} • {course.start_time} - {course.end_time}
+                            {dayLabels[course.day_of_week - 1]} • {course.start_time} - {course.end_time}
                           </div>
                           {course.modifications && (
                             <div className="mt-2 space-y-1 text-xs">
@@ -458,7 +486,7 @@ export default function ParentEmploiDuTempsPage() {
                   <div className="text-2xl font-bold text-blue-600">
                     {courses.filter((c) => c.status !== "cancelled").length}
                   </div>
-                  <div className="text-sm text-muted-foreground">Cours cette semaine</div>
+                  <div className="text-sm text-muted-foreground">{t("parent.timetable.stats.courses")}</div>
                 </div>
                 <div className="rounded bg-green-50 p-4 text-center">
                   <div className="text-2xl font-bold text-green-600">
@@ -472,13 +500,13 @@ export default function ParentEmploiDuTempsPage() {
                       .toFixed(1)}
                     h
                   </div>
-                  <div className="text-sm text-muted-foreground">Heures totales</div>
+                  <div className="text-sm text-muted-foreground">{t("parent.timetable.stats.hours")}</div>
                 </div>
                 <div className="rounded bg-purple-50 p-4 text-center">
                   <div className="text-2xl font-bold text-purple-600">
                     {new Set(courses.map((c) => c.subject_name)).size}
                   </div>
-                  <div className="text-sm text-muted-foreground">Matières</div>
+                  <div className="text-sm text-muted-foreground">{t("parent.timetable.stats.subjects")}</div>
                 </div>
               </div>
             </>

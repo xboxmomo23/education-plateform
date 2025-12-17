@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { UpcomingLesson, TodayCourse, formatTime } from "@/lib/api/dashboard"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 // =========================
 // SÉANCES DU JOUR
@@ -29,25 +30,36 @@ interface TodayCoursesProps {
 
 export function TodayCourses({
   courses,
-  title = "Cours aujourd'hui",
-  emptyMessage = "Pas de cours aujourd'hui",
+  title,
+  emptyMessage,
   role,
   onAttendanceClick,
   onViewClick,
 }: TodayCoursesProps) {
+  const { t } = useI18n()
+  const resolvedTitle = title ?? (
+    role === 'teacher'
+      ? t("teacher.dashboard.sections.todayCourses.title")
+      : t("student.dashboard.todayCourses.title")
+  )
+  const resolvedEmpty = emptyMessage ?? (
+    role === 'teacher'
+      ? t("teacher.dashboard.sections.todayCourses.empty")
+      : t("student.dashboard.todayCourses.empty")
+  )
   return (
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base font-semibold flex items-center gap-2">
           <Calendar className="h-4 w-4 text-muted-foreground" />
-          {title}
+          {resolvedTitle}
         </CardTitle>
       </CardHeader>
       <CardContent>
         {courses.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">{emptyMessage}</p>
+            <p className="text-sm">{resolvedEmpty}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -80,6 +92,7 @@ function TodayCourseCard({
   onAttendanceClick,
   onViewClick 
 }: TodayCourseCardProps) {
+  const { t } = useI18n()
   const now = new Date()
   const [startH, startM] = course.start_time.split(':').map(Number)
   const [endH, endM] = course.end_time.split(':').map(Number)
@@ -136,7 +149,9 @@ function TodayCourseCard({
             
             {isOngoing && (
               <Badge className="bg-primary text-primary-foreground">
-                En cours
+                {role === 'teacher'
+                  ? t("teacher.dashboard.courseCard.ongoing")
+                  : t("student.dashboard.todayCourses.ongoing")}
               </Badge>
             )}
           </div>
@@ -166,10 +181,10 @@ function TodayCourseCard({
                   className="h-7 text-xs"
                 >
                   {course.attendance_status === 'completed' 
-                    ? 'Appel fait' 
+                    ? t("teacher.dashboard.courseCard.attendanceDone")
                     : course.attendance_status === 'partial'
-                      ? 'Continuer l\'appel'
-                      : 'Faire l\'appel'
+                      ? t("teacher.dashboard.courseCard.attendanceContinue")
+                      : t("teacher.dashboard.courseCard.attendanceDo")
                   }
                 </Button>
               )}
@@ -180,7 +195,7 @@ function TodayCourseCard({
                   onClick={() => onViewClick(course.id)}
                   className="h-7 text-xs"
                 >
-                  Voir les élèves
+                  {t("teacher.dashboard.courseCard.viewStudents")}
                 </Button>
               )}
             </div>

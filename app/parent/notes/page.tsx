@@ -17,6 +17,7 @@ import { useParentChild } from "@/components/parent/ParentChildContext"
 import { useEstablishmentSettings } from "@/hooks/useEstablishmentSettings"
 import { PageLoader } from "@/components/ui/page-loader"
 import { ListSkeleton } from "@/components/ui/list-skeleton"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 const getCurrentAcademicYear = (): number => {
   const now = new Date()
@@ -91,8 +92,12 @@ export default function ParentNotesPage() {
   const { fullName } = useAuth()
   const { selectedChild } = useParentChild()
   const { settings } = useEstablishmentSettings()
+  const { t, locale } = useI18n()
   const child = selectedChild ?? null
   const studentId = child?.id ?? null
+  const localeCode = locale === "fr" ? "fr-FR" : "en-US"
+  const childName = child?.full_name ?? t("parent.notes.childFallback")
+  const pageTitle = t("parent.notes.title", { child: childName })
 
   const [data, setData] = useState<StudentNotesResponse | null>(null)
   const [summaryData, setSummaryData] = useState<GradesSummary | null>(null)
@@ -164,7 +169,7 @@ export default function ParentNotesPage() {
       )
 
       if (!response.success || !response.data) {
-        setError(response.error || "Erreur lors du chargement des notes")
+        setError(response.error || t("parent.notes.errors.load"))
         return
       }
 
@@ -173,7 +178,7 @@ export default function ParentNotesPage() {
       setData(transformedData)
     } catch (err) {
       console.error("[API] Error loading parent student notes:", err)
-      setError("Erreur lors du chargement des notes")
+      setError(t("parent.notes.errors.generic"))
     } finally {
       setIsLoading(false)
     }
@@ -202,13 +207,13 @@ export default function ParentNotesPage() {
 
     const status = reportCardStatuses[termId]
     if (!status?.validated) {
-      alert("Ce bulletin n'est pas encore disponible. Il sera accessible après validation par l'équipe pédagogique.")
+      alert(t("parent.notes.alerts.notAvailable"))
       return
     }
 
     const token = localStorage.getItem("auth_token")
     if (!token) {
-      alert("Session expirée. Veuillez vous reconnecter.")
+      alert(t("parent.notes.alerts.sessionExpired"))
       return
     }
 
@@ -217,7 +222,7 @@ export default function ParentNotesPage() {
       await reportsApi.downloadReport(studentId, termId, token)
     } catch (err) {
       console.error("Error downloading report:", err)
-      alert("Erreur lors du téléchargement du bulletin")
+      alert(t("parent.notes.alerts.downloadError"))
     } finally {
       setDownloadingReport(null)
     }
@@ -227,27 +232,27 @@ export default function ParentNotesPage() {
     const status = reportCardStatuses[term.id]
 
     if (status?.validated) {
-      return { canDownload: true, reason: "Télécharger" }
+      return { canDownload: true, reason: t("parent.notes.bulletins.actions.download") }
     }
 
     const isPast = new Date(term.endDate) < new Date()
     if (!isPast) {
-      return { canDownload: false, reason: "À venir" }
+      return { canDownload: false, reason: t("parent.notes.bulletins.actions.upcoming") }
     }
 
-    return { canDownload: false, reason: "En attente" }
+    return { canDownload: false, reason: t("parent.notes.bulletins.actions.pending") }
   }
 
   if (!studentId) {
+    const contactInfo = settings?.contactEmail
+      ? t("parent.notes.noChild.contactEmail", { email: settings.contactEmail })
+      : t("parent.notes.noChild.contactDefault")
     return (
       <div className="space-y-6">
         <div className="border-b pb-6">
-          <h1 className="text-4xl font-bold text-slate-900">Notes</h1>
+          <h1 className="text-4xl font-bold text-slate-900">{t("parent.notes.noChild.title")}</h1>
           <p className="text-muted-foreground mt-2 text-lg">
-            Aucun enfant activé n’est associé à ce compte (les invitations peuvent être en attente).
-            {settings?.contactEmail
-              ? ` Contactez ${settings.contactEmail} pour lier votre compte parent à un élève.`
-              : " Contactez l’établissement pour lier votre compte parent à un élève."}
+            {t("parent.notes.noChild.description", { contact: contactInfo })}
           </p>
         </div>
       </div>
@@ -257,7 +262,7 @@ export default function ParentNotesPage() {
   if (isLoading || isLoadingTerms) {
     return (
       <div className="space-y-6">
-        <PageLoader label={`Chargement des notes de ${child?.full_name ?? "votre enfant"}...`} />
+        <PageLoader label={t("parent.notes.loading", { name: childName })} />
         <ListSkeleton rows={5} />
       </div>
     )
@@ -271,11 +276,11 @@ export default function ParentNotesPage() {
             <div className="flex flex-col items-center space-y-4 text-center">
               <AlertCircle className="h-12 w-12 text-red-600" />
               <div>
-                <h3 className="text-lg font-semibold text-slate-900">Erreur de chargement</h3>
+                <h3 className="text-lg font-semibold text-slate-900">{t("parent.notes.error.title")}</h3>
                 <p className="mt-2 text-sm text-muted-foreground">{error}</p>
               </div>
               <Button onClick={loadNotes} className="w-full">
-                Réessayer
+                {t("common.actions.retry")}
               </Button>
             </div>
           </CardContent>
@@ -290,9 +295,9 @@ export default function ParentNotesPage() {
         <div className="border-b pb-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
-              <h1 className="text-4xl font-bold text-slate-900">Notes de {child?.full_name ?? "votre enfant"}</h1>
+              <h1 className="text-4xl font-bold text-slate-900">{pageTitle}</h1>
               <p className="mt-2 text-lg text-muted-foreground">
-                Consultez ses résultats, moyennes et appréciations.
+                {t("parent.notes.description")}
               </p>
             </div>
             <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center md:w-auto md:justify-end">
@@ -313,13 +318,15 @@ export default function ParentNotesPage() {
             <div className="space-y-4 text-center">
               <BookOpen className="mx-auto h-16 w-16 text-muted-foreground" />
               <div>
-                <h3 className="text-lg font-semibold text-slate-900">Aucune note disponible</h3>
+                <h3 className="text-lg font-semibold text-slate-900">{t("parent.notes.empty.title")}</h3>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  {selectedTermId ? "Aucune note pour cette période." : "Les notes apparaîtront ici dès qu'elles seront saisies."}
+                  {selectedTermId
+                    ? t("parent.notes.empty.filtered")
+                    : t("parent.notes.empty.description")}
                 </p>
               </div>
               <Button onClick={loadNotes} variant="outline">
-                Actualiser
+                {t("common.actions.refresh")}
               </Button>
             </div>
           </CardContent>
@@ -335,9 +342,9 @@ export default function ParentNotesPage() {
       <div className="border-b pb-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-            <h1 className="text-4xl font-bold text-slate-900">Notes de {child?.full_name ?? "votre enfant"}</h1>
+            <h1 className="text-4xl font-bold text-slate-900">{pageTitle}</h1>
             <p className="mt-2 text-lg text-muted-foreground">
-              Consultez ses résultats, moyennes et appréciations.
+              {t("parent.notes.description")}
             </p>
           </div>
           <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center md:w-auto md:justify-end">
@@ -356,9 +363,11 @@ export default function ParentNotesPage() {
           <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Calendar className="h-4 w-4 text-muted-foreground" />
             <span>
-              Période : <strong>{summaryData.term.name}</strong>{" "}
-              ({new Date(summaryData.term.startDate).toLocaleDateString("fr-FR")} -{" "}
-              {new Date(summaryData.term.endDate).toLocaleDateString("fr-FR")})
+              {t("parent.notes.periodRange", {
+                term: summaryData.term.name,
+                start: new Date(summaryData.term.startDate).toLocaleDateString(localeCode),
+                end: new Date(summaryData.term.endDate).toLocaleDateString(localeCode),
+              })}
             </span>
           </div>
         )}
@@ -366,7 +375,7 @@ export default function ParentNotesPage() {
           <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Calendar className="h-4 w-4 text-muted-foreground" />
             <span>
-              Période : <strong>Année complète</strong>
+              {t("parent.notes.periodFullYear")}
             </span>
           </div>
         )}
@@ -383,7 +392,9 @@ export default function ParentNotesPage() {
           <SubjectSummTable subjects={data.subjects} />
 
           <div>
-            <h2 className="mb-4 text-2xl font-bold text-slate-900">Notes détaillées</h2>
+            <h2 className="mb-4 text-2xl font-bold text-slate-900">
+              {t("parent.notes.sections.details")}
+            </h2>
             <SubjectNotesAccordion subjects={data.subjects} />
           </div>
         </div>
@@ -395,13 +406,15 @@ export default function ParentNotesPage() {
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-sm font-medium">
                 <FileText className="h-4 w-4" />
-                Bulletins
+                {t("parent.notes.bulletins.title")}
               </CardTitle>
-              <CardDescription>Téléchargez les bulletins validés</CardDescription>
+              <CardDescription>{t("parent.notes.bulletins.description")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {terms.length === 0 ? (
-                <p className="py-4 text-center text-sm text-muted-foreground">Aucune période configurée</p>
+                <p className="py-4 text-center text-sm text-muted-foreground">
+                  {t("parent.notes.bulletins.empty")}
+                </p>
               ) : (
                 terms.map((term) => {
                   const { canDownload, reason } = canDownloadReport(term)
@@ -418,15 +431,21 @@ export default function ParentNotesPage() {
                       <div className="space-y-1">
                         <p className="text-sm font-medium">{term.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {new Date(term.startDate).toLocaleDateString("fr-FR")} -{" "}
-                          {new Date(term.endDate).toLocaleDateString("fr-FR")}
+                          {new Date(term.startDate).toLocaleDateString(localeCode)} -{" "}
+                          {new Date(term.endDate).toLocaleDateString(localeCode)}
                         </p>
                         {status?.validated ? (
-                          <p className="mt-1 text-xs text-emerald-600">Bulletin validé</p>
+                          <p className="mt-1 text-xs text-emerald-600">
+                            {t("parent.notes.bulletins.status.validated")}
+                          </p>
                         ) : new Date(term.endDate) >= new Date() ? (
-                          <p className="mt-1 text-xs text-muted-foreground">À venir</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {t("parent.notes.bulletins.status.upcoming")}
+                          </p>
                         ) : (
-                          <p className="mt-1 text-xs text-orange-600">En cours de préparation</p>
+                          <p className="mt-1 text-xs text-orange-600">
+                            {t("parent.notes.bulletins.status.preparing")}
+                          </p>
                         )}
                       </div>
                       <Button
@@ -462,10 +481,12 @@ interface PeriodSelectorProps {
 }
 
 function PeriodSelector({ terms, selectedTermId, onSelect }: PeriodSelectorProps) {
+  const { t, locale } = useI18n()
   const [isOpen, setIsOpen] = useState(false)
+  const localeCode = locale === "fr" ? "fr-FR" : "en-US"
 
   const selectedTerm = terms.find((t) => t.id === selectedTermId)
-  const label = selectedTerm ? selectedTerm.name : "Année complète"
+  const label = selectedTerm ? selectedTerm.name : t("parent.notes.periodSelector.fullYear")
 
   return (
     <div className="relative w-full sm:w-auto">
@@ -497,7 +518,7 @@ function PeriodSelector({ terms, selectedTermId, onSelect }: PeriodSelectorProps
               >
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
-                  Année complète
+                  {t("parent.notes.periodSelector.fullYear")}
                 </div>
               </button>
 
@@ -518,13 +539,13 @@ function PeriodSelector({ terms, selectedTermId, onSelect }: PeriodSelectorProps
                     <span>{term.name}</span>
                     {term.isCurrent && (
                       <Badge variant="secondary" className="text-xs">
-                        En cours
+                        {t("parent.notes.periodSelector.current")}
                       </Badge>
                     )}
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {new Date(term.startDate).toLocaleDateString("fr-FR")} -{" "}
-                    {new Date(term.endDate).toLocaleDateString("fr-FR")}
+                    {new Date(term.startDate).toLocaleDateString(localeCode)} -{" "}
+                    {new Date(term.endDate).toLocaleDateString(localeCode)}
                   </p>
                 </button>
               ))}

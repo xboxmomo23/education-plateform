@@ -30,12 +30,14 @@ import {
 } from "@/lib/api/assignments"
 import { useParentChild } from "@/components/parent/ParentChildContext"
 import { useEstablishmentSettings } from "@/hooks/useEstablishmentSettings"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 type FilterPeriod = "all" | "week" | "month"
 
 export default function ParentAssignmentsPage() {
   const { selectedChild } = useParentChild()
   const { settings } = useEstablishmentSettings()
+  const { t, locale } = useI18n()
   const child = selectedChild ?? null
   const studentId = child?.id
 
@@ -61,11 +63,11 @@ export default function ParentAssignmentsPage() {
       if (response.success) {
         setAssignments(response.data)
       } else {
-        setError("Erreur lors du chargement des devoirs")
+        setError(t("parent.assignments.errors.load"))
       }
     } catch (err: any) {
       console.error("Erreur chargement devoirs parent:", err)
-      setError(err.message || "Erreur lors du chargement")
+      setError(err.message || t("parent.assignments.errors.generic"))
     } finally {
       setLoading(false)
     }
@@ -109,20 +111,23 @@ export default function ParentAssignmentsPage() {
   )
 
   const classLabel =
-    assignments[0]?.class_label || child?.class_name || child?.student_number || "Classe de l'élève"
+    assignments[0]?.class_label ||
+    child?.class_name ||
+    child?.student_number ||
+    t("parent.assignments.classFallback")
 
   if (!child || !studentId) {
+    const contactInfo = settings?.contactEmail
+      ? t("parent.assignments.noChild.contactEmail", { email: settings.contactEmail })
+      : t("parent.assignments.noChild.contactDefault")
     return (
       <div className="container mx-auto max-w-4xl p-6">
         <h1 className="mb-2 text-2xl font-bold flex items-center gap-2">
           <BookOpen className="h-6 w-6" />
-          Devoirs
+          {t("parent.assignments.title")}
         </h1>
         <p className="text-muted-foreground">
-          Aucun enfant activé n’est associé à ce compte (les invitations peuvent être en attente).
-          {settings?.contactEmail
-            ? ` Contactez ${settings.contactEmail} pour lier votre compte parent à un élève.`
-            : " Contactez l’établissement pour lier votre compte parent à un élève."}
+          {t("parent.assignments.noChild.description", { contact: contactInfo })}
         </p>
       </div>
     )
@@ -133,9 +138,14 @@ export default function ParentAssignmentsPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <BookOpen className="h-6 w-6" />
-          Devoirs de {child.full_name}
+          {t("parent.assignments.childTitle", { child: child.full_name })}
         </h1>
-        <p className="text-muted-foreground mt-1">{classLabel} — Année scolaire 2024-2025</p>
+        <p className="text-muted-foreground mt-1">
+          {t("parent.assignments.headerSubtitle", {
+            className: classLabel,
+            year: settings?.schoolYear ?? t("parent.assignments.yearFallback"),
+          })}
+        </p>
       </div>
 
       <Card className="mb-6">
@@ -143,26 +153,26 @@ export default function ParentAssignmentsPage() {
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-gray-500" />
-              <span className="text-sm font-medium">Filtrer :</span>
+              <span className="text-sm font-medium">{t("parent.assignments.filters.label")}</span>
             </div>
 
             <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as FilterPeriod)}>
               <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Période" />
+                <SelectValue placeholder={t("parent.assignments.filters.period")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Tous les devoirs</SelectItem>
-                <SelectItem value="week">Cette semaine</SelectItem>
-                <SelectItem value="month">Ce mois</SelectItem>
+                <SelectItem value="all">{t("parent.assignments.filters.periods.all")}</SelectItem>
+                <SelectItem value="week">{t("parent.assignments.filters.periods.week")}</SelectItem>
+                <SelectItem value="month">{t("parent.assignments.filters.periods.month")}</SelectItem>
               </SelectContent>
             </Select>
 
             <Select value={subjectFilter} onValueChange={setSubjectFilter}>
               <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Matière" />
+                <SelectValue placeholder={t("parent.assignments.filters.subject")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Toutes les matières</SelectItem>
+                <SelectItem value="all">{t("parent.assignments.filters.allSubjects")}</SelectItem>
                 {subjects.map((subject) => (
                   <SelectItem key={subject.name} value={subject.name}>
                     <div className="flex items-center gap-2">
@@ -178,7 +188,10 @@ export default function ParentAssignmentsPage() {
             </Select>
 
             <div className="ml-auto text-sm text-muted-foreground">
-              {filteredAssignments.length} devoir{filteredAssignments.length > 1 ? "s" : ""}
+              {t("parent.assignments.filters.count", {
+                count: filteredAssignments.length,
+                plural: filteredAssignments.length > 1 ? "s" : "",
+              })}
             </div>
           </div>
         </CardContent>
@@ -191,17 +204,17 @@ export default function ParentAssignmentsPage() {
           <AlertCircle className="mx-auto mb-4 h-12 w-12 text-red-500" />
           <p className="text-red-600">{error}</p>
           <Button variant="outline" onClick={() => loadAssignments(studentId!)} className="mt-4">
-            Réessayer
+            {t("common.actions.retry")}
           </Button>
         </div>
       ) : filteredAssignments.length === 0 ? (
         <EmptyState
           icon={CheckCircle2}
-          title="Aucun devoir à afficher"
+          title={t("parent.assignments.states.empty")}
           description={
             periodFilter !== "all" || subjectFilter !== "all"
-              ? "Essayez de modifier les filtres pour voir plus de devoirs."
-              : "Votre enfant est à jour !"
+              ? t("parent.assignments.states.adjustFilters")
+              : t("parent.assignments.states.allGood")
           }
           action={
             periodFilter !== "all" || subjectFilter !== "all" ? (
@@ -209,7 +222,7 @@ export default function ParentAssignmentsPage() {
                 setPeriodFilter("all")
                 setSubjectFilter("all")
               }}>
-                Réinitialiser les filtres
+                {t("common.actions.resetFilters")}
               </Button>
             ) : undefined
           }
@@ -218,7 +231,7 @@ export default function ParentAssignmentsPage() {
         <div className="space-y-8">
           {overdueAssignments.length > 0 && (
             <AssignmentSection
-              title="En retard"
+              title={t("parent.assignments.sections.overdue")}
               icon={<AlertCircle className="h-5 w-5 text-red-600" />}
               assignments={overdueAssignments}
               variant="overdue"
@@ -227,7 +240,7 @@ export default function ParentAssignmentsPage() {
 
           {todayAssignments.length > 0 && (
             <AssignmentSection
-              title="Aujourd'hui"
+              title={t("parent.assignments.sections.today")}
               icon={<Clock className="h-5 w-5 text-orange-600" />}
               assignments={todayAssignments}
               variant="today"
@@ -236,7 +249,7 @@ export default function ParentAssignmentsPage() {
 
           {upcomingAssignments.length > 0 && (
             <AssignmentSection
-              title="À venir"
+              title={t("parent.assignments.sections.upcoming")}
               icon={<CalendarDays className="h-5 w-5 text-blue-600" />}
               assignments={upcomingAssignments}
               variant="upcoming"
@@ -290,6 +303,7 @@ interface StudentAssignmentCardProps {
 }
 
 function StudentAssignmentCard({ assignment, borderColor }: StudentAssignmentCardProps) {
+  const { t, locale } = useI18n()
   const [expanded, setExpanded] = useState(false)
   const isOverdue = isAssignmentOverdue(assignment)
 
@@ -311,7 +325,7 @@ function StudentAssignmentCard({ assignment, borderColor }: StudentAssignmentCar
               {assignment.max_points && (
                 <Badge variant="outline" className="flex-shrink-0">
                   <Award className="mr-1 h-3 w-3" />
-                  {assignment.max_points} pts
+                  {t("parent.assignments.card.points", { value: assignment.max_points })}
                 </Badge>
               )}
             </div>
@@ -323,8 +337,10 @@ function StudentAssignmentCard({ assignment, borderColor }: StudentAssignmentCar
             >
               <Calendar className="h-4 w-4" />
               <span>
-                {isOverdue ? "Était à rendre le " : "À rendre pour le "}
-                {formatDueDateShort(assignment.due_at)}
+                {isOverdue
+                  ? t("parent.assignments.card.wasDue")
+                  : t("parent.assignments.card.dueBy")}
+                {formatDueDateShort(assignment.due_at, locale)}
               </span>
             </div>
 
@@ -338,7 +354,9 @@ function StudentAssignmentCard({ assignment, borderColor }: StudentAssignmentCar
                     onClick={() => setExpanded(!expanded)}
                     className="mt-1 text-sm text-blue-600 hover:underline"
                   >
-                    {expanded ? "Voir moins" : "Voir plus"}
+                    {expanded
+                      ? t("parent.assignments.card.showLess")
+                      : t("parent.assignments.card.showMore")}
                   </button>
                 )}
               </div>
@@ -352,7 +370,7 @@ function StudentAssignmentCard({ assignment, borderColor }: StudentAssignmentCar
                 className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-sm text-blue-600 hover:underline"
               >
                 <ExternalLink className="h-4 w-4" />
-                Ouvrir la ressource
+                {t("parent.assignments.card.openResource")}
               </a>
             )}
           </div>

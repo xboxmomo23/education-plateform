@@ -317,6 +317,8 @@ export const dashboardApi = {
 /**
  * Formater la durée en heures et minutes
  */
+type SupportedLocale = "fr" | "en"
+
 export function formatDuration(minutes: number): string {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
@@ -340,34 +342,35 @@ export function formatTime(time: string): string {
 /**
  * Formater une date relative
  */
-export function formatRelativeDate(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
+export function formatRelativeDate(
+  dateString: string,
+  locale: SupportedLocale = "fr"
+): string {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffMs = date.getTime() - now.getTime()
+  const absDiffMs = Math.abs(diffMs)
+  const rtf = new Intl.RelativeTimeFormat(locale === "fr" ? "fr-FR" : "en-US", {
+    numeric: "auto",
+  })
 
-  if (diffMins < 1) {
-    return 'À l\'instant';
+  if (absDiffMs < 60000) {
+    return rtf.format(0, "minute")
   }
-  if (diffMins < 60) {
-    return `Il y a ${diffMins} min`;
+  if (absDiffMs < 3600000) {
+    return rtf.format(Math.round(diffMs / 60000), "minute")
   }
-  if (diffHours < 24) {
-    return `Il y a ${diffHours}h`;
+  if (absDiffMs < 86400000) {
+    return rtf.format(Math.round(diffMs / 3600000), "hour")
   }
-  if (diffDays === 1) {
-    return 'Hier';
+  if (absDiffMs < 604800000) {
+    return rtf.format(Math.round(diffMs / 86400000), "day")
   }
-  if (diffDays < 7) {
-    return `Il y a ${diffDays} jours`;
-  }
-  
-  return date.toLocaleDateString('fr-FR', {
-    day: 'numeric',
-    month: 'short',
-  });
+
+  return date.toLocaleDateString(locale === "fr" ? "fr-FR" : "en-US", {
+    day: "numeric",
+    month: "short",
+  })
 }
 
 /**
@@ -385,24 +388,42 @@ export function formatFullDate(dateString: string): string {
 /**
  * Formater une date courte pour les devoirs
  */
-export function formatDueDate(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+export function formatDueDate(
+  dateString: string,
+  locale: SupportedLocale = "fr"
+): string {
+  const date = new Date(dateString)
+  const now = new Date()
+  const tomorrow = new Date(now)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+
+  const labels = {
+    fr: {
+      today: "Aujourd'hui",
+      tomorrow: "Demain",
+      locale: "fr-FR",
+    },
+    en: {
+      today: "Today",
+      tomorrow: "Tomorrow",
+      locale: "en-US",
+    },
+  } as const
+
+  const config = labels[locale] ?? labels.fr
 
   if (date.toDateString() === now.toDateString()) {
-    return 'Aujourd\'hui';
+    return config.today
   }
   if (date.toDateString() === tomorrow.toDateString()) {
-    return 'Demain';
+    return config.tomorrow
   }
 
-  return date.toLocaleDateString('fr-FR', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-  });
+  return date.toLocaleDateString(config.locale, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  })
 }
 
 /**
