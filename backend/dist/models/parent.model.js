@@ -100,9 +100,10 @@ async function assertParentCanAccessStudent(parentId, studentId, options = {}) {
 }
 const FALLBACK_PARENT_PHONE = '+0000000000'; // DB constraint: parent_profiles.phone NOT NULL
 async function upsertParentProfile(params) {
-    const { parentId, phone, address, relationType, isPrimaryContact, canViewGrades, canViewAttendance, contactEmail, } = params;
+    const { parentId, phone, address, relationType, isPrimaryContact, canViewGrades, canViewAttendance, contactEmail, client, } = params;
     const safePhone = typeof phone === 'string' && phone.trim().length > 0 ? phone.trim() : FALLBACK_PARENT_PHONE;
-    await database_1.pool.query(`
+    const db = client ?? database_1.pool;
+    await db.query(`
       INSERT INTO parent_profiles (
         user_id,
         phone,
@@ -136,8 +137,9 @@ async function upsertParentProfile(params) {
     ]);
 }
 async function upsertStudentParentRelation(params) {
-    const { studentId, parentId, relationType, isPrimary, receiveNotifications } = params;
-    await database_1.pool.query(`
+    const { studentId, parentId, relationType, isPrimary, receiveNotifications, client } = params;
+    const db = client ?? database_1.pool;
+    await db.query(`
       INSERT INTO student_parents (
         student_id,
         parent_id,
@@ -159,8 +161,9 @@ async function upsertStudentParentRelation(params) {
         receiveNotifications ?? true,
     ]);
 }
-async function findParentUserByEmail(email, establishmentId) {
-    const userResult = await database_1.pool.query(`
+async function findParentUserByEmail(email, establishmentId, client) {
+    const db = client ?? database_1.pool;
+    const userResult = await db.query(`
       SELECT *
       FROM users
       WHERE email = $1
@@ -183,7 +186,7 @@ async function findParentUserByEmail(email, establishmentId) {
     return user;
 }
 async function syncParentsForStudent(params) {
-    const { studentId, establishmentId, parents } = params;
+    const { studentId, establishmentId, parents, client } = params;
     if (!parents || parents.length === 0) {
         return [];
     }
@@ -199,7 +202,7 @@ async function syncParentsForStudent(params) {
         let user = null;
         let isNewUser = false;
         if (email) {
-            user = await findParentUserByEmail(email, establishmentId);
+            user = await findParentUserByEmail(email, establishmentId, client);
         }
         if (!user) {
             const normalizedFirstName = firstName || '';
@@ -222,7 +225,7 @@ async function syncParentsForStudent(params) {
                 full_name: fullName,
                 establishmentId,
                 mustChangePassword: true,
-            });
+            }, client);
             isNewUser = true;
             email = user.email;
         }
@@ -245,6 +248,7 @@ async function syncParentsForStudent(params) {
             canViewGrades,
             canViewAttendance,
             contactEmail: parentPayload.contact_email || null,
+            client,
         });
         await upsertStudentParentRelation({
             studentId,
@@ -252,6 +256,7 @@ async function syncParentsForStudent(params) {
             relationType,
             isPrimary,
             receiveNotifications,
+            client,
         });
         seenParentIds.add(user.id);
         results.push({
@@ -265,7 +270,7 @@ async function syncParentsForStudent(params) {
     return results;
 }
 async function linkExistingParentToStudent(params) {
-    const { studentId, parentId, relationType = 'guardian', isPrimary = true, receiveNotifications = true, canViewGrades = true, canViewAttendance = true, contactEmail = null, } = params;
+    const { studentId, parentId, relationType = 'guardian', isPrimary = true, receiveNotifications = true, canViewGrades = true, canViewAttendance = true, contactEmail = null, client, } = params;
     await upsertParentProfile({
         parentId,
         relationType,
@@ -273,6 +278,7 @@ async function linkExistingParentToStudent(params) {
         canViewGrades,
         canViewAttendance,
         contactEmail: contactEmail || null,
+        client,
     });
     await upsertStudentParentRelation({
         studentId,
@@ -280,6 +286,7 @@ async function linkExistingParentToStudent(params) {
         relationType,
         isPrimary,
         receiveNotifications,
+        client,
     });
 }
 async function recomputeParentActiveStatus(parentId) {

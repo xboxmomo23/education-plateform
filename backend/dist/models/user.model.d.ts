@@ -1,3 +1,4 @@
+import { PoolClient } from 'pg';
 import { User, UserRole, StudentProfile, TeacherProfile, StaffProfile, ParentProfile } from '../types';
 export interface UserFilters {
     id?: string;
@@ -15,7 +16,7 @@ export interface CreateUserData {
     establishmentId?: string;
     mustChangePassword?: boolean;
 }
-export declare function createUser(userData: CreateUserData): Promise<User>;
+export declare function createUser(userData: CreateUserData, client?: PoolClient): Promise<User>;
 export declare function createStudentProfile(userId: string, profileData: Partial<StudentProfile>): Promise<StudentProfile>;
 export declare function createTeacherProfile(userId: string, profileData: Partial<TeacherProfile>): Promise<TeacherProfile>;
 export declare function createStaffProfile(userId: string, profileData: Partial<StaffProfile>): Promise<StaffProfile>;

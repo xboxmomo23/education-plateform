@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const auth_middleware_1 = require("../middleware/auth.middleware");
 const admin_controller_1 = require("../controllers/admin.controller");
+const studentImport_controller_1 = require("../controllers/studentImport.controller");
 const express_validator_1 = require("express-validator");
 const validation_middleware_1 = require("../middleware/validation.middleware");
 const router = (0, express_1.Router)();
@@ -116,6 +117,30 @@ router.post("/students", [
         .isBoolean()
         .withMessage("receive_notifications doit être un booléen"),
 ], validation_middleware_1.validateRequest, admin_controller_1.createStudentForAdminHandler);
+router.post("/students/import/preview", [
+    (0, express_validator_1.body)("csvData")
+        .isString()
+        .notEmpty()
+        .withMessage("Le contenu CSV est obligatoire"),
+    (0, express_validator_1.body)("defaultClassId")
+        .optional({ nullable: true, checkFalsy: true })
+        .isUUID()
+        .withMessage("defaultClassId doit être un UUID"),
+], validation_middleware_1.validateRequest, studentImport_controller_1.previewStudentImportHandler);
+router.post("/students/import/commit", [
+    (0, express_validator_1.body)("csvData")
+        .isString()
+        .notEmpty()
+        .withMessage("Le contenu CSV est obligatoire"),
+    (0, express_validator_1.body)("defaultClassId")
+        .optional({ nullable: true, checkFalsy: true })
+        .isUUID()
+        .withMessage("defaultClassId doit être un UUID"),
+    (0, express_validator_1.body)("sendInvites")
+        .optional()
+        .isBoolean()
+        .withMessage("sendInvites doit être un booléen"),
+], validation_middleware_1.validateRequest, studentImport_controller_1.commitStudentImportHandler);
 router.patch("/students/:userId/status", [
     (0, express_validator_1.body)("active")
         .isBoolean()
@@ -184,10 +209,11 @@ router.post("/students/:userId/resend-invite", admin_controller_1.resendStudentI
 router.post("/students/:userId/resend-parent-invite", admin_controller_1.resendParentInviteHandler);
 router.get("/parents", [
     (0, express_validator_1.query)("search").optional().isString().withMessage("search doit être une chaîne"),
+    (0, express_validator_1.query)("q").optional().isString().withMessage("q doit être une chaîne"),
     (0, express_validator_1.query)("limit")
         .optional()
-        .isInt({ min: 1, max: 50 })
-        .withMessage("limit doit être un entier entre 1 et 50"),
+        .isInt({ min: 1, max: 200 })
+        .withMessage("limit doit être un entier entre 1 et 200"),
 ], validation_middleware_1.validateRequest, admin_controller_1.searchParentsForAdminHandler);
 router.delete("/student-class-changes/:changeId", admin_controller_1.deleteStudentClassChangeHandler);
 router.post("/student-class-changes/apply", [

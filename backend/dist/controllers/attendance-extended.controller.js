@@ -5,12 +5,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getMyHistoryHandler = getMyHistoryHandler;
 exports.getAllAbsencesHandler = getAllAbsencesHandler;
+exports.getTeacherRecentAbsencesHandler = getTeacherRecentAbsencesHandler;
 exports.getAccessibleClassesHandler = getAccessibleClassesHandler;
 exports.justifyAbsenceHandler = justifyAbsenceHandler;
 exports.getClassAttendanceStatsHandler = getClassAttendanceStatsHandler;
 exports.updateRecordStatusHandler = updateRecordStatusHandler;
 const attendance_model_1 = require("../models/attendance.model");
 const database_1 = __importDefault(require("../config/database"));
+const audit_service_1 = require("../services/audit.service");
 // ============================================
 // HANDLERS SUPPLÉMENTAIRES - ABSENCES
 // ============================================
@@ -198,6 +200,43 @@ async function getAllAbsencesHandler(req, res) {
     }
 }
 /**
+ * GET /api/attendance/teacher/recent
+ * Récupérer les absences/retards récents pour un professeur
+ */
+async function getTeacherRecentAbsencesHandler(req, res) {
+    try {
+        const { userId, role } = req.user;
+        if (role !== 'teacher') {
+            return res.status(403).json({
+                success: false,
+                error: 'Accès réservé aux professeurs',
+            });
+        }
+        const { date, limit, days } = req.query;
+        const targetDate = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)
+            ? date
+            : new Date().toISOString().slice(0, 10);
+        const limitNum = limit ? Math.min(Math.max(parseInt(limit, 10) || 5, 1), 20) : 8;
+        const daysNum = days ? Math.min(Math.max(parseInt(days, 10) || 7, 1), 14) : 7;
+        const data = await attendance_model_1.AttendanceModel.getRecentTeacherAbsences(userId, {
+            date: targetDate,
+            days: daysNum,
+            limit: limitNum,
+        });
+        return res.json({
+            success: true,
+            data,
+        });
+    }
+    catch (error) {
+        console.error('Erreur getTeacherRecentAbsencesHandler:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Erreur lors de la récupération des absences',
+        });
+    }
+}
+/**
  * GET /api/attendance/classes
  * Récupérer les classes accessibles à l'utilisateur (pour les filtres)
  */
@@ -317,6 +356,12 @@ async function justifyAbsenceHandler(req, res) {
                 error: 'Absence non trouvée',
             });
         }
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            action: 'ATTENDANCE_JUSTIFIED',
+            entityType: 'attendance_record',
+            entityId: recordId,
+        });
         return res.json({
             success: true,
             message: 'Absence justifiée',
@@ -406,6 +451,14 @@ async function updateRecordStatusHandler(req, res) {
             });
         }
         console.log(`✅ Statut modifié: ${recordId} → ${status}`);
+        const action = status === 'present' ? 'ATTENDANCE_REMOVED' : 'ATTENDANCE_STATUS_CHANGED';
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            action,
+            entityType: 'attendance_record',
+            entityId: recordId,
+            metadata: { newStatus: status },
+        });
         return res.json({
             success: true,
             message: 'Statut modifié',

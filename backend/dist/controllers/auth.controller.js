@@ -20,6 +20,7 @@ const parent_model_1 = require("../models/parent.model");
 const session_model_1 = require("../models/session.model");
 const email_service_1 = require("../services/email.service");
 const auth_utils_1 = require("../utils/auth.utils");
+const audit_service_1 = require("../services/audit.service");
 // Configuration
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_DURATION_MINUTES = 30;
@@ -55,6 +56,15 @@ async function login(req, res) {
         // Vérifier si le compte est bloqué
         const locked = await (0, user_model_1.isAccountLocked)(user.id);
         if (locked) {
+            await (0, audit_service_1.logAuditEvent)({
+                req,
+                establishmentId: user.establishment_id || undefined,
+                actorUserId: user.id,
+                actorRole: user.role,
+                actorName: user.full_name,
+                action: 'AUTH_LOGIN_FAILED',
+                metadata: { reason: 'account_locked', email },
+            });
             res.status(403).json({
                 success: false,
                 error: `Compte temporairement bloqué suite à trop de tentatives échouées. Réessayez dans ${LOCK_DURATION_MINUTES} minutes.`,
@@ -74,6 +84,15 @@ async function login(req, res) {
                     success: false,
                     error: `Trop de tentatives échouées. Compte bloqué pour ${LOCK_DURATION_MINUTES} minutes.`,
                 });
+                await (0, audit_service_1.logAuditEvent)({
+                    req,
+                    establishmentId: user.establishment_id || undefined,
+                    actorUserId: user.id,
+                    actorRole: user.role,
+                    actorName: user.full_name,
+                    action: 'AUTH_LOGIN_FAILED',
+                    metadata: { reason: 'too_many_attempts', email },
+                });
                 return;
             }
             res.status(401).json({
@@ -81,10 +100,28 @@ async function login(req, res) {
                 error: 'Email ou mot de passe incorrect',
                 remaining_attempts: MAX_FAILED_ATTEMPTS - failedAttempts,
             });
+            await (0, audit_service_1.logAuditEvent)({
+                req,
+                establishmentId: user.establishment_id || undefined,
+                actorUserId: user.id,
+                actorRole: user.role,
+                actorName: user.full_name,
+                action: 'AUTH_LOGIN_FAILED',
+                metadata: { reason: 'invalid_password', email },
+            });
             return;
         }
         // Vérifier si le compte est actif
         if (!user.active) {
+            await (0, audit_service_1.logAuditEvent)({
+                req,
+                establishmentId: user.establishment_id || undefined,
+                actorUserId: user.id,
+                actorRole: user.role,
+                actorName: user.full_name,
+                action: 'AUTH_LOGIN_FAILED',
+                metadata: { reason: 'inactive_account', email },
+            });
             res.status(403).json({
                 success: false,
                 error: 'Compte désactivé. Contactez l\'administrateur.',
@@ -141,6 +178,14 @@ async function login(req, res) {
         if (parentChildren) {
             response.children = parentChildren;
         }
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            establishmentId: user.establishment_id || undefined,
+            actorUserId: user.id,
+            actorRole: user.role,
+            actorName: user.full_name,
+            action: 'AUTH_LOGIN_SUCCESS',
+        });
         res.status(200).json(response);
     }
     catch (error) {
@@ -293,10 +338,20 @@ async function requestPasswordReset(req, res) {
                 resetUrl,
                 establishmentName: establishmentSettings.displayName,
                 userName: user.full_name,
+                locale: establishmentSettings.defaultLocale,
             }).catch((err) => {
                 console.error('[MAIL] Erreur envoi email reset:', err);
             });
         }
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            establishmentId: user.establishment_id || undefined,
+            actorUserId: user.id,
+            actorRole: user.role,
+            actorName: user.full_name,
+            action: 'AUTH_RESET_REQUESTED',
+            metadata: { email: normalizedEmail },
+        });
         res.status(200).json(genericResponse);
     }
     catch (error) {
@@ -354,6 +409,14 @@ async function resetPassword(req, res) {
         SET used_at = NOW()
         WHERE id = $1
       `, [resetEntry.id]);
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            establishmentId: user.establishment_id || undefined,
+            actorUserId: user.id,
+            actorRole: user.role,
+            actorName: user.full_name,
+            action: 'AUTH_RESET_COMPLETED',
+        });
         res.status(200).json({
             success: true,
             message: 'Mot de passe réinitialisé avec succès',
@@ -464,6 +527,14 @@ async function acceptInvite(req, res) {
         if (parentChildren && parentChildren.length > 0) {
             responseBody.children = parentChildren;
         }
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            establishmentId: user.establishment_id || undefined,
+            actorUserId: user.id,
+            actorRole: user.role,
+            actorName: user.full_name,
+            action: 'AUTH_INVITE_ACCEPTED',
+        });
         res.status(200).json(responseBody);
     }
     catch (error) {
@@ -761,6 +832,19 @@ async function sendInvite(req, res) {
             return;
         }
         const invite = await createInviteTokenForUser(user);
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            establishmentId: user.establishment_id || undefined,
+            actorUserId: user.id,
+            actorRole: user.role,
+            actorName: user.full_name,
+            action: 'AUTH_INVITE_SENT',
+            metadata: {
+                roleTarget: user.role,
+                loginEmail: user.email,
+                toEmail: user.email,
+            },
+        });
         res.status(200).json({
             success: true,
             token: invite.token,

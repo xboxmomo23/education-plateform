@@ -203,15 +203,32 @@ async function updateEstablishmentSettingsHandler(req, res) {
             res.status(403).json({ success: false, error: 'Aucun établissement associé à ce compte' });
             return;
         }
-        const { display_name, contact_email, school_year } = req.body || {};
+        const { display_name, contact_email, school_year, default_locale } = req.body || {};
         if (typeof display_name === 'undefined' &&
             typeof contact_email === 'undefined' &&
-            typeof school_year === 'undefined') {
+            typeof school_year === 'undefined' &&
+            typeof default_locale === 'undefined') {
             res.status(400).json({
                 success: false,
                 error: 'Aucun champ à mettre à jour',
             });
             return;
+        }
+        let normalizedLocale;
+        if (default_locale !== undefined) {
+            if (default_locale === null) {
+                normalizedLocale = null;
+            }
+            else if (typeof default_locale === 'string' && ['fr', 'en'].includes(default_locale)) {
+                normalizedLocale = default_locale;
+            }
+            else {
+                res.status(400).json({
+                    success: false,
+                    error: 'default_locale doit être \"fr\" ou \"en\"',
+                });
+                return;
+            }
         }
         const payload = {
             displayName: typeof display_name === 'string' ? display_name.trim() || null : display_name === null ? null : undefined,
@@ -221,14 +238,21 @@ async function updateEstablishmentSettingsHandler(req, res) {
                     ? null
                     : undefined,
             schoolYear: typeof school_year === 'string' ? school_year.trim() || null : school_year === null ? null : undefined,
+            defaultLocale: normalizedLocale,
         };
         const filteredPayload = {};
-        ['displayName', 'contactEmail', 'schoolYear'].forEach((key) => {
-            const value = payload[key];
-            if (value !== undefined) {
-                filteredPayload[key] = value;
-            }
-        });
+        if (payload.displayName !== undefined) {
+            filteredPayload.displayName = payload.displayName;
+        }
+        if (payload.contactEmail !== undefined) {
+            filteredPayload.contactEmail = payload.contactEmail;
+        }
+        if (payload.schoolYear !== undefined) {
+            filteredPayload.schoolYear = payload.schoolYear;
+        }
+        if (payload.defaultLocale !== undefined) {
+            filteredPayload.defaultLocale = payload.defaultLocale;
+        }
         if (Object.keys(filteredPayload).length === 0) {
             res.status(400).json({
                 success: false,

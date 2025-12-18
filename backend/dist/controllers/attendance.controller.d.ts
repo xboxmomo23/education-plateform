@@ -10,6 +10,11 @@ export declare function getTeacherWeekHandler(req: Request, res: Response): Prom
  */
 export declare function getSessionHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 /**
+ * GET /api/attendance/sessions/status
+ * Récupérer l'état des présences pour plusieurs séances
+ */
+export declare function getSessionsStatusListHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+/**
  * POST /api/attendance/session/:sessionId/close
  * Fermer une session de présence
  */

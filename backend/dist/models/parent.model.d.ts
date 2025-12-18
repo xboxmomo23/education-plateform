@@ -1,3 +1,4 @@
+import { PoolClient } from 'pg';
 import { ParentChildSummary, ParentForStudentInput } from '../types';
 export interface ParentAccessOptions {
     requireCanViewGrades?: boolean;
@@ -20,6 +21,7 @@ export declare function syncParentsForStudent(params: {
     studentId: string;
     establishmentId: string;
     parents: ParentForStudentInput[];
+    client?: PoolClient;
 }): Promise<SyncParentsResult[]>;
 export declare function linkExistingParentToStudent(params: {
     studentId: string;
@@ -30,6 +32,7 @@ export declare function linkExistingParentToStudent(params: {
     canViewGrades?: boolean;
     canViewAttendance?: boolean;
     contactEmail?: string | null;
+    client?: PoolClient;
 }): Promise<void>;
 export declare function recomputeParentActiveStatus(parentId: string): Promise<{
     activeChildren: number;

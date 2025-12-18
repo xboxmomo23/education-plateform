@@ -134,6 +134,45 @@ exports.AttendanceModel = {
         return result.rows[0] || null;
     },
     /**
+     * Récupérer les absences/retards récents d'un professeur
+     */
+    async getRecentTeacherAbsences(teacherId, options) {
+        const { date, days, limit } = options;
+        const query = `
+      SELECT 
+        ar.id,
+        ar.student_id,
+        u.full_name AS student_name,
+        sp.student_no AS student_number,
+        ases.class_id,
+        cl.label AS class_label,
+        s.name AS subject_name,
+        s.color AS subject_color,
+        ases.session_date,
+        ases.start_time,
+        ases.end_time,
+        ar.status,
+        ar.late_minutes,
+        COALESCE(ar.justified, false) AS justified,
+        ar.justification
+      FROM attendance_records ar
+      JOIN attendance_sessions ases ON ar.session_id = ases.id
+      JOIN users u ON ar.student_id = u.id
+      LEFT JOIN student_profiles sp ON sp.user_id = u.id
+      JOIN classes cl ON ases.class_id = cl.id
+      JOIN courses c ON ases.course_id = c.id
+      JOIN subjects s ON c.subject_id = s.id
+      WHERE c.teacher_id = $1
+        AND ar.status IN ('absent', 'late')
+        AND ases.session_date >= $2::date - ($3::int - 1) * INTERVAL '1 day'
+        AND ases.session_date <= $2::date
+      ORDER BY ases.session_date DESC, ases.start_time DESC
+      LIMIT $4
+    `;
+        const result = await database_1.default.query(query, [teacherId, date, days, limit]);
+        return result.rows;
+    },
+    /**
      * Fermer une session
      */
     async closeSession(sessionId, userId) {
@@ -300,6 +339,38 @@ exports.AttendanceModel = {
             params.push(options.limit);
         }
         const result = await database_1.default.query(query, params);
+        return result.rows;
+    },
+    /**
+     * Obtenir l'état des sessions pour une série d'instances
+     */
+    async getSessionsStatusByInstanceIds(teacherId, instanceIds) {
+        if (!instanceIds.length) {
+            return [];
+        }
+        const query = `
+      SELECT 
+        ti.id AS instance_id,
+        ases.id AS session_id,
+        ases.status AS session_status,
+        CASE
+          WHEN ases.id IS NULL THEN false
+          WHEN ases.status IN ('closed', 'validated') THEN true
+          WHEN EXISTS (
+            SELECT 1
+            FROM attendance_records ar
+            WHERE ar.session_id = ases.id
+              AND ar.status IS NOT NULL
+          ) THEN true
+          ELSE false
+        END AS has_attendance
+      FROM timetable_instances ti
+      JOIN courses c ON ti.course_id = c.id
+      LEFT JOIN attendance_sessions ases ON ases.instance_id = ti.id
+      WHERE c.teacher_id = $1
+        AND ti.id = ANY($2::uuid[])
+    `;
+        const result = await database_1.default.query(query, [teacherId, instanceIds]);
         return result.rows;
     },
     /**

@@ -29,13 +29,21 @@ const parent_messages_routes_1 = __importDefault(require("./routes/parent-messag
 const parent_attendance_routes_1 = __importDefault(require("./routes/parent-attendance.routes"));
 const parent_dashboard_routes_1 = __importDefault(require("./routes/parent-dashboard.routes"));
 const staff_routes_1 = __importDefault(require("./routes/staff.routes"));
+const staff_absences_routes_1 = __importDefault(require("./routes/staff-absences.routes"));
+const dashboard_staff_routes_1 = __importDefault(require("./routes/dashboard-staff.routes"));
+const dashboard_admin_routes_1 = __importDefault(require("./routes/dashboard-admin.routes"));
+const teacher_routes_1 = __importDefault(require("./routes/teacher.routes"));
+const audit_routes_1 = __importDefault(require("./routes/audit.routes"));
 const demo_middleware_1 = require("./middleware/demo.middleware");
+const request_id_middleware_1 = require("./middleware/request-id.middleware");
+const dev_routes_1 = __importDefault(require("./routes/dev.routes"));
 // Charger les variables d'environnement
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 // =========================
 // Middlewares Globaux
 // =========================
+app.use(request_id_middleware_1.requestIdMiddleware);
 // Sécurité HTTP headers
 app.use(security_middleware_1.helmetConfig);
 // CORS - Configuration
@@ -95,6 +103,12 @@ app.use('/api/parent', parent_messages_routes_1.default);
 app.use('/api/parent', parent_attendance_routes_1.default);
 app.use('/api/parent', parent_dashboard_routes_1.default);
 app.use('/api/staff', staff_routes_1.default);
+app.use('/api/dashboard/staff', dashboard_staff_routes_1.default);
+app.use('/api/dashboard/admin', dashboard_admin_routes_1.default);
+app.use('/api/staff/absences', staff_absences_routes_1.default);
+app.use('/api/teacher', teacher_routes_1.default);
+app.use('/api/admin/audit', audit_routes_1.default);
+app.use('/dev', dev_routes_1.default);
 // Route classes
 app.get('/api/classes', auth_middleware_1.authenticate, class_controller_1.getAllClasses);
 // Route 404

@@ -12,6 +12,11 @@ export declare function getMyHistoryHandler(req: Request, res: Response): Promis
  */
 export declare function getAllAbsencesHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 /**
+ * GET /api/attendance/teacher/recent
+ * Récupérer les absences/retards récents pour un professeur
+ */
+export declare function getTeacherRecentAbsencesHandler(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+/**
  * GET /api/attendance/classes
  * Récupérer les classes accessibles à l'utilisateur (pour les filtres)
  */

@@ -100,6 +100,14 @@ export declare const AttendanceModel: {
      */
     getSessionByInstanceId(instanceId: string): Promise<AttendanceSessionWithDetails | null>;
     /**
+     * Récupérer les absences/retards récents d'un professeur
+     */
+    getRecentTeacherAbsences(teacherId: string, options: {
+        date: string;
+        days: number;
+        limit: number;
+    }): Promise<any[]>;
+    /**
      * Fermer une session
      */
     closeSession(sessionId: string, userId: string): Promise<AttendanceSession>;
@@ -138,6 +146,15 @@ export declare const AttendanceModel: {
         class_label: string;
         start_time: string;
         end_time: string;
+    }>>;
+    /**
+     * Obtenir l'état des sessions pour une série d'instances
+     */
+    getSessionsStatusByInstanceIds(teacherId: string, instanceIds: string[]): Promise<Array<{
+        instance_id: string;
+        session_id: string | null;
+        session_status: string | null;
+        has_attendance: boolean;
     }>>;
     /**
      * Récupérer les statistiques de présence d'un élève

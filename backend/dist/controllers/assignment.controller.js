@@ -14,6 +14,7 @@ exports.getAssignmentsForSpecificStudentHandler = getAssignmentsForSpecificStude
 const database_1 = __importDefault(require("../config/database"));
 const assignment_model_1 = require("../models/assignment.model");
 const parent_model_1 = require("../models/parent.model");
+const audit_service_1 = require("../services/audit.service");
 // ============================================
 // HANDLERS - ENSEIGNANTS (TEACHERS/STAFF)
 // ============================================
@@ -150,6 +151,14 @@ async function createAssignmentHandler(req, res) {
             establishment_id: establishmentId,
         });
         console.log('✅ Devoir créé:', assignment.id);
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            action: 'ASSIGNMENT_CREATED',
+            establishmentId,
+            entityType: 'assignment',
+            entityId: assignment.id,
+            metadata: { courseId: course_id, due_at },
+        });
         return res.status(201).json({
             success: true,
             message: 'Devoir créé avec succès',
@@ -236,6 +245,13 @@ async function updateAssignmentHandler(req, res) {
         // Mettre à jour le devoir
         const assignment = await assignment_model_1.AssignmentModel.updateByTeacher(assignmentId, userId, updateData);
         console.log('✅ Devoir mis à jour:', assignment.id);
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            action: 'ASSIGNMENT_UPDATED',
+            entityType: 'assignment',
+            entityId: assignment.id,
+            metadata: { assignmentId, fieldsUpdated: Object.keys(updateData) },
+        });
         return res.json({
             success: true,
             message: 'Devoir mis à jour avec succès',
@@ -288,6 +304,13 @@ async function deleteAssignmentHandler(req, res) {
         // Archiver plutôt que supprimer
         await assignment_model_1.AssignmentModel.updateByTeacher(assignmentId, userId, { status: 'archived' });
         console.log('✅ Devoir archivé:', assignmentId);
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            action: 'ASSIGNMENT_DELETED',
+            entityType: 'assignment',
+            entityId: assignmentId,
+            metadata: { classId: existingAssignment.class_id },
+        });
         return res.json({
             success: true,
             message: 'Devoir archivé avec succès',

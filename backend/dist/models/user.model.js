@@ -25,10 +25,11 @@ const auth_utils_1 = require("../utils/auth.utils");
 const query_builder_1 = require("../utils/query-builder");
 // ✅ CORRECTION : Supprimer createStaffProfile de l'import pour éviter le conflit
 const staff_model_1 = require("./staff.model");
-async function createUser(userData) {
+async function createUser(userData, client) {
     const { email, password, role, full_name, establishmentId, mustChangePassword } = userData;
     const password_hash = await (0, auth_utils_1.hashPassword)(password);
     const must_change_password = mustChangePassword ?? true;
+    const db = client ?? database_1.pool;
     const query = `
     INSERT INTO users (
       email, password_hash, role, full_name, email_verified, must_change_password
@@ -40,7 +41,7 @@ async function createUser(userData) {
     const values = [email, password_hash, role, full_name, false, must_change_password];
     if (establishmentId)
         values.push(establishmentId);
-    const result = await database_1.pool.query(query, values);
+    const result = await db.query(query, values);
     return result.rows[0];
 }
 async function createStudentProfile(userId, profileData) {

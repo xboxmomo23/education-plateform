@@ -44,6 +44,11 @@ const auth_utils_1 = require("../utils/auth.utils");
 const identifier_utils_1 = require("../utils/identifier.utils");
 const parent_model_1 = require("../models/parent.model");
 const establishmentSettings_model_1 = require("../models/establishmentSettings.model");
+const audit_service_1 = require("../services/audit.service");
+const parent_utils_1 = require("../utils/parent.utils");
+const parentInvite_service_1 = require("../services/parentInvite.service");
+const studentCreation_service_1 = require("../services/studentCreation.service");
+const email_utils_1 = require("../utils/email.utils");
 /**
  * Helper : récupère l'établissement de l'admin connecté
  */
@@ -60,9 +65,12 @@ async function getAdminEstablishmentId(adminUserId) {
     }
     return result.rows[0].id;
 }
-async function getEstablishmentName(establishmentId) {
+async function getEstablishmentInfo(establishmentId) {
     const settings = await (0, establishmentSettings_model_1.getEstablishmentSettings)(establishmentId);
-    return settings.displayName || null;
+    return {
+        name: settings.displayName || null,
+        locale: settings.defaultLocale,
+    };
 }
 async function getContactEmailForRole(userId, role) {
     let table = null;
@@ -87,13 +95,6 @@ async function getContactEmailForRole(userId, role) {
     }
     const res = await database_1.default.query(`SELECT contact_email FROM ${table} WHERE user_id = $1 LIMIT 1`, [userId]);
     return res.rows[0]?.contact_email || null;
-}
-function isSmtpConfigured() {
-    return Boolean(process.env.SMTP_HOST &&
-        process.env.SMTP_PORT &&
-        process.env.SMTP_USER &&
-        process.env.SMTP_PASS &&
-        process.env.EMAIL_FROM);
 }
 async function processInviteResend(targetUserId, role, estId) {
     const userResult = await database_1.default.query(`
@@ -140,9 +141,9 @@ async function processInviteResend(targetUserId, role, estId) {
         inviteUrl = invite.inviteUrl;
     }
     const contactEmail = await getContactEmailForRole(userRow.id, role);
-    const establishmentName = await getEstablishmentName(estId);
+    const { name: establishmentName, locale: establishmentLocale } = await getEstablishmentInfo(estId);
     const targetEmail = contactEmail || userRow.email;
-    const smtpConfigured = isSmtpConfigured();
+    const smtpConfigured = (0, email_utils_1.isSmtpConfigured)();
     if (targetEmail) {
         await (0, email_service_1.sendInviteEmail)({
             to: targetEmail,
@@ -150,64 +151,118 @@ async function processInviteResend(targetUserId, role, estId) {
             role,
             establishmentName: establishmentName || undefined,
             inviteUrl,
+            locale: establishmentLocale,
         }).catch((err) => {
             console.error("[MAIL] Erreur envoi email d'invitation:", err);
         });
     }
     return { ok: true, inviteUrl, loginEmail: userRow.email, targetEmail, smtpConfigured };
 }
-function normalizeParentsPayload(rawParents) {
-    if (!Array.isArray(rawParents)) {
+async function legacySearchParents(estId, req) {
+    const rawSearch = typeof req.query.search === "string" ? req.query.search.trim() : "";
+    const limitParam = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 20;
+    const limit = Math.min(50, Math.max(1, Number.isNaN(limitParam) ? 20 : limitParam));
+    if (!rawSearch) {
         return [];
     }
-    const normalized = [];
-    rawParents.forEach((parent) => {
-        if (!parent || typeof parent !== "object") {
-            return;
-        }
-        const firstName = typeof parent.firstName === "string" ? parent.firstName.trim() : "";
-        const lastName = typeof parent.lastName === "string" ? parent.lastName.trim() : "";
-        if (!firstName && !lastName) {
-            return;
-        }
-        const rawContactEmail = typeof parent.contact_email === "string"
-            ? parent.contact_email
-            : typeof parent.contactEmail === "string"
-                ? parent.contactEmail
-                : "";
-        const contactEmail = rawContactEmail && rawContactEmail.trim().length > 0
-            ? rawContactEmail.trim().toLowerCase()
-            : undefined;
-        normalized.push({
-            firstName,
-            lastName,
-            email: typeof parent.email === "string" && parent.email.trim().length > 0
-                ? parent.email.trim().toLowerCase()
-                : undefined,
-            phone: typeof parent.phone === "string" && parent.phone.trim().length > 0
-                ? parent.phone.trim()
-                : undefined,
-            address: typeof parent.address === "string" && parent.address.trim().length > 0
-                ? parent.address.trim()
-                : undefined,
-            relation_type: typeof parent.relation_type === "string" &&
-                parent.relation_type.trim().length > 0
-                ? parent.relation_type.trim()
-                : undefined,
-            is_primary: typeof parent.is_primary === "boolean" ? parent.is_primary : undefined,
-            can_view_grades: typeof parent.can_view_grades === "boolean"
-                ? parent.can_view_grades
-                : undefined,
-            can_view_attendance: typeof parent.can_view_attendance === "boolean"
-                ? parent.can_view_attendance
-                : undefined,
-            receive_notifications: typeof parent.receive_notifications === "boolean"
-                ? parent.receive_notifications
-                : undefined,
-            contact_email: contactEmail,
-        });
+    const pattern = `%${rawSearch}%`;
+    const result = await database_1.default.query(`
+      SELECT 
+        u.id,
+        u.full_name,
+        u.email,
+        pp.contact_email,
+        COUNT(sp.student_id)::INT AS children_count
+      FROM users u
+      LEFT JOIN parent_profiles pp ON pp.user_id = u.id
+      LEFT JOIN student_parents sp ON sp.parent_id = u.id
+      WHERE u.role = 'parent'
+        AND u.establishment_id = $1
+        AND (
+          u.full_name ILIKE $2
+          OR u.email ILIKE $2
+          OR COALESCE(pp.contact_email, '') ILIKE $2
+        )
+      GROUP BY u.id, pp.contact_email
+      ORDER BY u.full_name ASC
+      LIMIT $3
+    `, [estId, pattern, limit]);
+    return result.rows;
+}
+async function listParentsDirectory(estId, req) {
+    const rawSearch = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    const limitParam = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 100;
+    const limit = Math.min(200, Math.max(1, Number.isNaN(limitParam) ? 100 : limitParam));
+    const params = [estId];
+    let searchClause = "";
+    if (rawSearch) {
+        params.push(`%${rawSearch}%`);
+        searchClause = `
+      AND (
+        u.full_name ILIKE $2
+        OR u.email ILIKE $2
+        OR COALESCE(pp.contact_email, '') ILIKE $2
+        OR COALESCE(student_users.full_name, '') ILIKE $2
+        OR COALESCE(classes.label, '') ILIKE $2
+        OR COALESCE(classes.code, '') ILIKE $2
+      )
+    `;
+    }
+    const limitIndex = params.length + 1;
+    params.push(limit);
+    const result = await database_1.default.query(`
+      SELECT
+        u.id AS parent_id,
+        u.full_name,
+        u.email AS login_email,
+        u.active,
+        pp.contact_email,
+        COALESCE(
+          jsonb_agg(
+            DISTINCT jsonb_build_object(
+              'student_id', student_users.id,
+              'full_name', student_users.full_name,
+              'class_label', classes.label,
+              'class_code', classes.code
+            )
+          ) FILTER (WHERE student_users.id IS NOT NULL),
+          '[]'::jsonb
+        ) AS students
+      FROM users u
+      LEFT JOIN parent_profiles pp ON pp.user_id = u.id
+      LEFT JOIN student_parents sp ON sp.parent_id = u.id
+      LEFT JOIN users student_users ON student_users.id = sp.student_id
+      LEFT JOIN students st ON st.user_id = sp.student_id
+      LEFT JOIN classes ON classes.id = st.class_id
+      WHERE u.role = 'parent'
+        AND u.establishment_id = $1
+        ${searchClause}
+      GROUP BY u.id, pp.contact_email
+      ORDER BY u.full_name ASC
+      LIMIT $${limitIndex}
+    `, params);
+    return result.rows.map((row) => {
+        const fullName = row.full_name || "";
+        const nameParts = fullName.trim().split(/\s+/);
+        const firstName = nameParts.shift() || fullName;
+        const lastName = nameParts.join(" ").trim();
+        const students = Array.isArray(row.students)
+            ? row.students.map((student) => ({
+                student_id: student.student_id,
+                full_name: student.full_name,
+                class_label: student.class_label || student.class_code || null,
+            }))
+            : [];
+        return {
+            parent_id: row.parent_id,
+            first_name: firstName,
+            last_name: lastName || null,
+            login_email: row.login_email,
+            contact_email: row.contact_email,
+            active: row.active,
+            students,
+        };
     });
-    return normalized;
 }
 async function searchParentsForAdminHandler(req, res) {
     try {
@@ -219,85 +274,27 @@ async function searchParentsForAdminHandler(req, res) {
                 error: "Établissement introuvable pour cet administrateur",
             });
         }
-        const rawSearch = typeof req.query.search === "string" ? req.query.search.trim() : "";
-        const limitParam = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 20;
-        const limit = Math.min(50, Math.max(1, Number.isNaN(limitParam) ? 20 : limitParam));
-        if (!rawSearch) {
+        const legacyMode = typeof req.query.search === "string";
+        if (legacyMode) {
+            const rows = await legacySearchParents(estId, req);
             return res.json({
                 success: true,
-                data: [],
+                data: rows,
             });
         }
-        const pattern = `%${rawSearch}%`;
-        const result = await database_1.default.query(`
-        SELECT 
-          u.id,
-          u.full_name,
-          u.email,
-          pp.contact_email,
-          COUNT(sp.student_id)::INT AS children_count
-        FROM users u
-        LEFT JOIN parent_profiles pp ON pp.user_id = u.id
-        LEFT JOIN student_parents sp ON sp.parent_id = u.id
-        WHERE u.role = 'parent'
-          AND u.establishment_id = $1
-          AND (
-            u.full_name ILIKE $2
-            OR u.email ILIKE $2
-            OR COALESCE(pp.contact_email, '') ILIKE $2
-          )
-        GROUP BY u.id, pp.contact_email
-        ORDER BY u.full_name ASC
-        LIMIT $3
-      `, [estId, pattern, limit]);
+        const directory = await listParentsDirectory(estId, req);
         return res.json({
             success: true,
-            data: result.rows,
+            data: directory,
         });
     }
     catch (error) {
         console.error("Erreur searchParentsForAdminHandler:", error);
         return res.status(500).json({
             success: false,
-            error: "Erreur lors de la recherche de parents",
+            error: "Erreur lors de la récupération des parents",
         });
     }
-}
-async function sendParentInvitesForNewAccounts(parents, establishmentName, toEmailOverride) {
-    const invites = [];
-    for (const parent of parents) {
-        if (!parent.isNewUser || !parent.email) {
-            continue;
-        }
-        try {
-            const invite = await (0, auth_controller_1.createInviteTokenForUser)({
-                id: parent.parentUserId,
-                email: parent.email,
-                full_name: parent.full_name,
-            });
-            const targetEmail = toEmailOverride || parent.contactEmailOverride || parent.email;
-            if (!targetEmail) {
-                continue;
-            }
-            await (0, email_service_1.sendInviteEmail)({
-                to: targetEmail,
-                loginEmail: parent.email,
-                role: "parent",
-                establishmentName: establishmentName || undefined,
-                inviteUrl: invite.inviteUrl,
-            });
-            invites.push({
-                parentUserId: parent.parentUserId,
-                inviteUrl: invite.inviteUrl,
-                loginEmail: parent.email,
-                targetEmail,
-            });
-        }
-        catch (error) {
-            console.error("[MAIL] Erreur envoi invitation parent:", error);
-        }
-    }
-    return invites;
 }
 function handleParentSyncError(res, error) {
     if (!(error instanceof Error)) {
@@ -653,38 +650,8 @@ async function createStudentForAdminHandler(req, res) {
                 error: "Établissement non trouvé pour cet admin",
             });
         }
-        const establishmentName = await getEstablishmentName(estId);
-        let parentsPayload = normalizeParentsPayload(parents);
-        let existingParentRow = null;
-        if (typeof existing_parent_id === "string" &&
-            existing_parent_id.trim().length > 0) {
-            const existingParentId = existing_parent_id.trim();
-            const parentResult = await database_1.default.query(`
-          SELECT id, full_name, email, establishment_id
-          FROM users
-          WHERE id = $1
-            AND role = 'parent'
-          LIMIT 1
-        `, [existingParentId]);
-            if (parentResult.rowCount === 0) {
-                return res.status(404).json({
-                    success: false,
-                    error: "Parent sélectionné introuvable",
-                });
-            }
-            const parentRow = parentResult.rows[0];
-            if (parentRow.establishment_id !== estId) {
-                return res.status(403).json({
-                    success: false,
-                    error: "Ce parent appartient à un autre établissement",
-                });
-            }
-            existingParentRow = {
-                id: parentRow.id,
-                full_name: parentRow.full_name,
-                email: parentRow.email,
-            };
-        }
+        const { name: establishmentName } = await getEstablishmentInfo(estId);
+        const parentsPayload = (0, parent_utils_1.normalizeParentsPayload)(parents);
         let normalizedClassId = null;
         if (typeof class_id === "string" && class_id.trim().length > 0) {
             normalizedClassId = class_id.trim();
@@ -701,182 +668,107 @@ async function createStudentForAdminHandler(req, res) {
                 });
             }
         }
-        let loginEmail = (login_email || email || "");
-        if (typeof loginEmail === "string") {
-            loginEmail = loginEmail.toLowerCase().trim();
+        let loginEmailInput = "";
+        if (typeof login_email === "string" && login_email.trim().length > 0) {
+            loginEmailInput = login_email.trim().toLowerCase();
         }
-        else {
-            loginEmail = "";
-        }
-        if (!loginEmail) {
-            loginEmail = await (0, identifier_utils_1.generateLoginEmailFromName)({
-                fullName: full_name,
-                establishmentId: estId,
-            });
-        }
-        const duplicateCheck = await database_1.default.query(`SELECT id FROM users WHERE email = $1 LIMIT 1`, [loginEmail]);
-        const duplicateCount = duplicateCheck?.rowCount ?? 0;
-        if (duplicateCount > 0) {
-            return res.status(409).json({
-                success: false,
-                error: "Un utilisateur avec cet email existe déjà",
-            });
+        else if (typeof email === "string" && email.trim().length > 0) {
+            loginEmailInput = email.trim().toLowerCase();
         }
         const contactEmail = typeof contact_email === "string" && contact_email.trim().length > 0
             ? contact_email.trim().toLowerCase()
             : null;
-        let finalStudentNumber = null;
+        let normalizedStudentNumber = null;
         if (typeof student_number === "string" && student_number.trim().length > 0) {
-            finalStudentNumber = student_number.trim();
+            normalizedStudentNumber = student_number.trim();
         }
         else if (typeof student_number === "number" &&
             Number.isFinite(student_number)) {
-            finalStudentNumber = String(student_number);
+            normalizedStudentNumber = String(student_number);
         }
-        if (!finalStudentNumber) {
-            finalStudentNumber = await (0, identifier_utils_1.generateHumanCode)({
+        const existingParentIdNormalized = typeof existing_parent_id === "string" && existing_parent_id.trim().length > 0
+            ? existing_parent_id.trim()
+            : null;
+        let creationResult;
+        try {
+            creationResult = await (0, studentCreation_service_1.createStudentAccount)({
                 establishmentId: estId,
-                role: "student",
+                establishmentName,
+                createdByUserId: userId,
+                actorRole: req.user?.role ?? null,
+                actorName: req.user?.full_name ?? null,
+                fullName: full_name,
+                classId: normalizedClassId,
+                dateOfBirth: date_of_birth ? new Date(date_of_birth) : null,
+                studentNumber: normalizedStudentNumber,
+                contactEmail,
+                loginEmail: loginEmailInput,
+                parents: parentsPayload,
+                existingParentId: existingParentIdNormalized,
+                allowAutoParentFromContact: true,
+                sendInvites: true,
+                req,
             });
         }
-        const initialPassword = (0, auth_utils_1.generateTemporaryPassword)();
-        const user = await (0, user_model_1.createUser)({
-            email: loginEmail,
-            password: initialPassword,
-            role: "student",
-            full_name,
-            establishmentId: estId,
-        });
-        await database_1.default.query(`
-        INSERT INTO student_profiles (
-          user_id, student_no, contact_email
-        ) VALUES ($1, $2, $3)
-        ON CONFLICT (user_id)
-        DO UPDATE SET contact_email = EXCLUDED.contact_email,
-                      student_no = COALESCE(EXCLUDED.student_no, student_profiles.student_no)
-      `, [user.id, finalStudentNumber, contactEmail]);
-        const studentInsert = await database_1.default.query(`
-      INSERT INTO students (
-        user_id,
-        class_id,
-        student_number,
-        date_of_birth
-      )
-      VALUES ($1, $2, $3, $4)
-      RETURNING id, user_id, class_id, student_number, date_of_birth, created_at
-    `, [
-            user.id,
-            normalizedClassId,
-            finalStudentNumber,
-            date_of_birth ? new Date(date_of_birth) : null,
-        ]);
-        const student = studentInsert.rows[0];
-        if (!existingParentRow && parentsPayload.length === 0 && contactEmail) {
-            parentsPayload = [
-                {
-                    firstName: "Parent",
-                    lastName: `de ${full_name}`,
-                    relation_type: "guardian",
-                    is_primary: true,
-                    can_view_grades: true,
-                    can_view_attendance: true,
-                    receive_notifications: true,
-                    contact_email: contactEmail,
-                },
-            ];
-        }
-        let parentResults = [];
-        let parentInvitesData = [];
-        let linkedExistingParent = null;
-        if (parentsPayload.length > 0) {
-            try {
-                parentResults = await (0, parent_model_1.syncParentsForStudent)({
-                    studentId: user.id,
-                    establishmentId: estId,
-                    parents: parentsPayload,
-                });
+        catch (error) {
+            if (handleParentSyncError(res, error)) {
+                return;
             }
-            catch (error) {
-                if (handleParentSyncError(res, error)) {
-                    return;
+            if (error instanceof Error) {
+                if (error.message === "EMAIL_ALREADY_EXISTS") {
+                    const conflictEmail = error.email;
+                    return res.status(409).json({
+                        success: false,
+                        error: conflictEmail
+                            ? `Un utilisateur avec l'email ${conflictEmail} existe déjà`
+                            : "Un utilisateur avec cet email existe déjà",
+                    });
                 }
-                throw error;
-            }
-        }
-        if (existingParentRow) {
-            await (0, parent_model_1.linkExistingParentToStudent)({
-                studentId: user.id,
-                parentId: existingParentRow.id,
-                relationType: "guardian",
-                isPrimary: true,
-                receiveNotifications: true,
-                canViewGrades: true,
-                canViewAttendance: true,
-            });
-            linkedExistingParent = existingParentRow;
-        }
-        const invite = await (0, auth_controller_1.createInviteTokenForUser)({
-            id: user.id,
-            email: user.email,
-            full_name: user.full_name,
-        });
-        const targetEmail = contactEmail || user.email;
-        if (targetEmail) {
-            await (0, email_service_1.sendInviteEmail)({
-                to: targetEmail,
-                loginEmail: user.email,
-                role: "student",
-                establishmentName: establishmentName || undefined,
-                inviteUrl: invite.inviteUrl,
-            }).catch((err) => {
-                console.error("[MAIL] Erreur envoi email d'invitation élève:", err);
-            });
-        }
-        const parentsNeedingInvite = parentResults.filter((parent) => parent.isNewUser);
-        if (parentsNeedingInvite.length > 0) {
-            for (const parentResult of parentsNeedingInvite) {
-                const invites = await sendParentInvitesForNewAccounts([parentResult], establishmentName, parentResult.contactEmailOverride || undefined);
-                if (invites.length > 0) {
-                    parentInvitesData = parentInvitesData.concat(invites);
+                if (error.message === "PARENT_NOT_FOUND") {
+                    return res.status(404).json({
+                        success: false,
+                        error: "Parent sélectionné introuvable",
+                    });
+                }
+                if (error.message === "PARENT_OTHER_ESTABLISHMENT") {
+                    return res.status(403).json({
+                        success: false,
+                        error: "Ce parent appartient à un autre établissement",
+                    });
                 }
             }
+            throw error;
         }
-        const parentInviteUrls = parentInvitesData.map((invite) => invite.inviteUrl);
-        const parentLoginEmails = parentInvitesData.map((invite) => invite.loginEmail);
-        const smtpConfigured = isSmtpConfigured();
-        const parentsForResponse = [...parentResults];
-        if (linkedExistingParent) {
-            parentsForResponse.push({
-                parentUserId: linkedExistingParent.id,
-                full_name: linkedExistingParent.full_name,
-                email: linkedExistingParent.email,
-                isNewUser: false,
-            });
+        const parentInviteUrls = creationResult.parentInviteUrls && creationResult.parentInviteUrls.length > 0
+            ? creationResult.parentInviteUrls
+            : creationResult.parentInvites.map((invite) => invite.inviteUrl);
+        const parentLoginEmails = creationResult.parentLoginEmails && creationResult.parentLoginEmails.length > 0
+            ? creationResult.parentLoginEmails
+            : creationResult.parentInvites.map((invite) => invite.loginEmail);
+        const responseData = {
+            created: creationResult.created,
+            student: creationResult.student,
+            user: creationResult.user,
+            contact_email: creationResult.contact_email,
+            inviteUrl: creationResult.inviteUrl,
+            parents: creationResult.parents,
+            linkedExistingParent: creationResult.linkedExistingParent,
+            parentInviteUrls,
+            parentLoginEmails,
+            smtpConfigured: creationResult.smtpConfigured,
+        };
+        if (creationResult.warnings.length > 0) {
+            responseData.warnings = creationResult.warnings;
         }
         return res.status(201).json({
             success: true,
             message: "Élève créé avec succès",
-            data: {
-                student,
-                user: {
-                    id: user.id,
-                    email: user.email,
-                    full_name: user.full_name,
-                    active: user.active,
-                },
-                contact_email: contactEmail,
-                inviteUrl: invite.inviteUrl,
-                parents: parentsForResponse,
-                linkedExistingParent,
-                parentInviteUrls,
-                parentLoginEmails,
-                smtpConfigured,
-            },
+            data: responseData,
         });
     }
     catch (error) {
         console.error("Erreur createStudentForAdminHandler:", error);
-        if (error.code === "23505") {
+        if (error.code === "23505" || error.message === "EMAIL_ALREADY_EXISTS") {
             return res.status(409).json({
                 success: false,
                 error: "Un utilisateur avec cet email existe déjà",
@@ -932,6 +824,18 @@ async function updateStudentStatusHandler(req, res) {
                 autoDisabledParents.push(parentId);
             }
         }
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            establishmentId: estId,
+            action: "STUDENT_STATUS_UPDATED",
+            entityType: "user",
+            entityId: targetUserId,
+            metadata: {
+                active,
+                impactedParentsCount: impactedParents.size,
+                autoDisabledParents,
+            },
+        });
         return res.json({
             success: true,
             message: "Statut de l'élève mis à jour",
@@ -955,7 +859,7 @@ async function updateStudentClassHandler(req, res) {
         const { userId } = req.user;
         const targetUserId = req.params.userId;
         const { class_id, parents } = req.body;
-        const parentsPayload = normalizeParentsPayload(parents);
+        const parentsPayload = (0, parent_utils_1.normalizeParentsPayload)(parents);
         const estId = await getAdminEstablishmentId(userId);
         if (!estId) {
             return res.status(404).json({
@@ -1017,6 +921,18 @@ async function updateStudentClassHandler(req, res) {
                     establishmentId: estId,
                     parents: parentsPayload,
                 });
+                for (const parent of parentResults) {
+                    if (parent.isNewUser) {
+                        await (0, audit_service_1.logAuditEvent)({
+                            req,
+                            establishmentId: estId,
+                            action: "PARENT_CREATED",
+                            entityType: "user",
+                            entityId: parent.parentUserId,
+                            metadata: { studentId: targetUserId },
+                        });
+                    }
+                }
             }
             catch (error) {
                 if (handleParentSyncError(res, error)) {
@@ -1026,9 +942,23 @@ async function updateStudentClassHandler(req, res) {
             }
             const shouldInviteParents = parentResults.some((parent) => parent.isNewUser && parent.email);
             if (shouldInviteParents) {
-                const establishmentName = await getEstablishmentName(estId);
+                const { name: establishmentName, locale: establishmentLocale } = await getEstablishmentInfo(estId);
                 for (const parentResult of parentResults) {
-                    await sendParentInvitesForNewAccounts([parentResult], establishmentName, parentResult.contactEmailOverride || undefined);
+                    const invites = await (0, parentInvite_service_1.sendParentInvitesForNewAccounts)([parentResult], establishmentName, establishmentLocale, parentResult.contactEmailOverride || undefined);
+                    for (const inviteInfo of invites) {
+                        await (0, audit_service_1.logAuditEvent)({
+                            req,
+                            establishmentId: estId,
+                            action: "AUTH_INVITE_SENT",
+                            entityType: "user",
+                            entityId: inviteInfo.parentUserId,
+                            metadata: {
+                                roleTarget: "parent",
+                                loginEmail: inviteInfo.loginEmail,
+                                toEmail: inviteInfo.targetEmail,
+                            },
+                        });
+                    }
                 }
             }
         }
@@ -1708,7 +1638,7 @@ async function createStaffForAdminHandler(req, res) {
             email: newUser.email,
             full_name: newUser.full_name,
         });
-        const establishmentName = await getEstablishmentName(estId);
+        const { name: establishmentName, locale: establishmentLocale } = await getEstablishmentInfo(estId);
         const targetEmail = contactEmail || newUser.email;
         if (targetEmail) {
             await (0, email_service_1.sendInviteEmail)({
@@ -1717,10 +1647,26 @@ async function createStaffForAdminHandler(req, res) {
                 role: "staff",
                 establishmentName: establishmentName || undefined,
                 inviteUrl: invite.inviteUrl,
+                locale: establishmentLocale,
             }).catch((err) => {
                 console.error("[MAIL] Erreur envoi email d'invitation staff:", err);
             });
+            await (0, audit_service_1.logAuditEvent)({
+                req,
+                establishmentId: estId,
+                action: "AUTH_INVITE_SENT",
+                entityType: "user",
+                entityId: newUser.id,
+                metadata: { roleTarget: "staff", loginEmail: newUser.email, toEmail: targetEmail },
+            });
         }
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            establishmentId: estId,
+            action: "STAFF_CREATED",
+            entityType: "user",
+            entityId: newUser.id,
+        });
         return res.status(201).json({
             success: true,
             data: {
@@ -2160,7 +2106,7 @@ async function createTeacherForAdminHandler(req, res) {
             email: user.email,
             full_name: user.full_name,
         });
-        const establishmentName = await getEstablishmentName(estId);
+        const { name: establishmentName, locale: establishmentLocale } = await getEstablishmentInfo(estId);
         const targetEmail = profile.contact_email || user.email;
         if (targetEmail) {
             await (0, email_service_1.sendInviteEmail)({
@@ -2169,8 +2115,17 @@ async function createTeacherForAdminHandler(req, res) {
                 role: "teacher",
                 establishmentName: establishmentName || undefined,
                 inviteUrl: invite.inviteUrl,
+                locale: establishmentLocale,
             }).catch((err) => {
                 console.error("[MAIL] Erreur envoi email d'invitation professeur:", err);
+            });
+            await (0, audit_service_1.logAuditEvent)({
+                req,
+                establishmentId: estId,
+                action: "AUTH_INVITE_SENT",
+                entityType: "user",
+                entityId: user.id,
+                metadata: { roleTarget: "teacher", loginEmail: user.email, toEmail: targetEmail },
             });
         }
         const teacherPayload = {
@@ -2186,6 +2141,14 @@ async function createTeacherForAdminHandler(req, res) {
             contact_email: profile.contact_email,
             assigned_class_ids: [],
         };
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            establishmentId: estId,
+            action: "TEACHER_CREATED",
+            entityType: "user",
+            entityId: user.id,
+            metadata: { employeeNo: profile.employee_no || finalEmployeeNo },
+        });
         return res.status(201).json({
             success: true,
             message: "Professeur créé avec succès",

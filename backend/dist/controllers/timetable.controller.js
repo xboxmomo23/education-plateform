@@ -35,6 +35,7 @@ exports.duplicateTimetableHandler = duplicateTimetableHandler;
 const pdfkit_1 = __importDefault(require("pdfkit"));
 const database_1 = __importDefault(require("../config/database"));
 const timetable_model_1 = require("../models/timetable.model");
+const audit_service_1 = require("../services/audit.service");
 const DAY_LABELS = {
     1: 'Dimanche',
     2: 'Lundi',
@@ -44,8 +45,16 @@ const DAY_LABELS = {
     6: 'Vendredi',
     7: 'Samedi',
 };
-const DEFAULT_DAY_ORDER = [1, 2, 3, 4, 5];
+const STAFF_DAY_ORDER = [1, 2, 3, 4, 5];
 const DEFAULT_TIME_RANGE = { start: 8, end: 18 };
+const MM_TO_PT = 2.83465;
+const A4_WIDTH_PT = 210 * MM_TO_PT; // 595.28
+const A4_HEIGHT_PT = 297 * MM_TO_PT; // 841.89
+const PAGE_MARGIN_PT = 10 * MM_TO_PT; // 28.35
+const CARNET_ZONE_WIDTH_PT = 190 * MM_TO_PT; // 538.58
+const CARNET_ZONE_HEIGHT_PT = 105 * MM_TO_PT; // 297.64
+const CARNET_ZONE_X = (A4_WIDTH_PT - CARNET_ZONE_WIDTH_PT) / 2; // ~28.35
+const CARNET_ZONE_Y = A4_HEIGHT_PT - PAGE_MARGIN_PT - CARNET_ZONE_HEIGHT_PT; // ~515.90
 function sanitizeFilePart(value) {
     return value
         .normalize('NFKD')
@@ -59,12 +68,13 @@ function parseDateOrThrow(dateStr) {
     }
     return date;
 }
-function formatFrenchDate(date) {
-    return new Intl.DateTimeFormat('fr-FR', {
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric',
-    }).format(date);
+function computeAcademicYear(date) {
+    const year = date.getUTCFullYear();
+    const month = date.getUTCMonth() + 1;
+    if (month >= 9) {
+        return `${year}-${year + 1}`;
+    }
+    return `${year - 1}-${year}`;
 }
 function normalizeWeekStart(queryWeekStart) {
     if (!queryWeekStart) {
@@ -87,21 +97,51 @@ function parseTimeToMinutes(time) {
     const minute = parseInt((minuteStr ?? '0').slice(0, 2), 10);
     return hour * 60 + minute;
 }
-function doesEntryOverlapHour(entry, hour) {
-    const slotStart = hour * 60;
-    const slotEnd = (hour + 1) * 60;
-    const entryStart = parseTimeToMinutes(entry.start_time);
-    const entryEnd = parseTimeToMinutes(entry.end_time);
-    return entryStart < slotEnd && entryEnd > slotStart;
+function getDayColumns() {
+    return STAFF_DAY_ORDER;
 }
-function getDayColumns(instances) {
-    const uniqueDays = Array.from(new Set(instances.map((inst) => inst.day_of_week).filter((day) => typeof day === 'number'))).sort((a, b) => a - b);
-    if (uniqueDays.length > 0) {
-        return uniqueDays;
+function normalizeHexColor(color) {
+    if (!color)
+        return null;
+    let hex = color.trim();
+    if (hex.startsWith('#'))
+        hex = hex.slice(1);
+    if (hex.length === 3) {
+        hex = hex
+            .split('')
+            .map((c) => c + c)
+            .join('');
     }
-    return DEFAULT_DAY_ORDER;
+    if (!/^[0-9a-fA-F]{6}$/.test(hex)) {
+        return null;
+    }
+    return `#${hex.toLowerCase()}`;
 }
-function getSlotHours(instances) {
+function lightenHexColor(hexColor, ratio) {
+    const hex = hexColor.replace('#', '');
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    const mix = (channel) => Math.round(channel + (255 - channel) * ratio);
+    const toHex = (value) => value.toString(16).padStart(2, '0');
+    return `#${toHex(mix(r))}${toHex(mix(g))}${toHex(mix(b))}`;
+}
+function computeCourseColors(theme, subjectColor) {
+    if (theme === 'gray') {
+        return {
+            fill: '#e5e5e5',
+            stroke: '#8c8c8c',
+            text: '#111827',
+        };
+    }
+    const normalized = normalizeHexColor(subjectColor) ?? '#3b82f6';
+    return {
+        fill: lightenHexColor(normalized, 0.7),
+        stroke: normalized,
+        text: '#0f172a',
+    };
+}
+function getSlotConfig(instances) {
     let minHour = Number.POSITIVE_INFINITY;
     let maxHour = Number.NEGATIVE_INFINITY;
     instances.forEach((inst) => {
@@ -122,50 +162,62 @@ function getSlotHours(instances) {
         minHour = Math.min(minHour, DEFAULT_TIME_RANGE.start);
         maxHour = Math.max(maxHour, DEFAULT_TIME_RANGE.end);
     }
+    if (!Number.isFinite(minHour) || !Number.isFinite(maxHour)) {
+        minHour = DEFAULT_TIME_RANGE.start;
+        maxHour = DEFAULT_TIME_RANGE.end;
+    }
+    else {
+        minHour = Math.min(minHour, DEFAULT_TIME_RANGE.start);
+        maxHour = Math.max(maxHour, DEFAULT_TIME_RANGE.end);
+    }
     const hours = [];
-    for (let hour = minHour; hour < maxHour; hour += 1) {
+    for (let hour = minHour; hour <= maxHour; hour += 1) {
         hours.push(hour);
     }
-    return hours.length > 0 ? hours : [DEFAULT_TIME_RANGE.start];
+    return {
+        hours: hours.length > 0 ? hours : [DEFAULT_TIME_RANGE.start],
+        minHour,
+        maxHour,
+    };
 }
 function formatSlotLabel(hour) {
     const end = hour + 1;
     return `${String(hour).padStart(2, '0')}h-${String(end).padStart(2, '0')}h`;
 }
 function formatEntryText(entry) {
-    const lines = [
-        entry.subject_name || 'Cours',
-        `${entry.start_time.slice(0, 5)} - ${entry.end_time.slice(0, 5)}${entry.room ? ` • ${entry.room}` : ''}`,
-    ];
+    const lines = [entry.subject_name || 'Cours'];
     if (entry.teacher_name) {
         lines.push(entry.teacher_name);
     }
     return lines.join('\n');
 }
 function drawClassTimetablePdf(doc, options) {
-    const { establishmentName, classLabel, classCode, weekStart, instances } = options;
-    const sunday = parseDateOrThrow(weekStart);
-    const friday = new Date(sunday);
-    friday.setUTCDate(friday.getUTCDate() + 4);
-    doc.font('Helvetica-Bold').fontSize(16).text(`${establishmentName} – Emploi du temps`);
+    const { establishmentName, classLabel, classCode, weekStart, instances, schoolYear, theme } = options;
+    const referenceDate = parseDateOrThrow(weekStart);
+    const resolvedSchoolYear = schoolYear && schoolYear.trim().length > 0 ? schoolYear : computeAcademicYear(referenceDate);
+    doc.font('Helvetica-Bold').fontSize(18).text(establishmentName);
+    doc.moveDown(0.15);
     doc
         .font('Helvetica')
         .fontSize(12)
-        .text(`Classe : ${classLabel}${classCode ? ` (${classCode})` : ''}`);
-    doc.fontSize(10).text(`Semaine du ${formatFrenchDate(sunday)} au ${formatFrenchDate(friday)}`);
+        .text(`Classe : ${classLabel}${classCode ? ` – ${classCode}` : ''}`);
+    doc.fontSize(12).text(`Année scolaire : ${resolvedSchoolYear}`);
     doc.moveDown(0.7);
     const marginLeft = doc.page.margins.left;
     const marginRight = doc.page.margins.right;
     const gridWidth = doc.page.width - marginLeft - marginRight;
     const headerHeight = 26;
     const timeColumnWidth = 70;
-    const dayColumns = getDayColumns(instances);
-    const slotHours = getSlotHours(instances);
-    const availableHeight = doc.page.height * 0.4;
+    const dayColumns = getDayColumns();
+    const slotConfig = getSlotConfig(instances);
+    const slotHours = slotConfig.hours;
+    const minHour = slotConfig.minHour;
+    const availableHeight = doc.page.height * 0.45;
     const rowHeight = Math.max(24, Math.min(36, (availableHeight - headerHeight) / Math.max(slotHours.length, 1)));
     const gridHeight = headerHeight + rowHeight * slotHours.length;
     const columnWidth = (gridWidth - timeColumnWidth) / dayColumns.length;
     const gridTop = doc.y;
+    const columnIndexMap = new Map(dayColumns.map((day, index) => [day, index]));
     doc.lineWidth(0.5).strokeColor('#94a3b8');
     doc.fontSize(9).font('Helvetica-Bold');
     doc.rect(marginLeft, gridTop, timeColumnWidth, headerHeight).stroke();
@@ -192,31 +244,203 @@ function drawClassTimetablePdf(doc, options) {
         dayColumns.forEach((dayValue, index) => {
             const x = marginLeft + timeColumnWidth + index * columnWidth;
             doc.rect(x, y, columnWidth, rowHeight).stroke();
-            const entries = instances.filter((entry) => entry.day_of_week === dayValue && doesEntryOverlapHour(entry, hour));
-            if (entries.length > 0) {
-                const cellText = entries.map((entry) => formatEntryText(entry)).join('\n——————\n');
-                doc.text(cellText, x + 4, y + 4, {
-                    width: columnWidth - 8,
-                    height: rowHeight - 8,
-                    lineBreak: true,
-                });
-            }
+            // les blocs seront dessinés après la grille
         });
     });
-    doc.moveDown(1);
-    doc
-        .font('Helvetica')
-        .fontSize(9)
-        .text(`Document généré le ${formatFrenchDate(new Date())}`, { align: 'left' });
+    instances.forEach((entry) => {
+        const columnIndex = columnIndexMap.get(entry.day_of_week);
+        if (columnIndex === undefined) {
+            return;
+        }
+        const startMinutes = parseTimeToMinutes(entry.start_time);
+        const endMinutes = parseTimeToMinutes(entry.end_time);
+        if (Number.isNaN(startMinutes) || Number.isNaN(endMinutes) || endMinutes <= startMinutes) {
+            return;
+        }
+        const offsetMinutes = startMinutes - minHour * 60;
+        const top = gridTop + headerHeight + Math.max(0, (offsetMinutes / 60) * rowHeight);
+        const durationMinutes = endMinutes - startMinutes;
+        const height = Math.max((durationMinutes / 60) * rowHeight - 4, rowHeight * 0.6);
+        const x = marginLeft + timeColumnWidth + columnIndex * columnWidth;
+        const width = columnWidth - 4;
+        const colors = computeCourseColors(theme, entry.subject_color);
+        const hasTeacher = Boolean(entry.teacher_name);
+        const useSingleLine = !hasTeacher || height < 32;
+        const textX = x + 6;
+        const textWidth = width - 12;
+        doc
+            .save()
+            .lineWidth(0.6)
+            .fillColor(colors.fill)
+            .strokeColor(colors.stroke)
+            .rect(x + 2, top + 2, width, height)
+            .fillAndStroke()
+            .fillColor(colors.text);
+        if (useSingleLine) {
+            const singleLine = hasTeacher
+                ? `${entry.subject_name || 'Cours'} – ${entry.teacher_name}`
+                : entry.subject_name || 'Cours';
+            doc.font('Helvetica-Bold').fontSize(9).text(singleLine, textX, top + 8, {
+                width: textWidth,
+                ellipsis: true,
+            });
+        }
+        else {
+            doc.font('Helvetica-Bold').fontSize(9).text(entry.subject_name || 'Cours', textX, top + 6, {
+                width: textWidth,
+                ellipsis: true,
+            });
+            if (hasTeacher) {
+                doc.font('Helvetica').fontSize(8).text(entry.teacher_name || '', textX, top + 20, {
+                    width: textWidth,
+                    ellipsis: true,
+                });
+            }
+        }
+        doc.restore();
+    });
     if (instances.length === 0) {
         doc
-            .moveDown(0.3)
+            .moveDown(0.5)
             .font('Helvetica-Bold')
             .text('Aucun cours planifié pour cette semaine.', { align: 'left' });
     }
-    doc.moveDown(0.5);
-    doc.fontSize(8).font('Helvetica').text('EduPilot – Export PDF emploi du temps', {
-        align: 'right',
+}
+const CARNET_HEADER_BAND_PT = 36;
+function drawCarnetTimetablePdf(doc, options) {
+    const { establishmentName, classLabel, classCode, weekStart, instances, schoolYear, theme } = options;
+    const referenceDate = parseDateOrThrow(weekStart);
+    const resolvedSchoolYear = schoolYear && schoolYear.trim().length > 0 ? schoolYear : computeAcademicYear(referenceDate);
+    const dayHeaderHeight = 16;
+    const headerPaddingX = CARNET_ZONE_X + 8;
+    const headerTextWidth = CARNET_ZONE_WIDTH_PT - 16;
+    const dayColumns = getDayColumns();
+    const slotConfig = getSlotConfig(instances);
+    const slotHours = slotConfig.hours;
+    const minHour = slotConfig.minHour;
+    const timeColumnWidth = 40;
+    const gridX = CARNET_ZONE_X;
+    const gridY = CARNET_ZONE_Y + CARNET_HEADER_BAND_PT + dayHeaderHeight;
+    const gridWidth = CARNET_ZONE_WIDTH_PT;
+    const gridHeight = CARNET_ZONE_HEIGHT_PT - CARNET_HEADER_BAND_PT - dayHeaderHeight;
+    const dayHeaderY = gridY - dayHeaderHeight;
+    const columnWidth = (gridWidth - timeColumnWidth) / dayColumns.length;
+    const rowHeight = gridHeight / Math.max(slotHours.length, 1);
+    const columnIndexMap = new Map(dayColumns.map((day, index) => [day, index]));
+    doc
+        .save()
+        .lineWidth(1)
+        .strokeColor('#1f2937')
+        .rect(CARNET_ZONE_X, CARNET_ZONE_Y, CARNET_ZONE_WIDTH_PT, CARNET_ZONE_HEIGHT_PT)
+        .stroke()
+        .restore();
+    doc
+        .moveTo(CARNET_ZONE_X, CARNET_ZONE_Y + CARNET_HEADER_BAND_PT)
+        .lineTo(CARNET_ZONE_X + CARNET_ZONE_WIDTH_PT, CARNET_ZONE_Y + CARNET_HEADER_BAND_PT)
+        .stroke();
+    let headerY = CARNET_ZONE_Y + 8;
+    doc
+        .font('Helvetica-Bold')
+        .fillColor('#111827')
+        .fontSize(9)
+        .text(establishmentName, headerPaddingX, headerY, {
+        width: headerTextWidth,
+        ellipsis: true,
+    });
+    headerY += 11;
+    doc
+        .font('Helvetica')
+        .fontSize(8.5)
+        .text(`Classe : ${classLabel}${classCode ? ` — ${classCode}` : ''}`, headerPaddingX, headerY, {
+        width: headerTextWidth,
+        ellipsis: true,
+    });
+    headerY += 10;
+    doc
+        .font('Helvetica')
+        .fontSize(8.5)
+        .text(`Année scolaire : ${resolvedSchoolYear}`, headerPaddingX, headerY, {
+        width: headerTextWidth,
+        ellipsis: true,
+    });
+    doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#111827');
+    dayColumns.forEach((day, index) => {
+        const x = gridX + timeColumnWidth + index * columnWidth;
+        doc.text(DAY_LABELS[day] || `Jour ${day}`, x, dayHeaderY + 2, {
+            width: columnWidth,
+            align: 'center',
+        });
+    });
+    doc.font('Helvetica').fontSize(8).fillColor('#111827');
+    slotHours.forEach((hour, rowIndex) => {
+        const y = gridY + rowIndex * rowHeight;
+        doc.text(`${String(hour).padStart(2, '0')}h`, gridX + 2, y + rowHeight / 2 - 4, {
+            width: timeColumnWidth - 4,
+            align: 'left',
+        });
+    });
+    doc.save().lineWidth(0.4).strokeColor('#94a3b8');
+    for (let i = 0; i <= slotHours.length; i += 1) {
+        const y = gridY + i * rowHeight;
+        doc.moveTo(gridX, y).lineTo(gridX + gridWidth, y);
+    }
+    for (let i = 0; i <= dayColumns.length; i += 1) {
+        const x = gridX + timeColumnWidth + i * columnWidth;
+        doc.moveTo(x, gridY).lineTo(x, gridY + gridHeight);
+    }
+    doc.moveTo(gridX + timeColumnWidth, CARNET_ZONE_Y + CARNET_HEADER_BAND_PT).lineTo(gridX + timeColumnWidth, CARNET_ZONE_Y + CARNET_ZONE_HEIGHT_PT);
+    doc.stroke().restore();
+    instances.forEach((entry) => {
+        const columnIndex = columnIndexMap.get(entry.day_of_week);
+        if (columnIndex === undefined) {
+            return;
+        }
+        const startMinutes = parseTimeToMinutes(entry.start_time);
+        const endMinutes = parseTimeToMinutes(entry.end_time);
+        if (Number.isNaN(startMinutes) || Number.isNaN(endMinutes) || endMinutes <= startMinutes) {
+            return;
+        }
+        const offsetMinutes = startMinutes - minHour * 60;
+        const top = gridY + Math.max(0, (offsetMinutes / 60) * rowHeight);
+        const durationMinutes = endMinutes - startMinutes;
+        const height = Math.max((durationMinutes / 60) * rowHeight - 2, rowHeight * 0.6);
+        const x = gridX + timeColumnWidth + columnIndex * columnWidth;
+        const width = columnWidth - 4;
+        const colors = computeCourseColors(theme, entry.subject_color);
+        const hasTeacher = Boolean(entry.teacher_name);
+        const useSingleLine = !hasTeacher || height < 26;
+        const textX = x + 4;
+        const textWidth = width - 8;
+        doc
+            .save()
+            .lineWidth(0.6)
+            .fillColor(colors.fill)
+            .strokeColor(colors.stroke)
+            .rect(x + 2, top + 2, width, height)
+            .fillAndStroke()
+            .fillColor(colors.text);
+        if (useSingleLine) {
+            const line = hasTeacher
+                ? `${entry.subject_name || 'Cours'} – ${entry.teacher_name}`
+                : entry.subject_name || 'Cours';
+            doc.font('Helvetica-Bold').fontSize(8.5).text(line, textX, top + 6, {
+                width: textWidth,
+                ellipsis: true,
+            });
+        }
+        else {
+            doc.font('Helvetica-Bold').fontSize(9).text(entry.subject_name || 'Cours', textX, top + 4, {
+                width: textWidth,
+                ellipsis: true,
+            });
+            if (hasTeacher) {
+                doc.font('Helvetica').fontSize(8).text(entry.teacher_name || '', textX, top + 16, {
+                    width: textWidth,
+                    ellipsis: true,
+                });
+            }
+        }
+        doc.restore();
     });
 }
 // ============================================
@@ -822,6 +1046,11 @@ async function exportClassTimetablePdfHandler(req, res) {
         const { classId } = req.params;
         const weekStartQuery = typeof req.query.weekStart === 'string' ? req.query.weekStart : undefined;
         const weekStartDate = normalizeWeekStart(weekStartQuery);
+        const formatParam = typeof req.query.format === 'string' && req.query.format === 'full' ? 'full' : 'carnet';
+        let themeParam = typeof req.query.theme === 'string' && req.query.theme === 'gray' ? 'gray' : 'color';
+        if (typeof req.query.color === 'string') {
+            themeParam = req.query.color === '0' ? 'gray' : 'color';
+        }
         if (!classId) {
             res.status(400).json({
                 success: false,
@@ -866,26 +1095,74 @@ async function exportClassTimetablePdfHandler(req, res) {
             });
             return;
         }
-        const establishmentResult = await database_1.default.query(`
-        SELECT COALESCE(display_name, name) AS display_name
-        FROM establishments
-        WHERE id = $1
-      `, [establishmentId]);
-        const establishmentName = establishmentResult.rows[0]?.display_name || 'Établissement';
+        let establishmentName = 'Établissement';
+        let schoolYear = null;
+        try {
+            const establishmentResult = await database_1.default.query(`
+          SELECT COALESCE(es.display_name, e.name) AS display_name,
+                 es.school_year
+          FROM establishments e
+          LEFT JOIN establishment_settings es ON es.establishment_id = e.id
+          WHERE e.id = $1
+        `, [establishmentId]);
+            establishmentName = establishmentResult.rows[0]?.display_name || establishmentName;
+            schoolYear = establishmentResult.rows[0]?.school_year || null;
+        }
+        catch (err) {
+            if (err?.code === '42P01') {
+                const fallbackResult = await database_1.default.query(`
+            SELECT name
+            FROM establishments
+            WHERE id = $1
+          `, [establishmentId]);
+                establishmentName = fallbackResult.rows[0]?.name || establishmentName;
+            }
+            else {
+                throw err;
+            }
+        }
         const instances = await timetable_model_1.TimetableInstanceModel.getInstancesForWeek(classId, weekStartDate);
-        const doc = new pdfkit_1.default({ size: 'A4', margin: 40 });
+        const doc = new pdfkit_1.default(formatParam === 'full'
+            ? { size: 'A4', layout: 'landscape', margin: 36 }
+            : { size: 'A4', layout: 'portrait', margin: PAGE_MARGIN_PT });
         pdfStarted = true;
         const safeLabel = sanitizeFilePart(classRow.label || classRow.code || 'classe');
         const filename = `EDT_${safeLabel}_${weekStartDate}.pdf`;
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=\"${filename}\"`);
+        const effectiveSchoolYear = schoolYear && schoolYear.trim().length > 0
+            ? schoolYear
+            : computeAcademicYear(parseDateOrThrow(weekStartDate));
+        console.log(`[PDF_EXPORT] establishmentName=${establishmentName} classId=${classId} weekStart=${weekStartDate} schoolYear=${effectiveSchoolYear} theme=${themeParam}`);
         doc.pipe(res);
-        drawClassTimetablePdf(doc, {
-            establishmentName,
-            classLabel: classRow.label || classRow.code || 'Classe',
-            classCode: classRow.code,
-            weekStart: weekStartDate,
-            instances,
+        if (formatParam === 'full') {
+            drawClassTimetablePdf(doc, {
+                establishmentName,
+                classLabel: classRow.label || classRow.code || 'Classe',
+                classCode: classRow.code,
+                weekStart: weekStartDate,
+                instances,
+                schoolYear: effectiveSchoolYear,
+                theme: themeParam,
+            });
+        }
+        else {
+            drawCarnetTimetablePdf(doc, {
+                establishmentName,
+                classLabel: classRow.label || classRow.code || 'Classe',
+                classCode: classRow.code,
+                weekStart: weekStartDate,
+                instances,
+                schoolYear: effectiveSchoolYear,
+                theme: themeParam,
+            });
+        }
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            action: 'TIMETABLE_PDF_EXPORTED',
+            entityType: 'class',
+            entityId: classId,
+            metadata: { weekStart: weekStartDate, format: formatParam, theme: themeParam },
         });
         doc.end();
     }

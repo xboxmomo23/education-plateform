@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getTeacherWeekHandler = getTeacherWeekHandler;
 exports.getSessionHandler = getSessionHandler;
+exports.getSessionsStatusListHandler = getSessionsStatusListHandler;
 exports.closeSessionHandler = closeSessionHandler;
 exports.markAttendanceHandler = markAttendanceHandler;
 exports.bulkMarkAttendanceHandler = bulkMarkAttendanceHandler;
@@ -96,6 +97,76 @@ async function getSessionHandler(req, res) {
         return res.status(500).json({
             success: false,
             error: 'Erreur lors de la récupération de la session',
+        });
+    }
+}
+/**
+ * GET /api/attendance/sessions/status
+ * Récupérer l'état des présences pour plusieurs séances
+ */
+async function getSessionsStatusListHandler(req, res) {
+    try {
+        const { userId, role } = req.user;
+        if (role !== 'teacher') {
+            return res.status(403).json({
+                success: false,
+                error: 'Accès réservé aux professeurs',
+            });
+        }
+        const instanceIdsParam = req.query.instanceIds;
+        if (!instanceIdsParam || typeof instanceIdsParam !== 'string') {
+            return res.status(400).json({
+                success: false,
+                error: 'instanceIds est requis',
+            });
+        }
+        const uuidRegex = /^[0-9a-fA-F-]{36}$/;
+        let instanceIds = instanceIdsParam
+            .split(',')
+            .map((id) => id.trim())
+            .filter((id) => uuidRegex.test(id));
+        if (instanceIds.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Aucun instanceId valide fourni',
+            });
+        }
+        if (instanceIds.length > 50) {
+            instanceIds = instanceIds.slice(0, 50);
+        }
+        const rows = await attendance_model_1.AttendanceModel.getSessionsStatusByInstanceIds(userId, instanceIds);
+        const map = {};
+        instanceIds.forEach((id) => {
+            map[id] = {
+                has_attendance: false,
+                attendance_status: 'pending',
+            };
+        });
+        rows.forEach((row) => {
+            const hasAttendance = row.has_attendance;
+            let attendanceStatus = 'pending';
+            if (row.session_status === 'closed' || row.session_status === 'validated') {
+                attendanceStatus = 'completed';
+            }
+            else if (hasAttendance) {
+                attendanceStatus = 'partial';
+            }
+            map[row.instance_id] = {
+                has_attendance: hasAttendance,
+                attendance_status: attendanceStatus,
+                session_id: row.session_id,
+            };
+        });
+        return res.json({
+            success: true,
+            data: map,
+        });
+    }
+    catch (error) {
+        console.error('Erreur getSessionsStatusListHandler:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Erreur lors de la récupération des statuts',
         });
     }
 }

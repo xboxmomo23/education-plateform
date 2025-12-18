@@ -30,6 +30,8 @@ import dashboardAdminRoutes from './routes/dashboard-admin.routes';
 import teacherRoutes from './routes/teacher.routes';
 import auditRoutes from './routes/audit.routes';
 import { demoReadOnlyGuard, demoDataMiddleware } from './middleware/demo.middleware';
+import { requestIdMiddleware } from './middleware/request-id.middleware';
+import devRoutes from './routes/dev.routes';
 
 
 
@@ -41,6 +43,8 @@ const app = express();
 // =========================
 // Middlewares Globaux
 // =========================
+
+app.use(requestIdMiddleware);
 
 // Sécurité HTTP headers
 app.use(helmetConfig);
@@ -118,6 +122,7 @@ app.use('/api/dashboard/admin', dashboardAdminRoutes);
 app.use('/api/staff/absences', staffAbsencesRoutes);
 app.use('/api/teacher', teacherRoutes);
 app.use('/api/admin/audit', auditRoutes);
+app.use('/dev', devRoutes);
 
 
 // Route classes

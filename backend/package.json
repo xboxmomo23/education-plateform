@@ -28,8 +28,8 @@
     "express-validator": "^7.0.1",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
-    "nodemailer": "^6.9.13",
     "morgan": "^1.10.0",
+    "nodemailer": "^6.10.1",
     "pdfkit": "^0.17.2",
     "pg": "^8.11.3",
     "winston": "^3.11.0"
@@ -41,6 +41,7 @@
     "@types/jsonwebtoken": "^9.0.5",
     "@types/morgan": "^1.9.9",
     "@types/node": "^20.10.5",
+    "@types/nodemailer": "^7.0.4",
     "@types/pg": "^8.10.9",
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",

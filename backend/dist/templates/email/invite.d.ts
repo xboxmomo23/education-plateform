@@ -1,3 +1,4 @@
+type SupportedLocale = "fr" | "en";
 type InviteTemplateParams = {
     userName?: string | null;
     establishmentName?: string | null;
@@ -5,6 +6,7 @@ type InviteTemplateParams = {
     loginEmail: string;
     actionUrl: string;
     expiresInDays: number;
+    locale?: SupportedLocale;
 };
 export declare function buildInviteEmail(params: InviteTemplateParams): {
     subject: string;

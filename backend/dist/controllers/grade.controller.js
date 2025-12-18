@@ -20,6 +20,7 @@ exports.getClassAveragesHandler = getClassAveragesHandler;
 const database_1 = require("../config/database");
 const evaluation_model_1 = require("../models/evaluation.model");
 const grade_model_1 = require("../models/grade.model");
+const audit_service_1 = require("../services/audit.service");
 const term_model_1 = require("../models/term.model");
 // =========================
 // EVALUATIONS - Pour Professeurs
@@ -89,6 +90,13 @@ async function createEvaluationHandler(req, res) {
             description,
             createdBy: req.user.userId,
             establishmentId,
+        });
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            action: 'EVALUATION_CREATED',
+            entityType: 'evaluation',
+            entityId: evaluation.id,
+            metadata: { courseId, termId },
         });
         res.status(201).json({
             success: true,
@@ -254,6 +262,12 @@ async function updateEvaluationHandler(req, res) {
             });
             return;
         }
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            action: 'EVALUATION_UPDATED',
+            entityType: 'evaluation',
+            entityId: updatedEvaluation.id,
+        });
         res.json({
             success: true,
             message: 'Évaluation modifiée avec succès',
@@ -298,6 +312,12 @@ async function deleteEvaluationHandler(req, res) {
             });
             return;
         }
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            action: 'EVALUATION_DELETED',
+            entityType: 'evaluation',
+            entityId: id,
+        });
         res.json({
             success: true,
             message: 'Évaluation supprimée avec succès',
@@ -354,6 +374,13 @@ async function createOrUpdateGradesHandler(req, res) {
         }));
         // Créer ou mettre à jour les notes
         const createdGrades = await (0, grade_model_1.createGrades)(gradeData);
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            action: 'GRADE_CREATED',
+            entityType: 'evaluation',
+            entityId: evaluationId,
+            metadata: { count: createdGrades.length },
+        });
         res.status(201).json({
             success: true,
             message: `${createdGrades.length} note(s) enregistrée(s)`,
@@ -409,6 +436,12 @@ async function updateGradeHandler(req, res) {
             });
             return;
         }
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            action: 'GRADE_UPDATED',
+            entityType: 'grade',
+            entityId: id,
+        });
         res.json({
             success: true,
             message: 'Note modifiée avec succès',
@@ -462,6 +495,12 @@ async function deleteGradeHandler(req, res) {
             });
             return;
         }
+        await (0, audit_service_1.logAuditEvent)({
+            req,
+            action: 'GRADE_DELETED',
+            entityType: 'grade',
+            entityId: id,
+        });
         res.json({
             success: true,
             message: 'Note supprimée avec succès',
