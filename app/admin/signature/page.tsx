@@ -18,6 +18,7 @@ import {
   User,
 } from "lucide-react"
 import Link from "next/link"
+import { API_BASE_URL } from "@/lib/api/config"
 
 export default function AdminSignaturePage() {
   const [directorName, setDirectorName] = useState("")
@@ -39,14 +40,11 @@ export default function AdminSignaturePage() {
       setIsLoading(true)
       setError(null)
 
-      const response = await fetch(
-        `http://localhost:5000/api/establishment/director-signature`,
-        {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-          },
-        }
-      )
+      const response = await fetch(`${API_BASE_URL}/establishment/director-signature`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+        },
+      })
 
       const data = await response.json()
 
@@ -104,20 +102,17 @@ export default function AdminSignaturePage() {
       setError(null)
       setSuccess(null)
 
-      const response = await fetch(
-        `http://localhost:5000/api/establishment/director-signature`,
-        {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            directorName,
-            directorSignature,
-          }),
-        }
-      )
+      const response = await fetch(`${API_BASE_URL}/establishment/director-signature`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          directorName,
+          directorSignature,
+        }),
+      })
 
       const data = await response.json()
 

@@ -1,4 +1,5 @@
 import { apiCall } from "./base"
+import { API_BASE_URL } from "./config"
 import type { AttendanceStatus } from "./attendance"
 
 export interface StaffAbsenceHistoryParams {
@@ -94,12 +95,10 @@ export const staffAbsencesApi = {
   },
 
   async exportCsv(params: StaffAbsenceHistoryParams = {}) {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
-    return fetchBlob(`${baseUrl}/staff/absences/export.csv${buildQuery(params)}`)
+    return fetchBlob(`${API_BASE_URL}/staff/absences/export.csv${buildQuery(params)}`)
   },
 
   async exportPdf(params: StaffAbsenceHistoryParams = {}) {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
-    return fetchBlob(`${baseUrl}/staff/absences/export.pdf${buildQuery(params)}`)
+    return fetchBlob(`${API_BASE_URL}/staff/absences/export.pdf${buildQuery(params)}`)
   },
 }

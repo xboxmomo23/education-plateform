@@ -5,7 +5,12 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const PORT = process.env.PORT || 4000;
+const PORT = Number(process.env.PORT ?? 4000);
+const HOST = process.env.HOST || '0.0.0.0';
+
+if (Number.isNaN(PORT)) {
+  throw new Error(`Invalid PORT value: ${process.env.PORT}`);
+}
 
 // =========================
 // Démarrage du Serveur
@@ -23,12 +28,12 @@ async function startServer() {
     }
 
     // 2. Démarrer le serveur Express
-    const server = app.listen(PORT, () => {
+    const server = app.listen(PORT, HOST, () => {
       console.log('');
       console.log('✅ ========================================');
       console.log(`✅  EduPilot Backend Server Running`);
       console.log('✅ ========================================');
-      console.log(`📍  URL: http://localhost:${PORT}`);
+      console.log(`📍  URL: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
       console.log(`🌍  Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`🗄️   Database: ${process.env.PGDATABASE}`);
       console.log('✅ ========================================');

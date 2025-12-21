@@ -1,4 +1,37 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+import { API_BASE_URL } from "./config";
+
+async function parseResponse(response: Response) {
+  const contentType = response.headers.get("content-type") || ""
+  const isJson = contentType.includes("application/json")
+
+  if (isJson) {
+    try {
+      return await response.json()
+    } catch (error) {
+      return { parseError: error }
+    }
+  }
+
+  try {
+    return { text: await response.text() }
+  } catch {
+    return { text: "" }
+  }
+}
+
+function buildError(response: Response, payload: any) {
+  const snippet =
+    typeof payload?.text === "string" && payload.text.length > 0
+      ? payload.text.slice(0, 300)
+      : undefined
+
+  const message =
+    payload?.error ||
+    payload?.message ||
+    (snippet ? `HTTP ${response.status} ${response.statusText}: ${snippet}` : `HTTP ${response.status} ${response.statusText}`)
+
+  return new Error(message)
+}
 
 /**
  * Helper pour les appels API
@@ -18,10 +51,10 @@ export async function apiCall<T = any>(
     },
   });
 
-  const data = await response.json();
+  const data = await parseResponse(response);
   
   if (!response.ok) {
-    throw new Error(data.error || 'Erreur API');
+    throw buildError(response, data);
   }
 
   return data;

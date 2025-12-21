@@ -1,7 +1,24 @@
 // lib/api/api-client.ts
+import { API_BASE_URL } from "./config";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+async function parseResponse(response: Response) {
+  const contentType = response.headers.get("content-type") || ""
+  const isJson = contentType.includes("application/json")
+
+  if (isJson) {
+    try {
+      return await response.json()
+    } catch (error) {
+      return { parseError: error }
+    }
+  }
+
+  try {
+    return { text: await response.text() }
+  } catch {
+    return { text: "" }
+  }
+}
 
 /**
  * Petit helper générique pour appeler l'API backend
@@ -26,16 +43,15 @@ export async function apiFetch<T>(
     },
   });
 
-  let data: any = null;
-  try {
-    data = await res.json();
-  } catch {
-    // pas de JSON dans la réponse
-  }
+  const data: any = await parseResponse(res);
 
   if (!res.ok) {
     const message =
-      data?.error || data?.message || `Erreur API (${res.status})`;
+      data?.error ||
+      data?.message ||
+      (typeof data?.text === "string" && data.text.length > 0
+        ? `Erreur API (${res.status}): ${data.text.slice(0, 300)}`
+        : `Erreur API (${res.status})`);
     throw new Error(message);
   }
 

@@ -96,6 +96,25 @@ function buildUrl(endpoint: string, params?: Record<string, any>): string {
   return queryString ? `${endpoint}?${queryString}` : endpoint;
 }
 
+async function parseResponse(response: Response) {
+  const contentType = response.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
+
+  if (isJson) {
+    try {
+      return await response.json();
+    } catch (error) {
+      return { parseError: error };
+    }
+  }
+
+  try {
+    return { text: await response.text() };
+  } catch {
+    return { text: '' };
+  }
+}
+
 async function apiRequest<T = any>(
   endpoint: string,
   options: ApiRequestOptions = {}
@@ -118,9 +137,10 @@ async function apiRequest<T = any>(
     const response = await fetch(url, {
       ...fetchOptions,
       headers,
+      credentials: fetchOptions.credentials ?? 'include',
     });
 
-    const data: ApiResponse<T> = await response.json();
+    const data: ApiResponse<T> = await parseResponse(response);
 
     if (response.status === 401) {
       handleUnauthorized();
@@ -134,8 +154,13 @@ async function apiRequest<T = any>(
     if (!response.ok) {
       return {
         success: false,
-        error: data.error || `Erreur HTTP ${response.status}`,
-        errors: data.errors,
+        error:
+          (data as any)?.error ||
+          (data as any)?.message ||
+          (typeof (data as any)?.text === 'string' && (data as any).text.length > 0
+            ? `Erreur HTTP ${response.status}: ${(data as any).text.slice(0, 300)}`
+            : `Erreur HTTP ${response.status}`),
+        errors: (data as any)?.errors,
       };
     }
 

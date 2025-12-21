@@ -1,4 +1,5 @@
 import { api } from './client';
+import { API_BASE_URL } from './config';
 
 // =========================
 // Types
@@ -176,7 +177,7 @@ export const reportsApi = {
    * Génère l'URL de téléchargement du bulletin PDF
    */
   getReportDownloadUrl: (studentId: string, termId: string) =>
-    `/api/students/${studentId}/report?termId=${termId}`,
+    `${API_BASE_URL}/students/${studentId}/report?termId=${termId}`,
 
   /**
    * Télécharge le bulletin PDF directement
@@ -186,7 +187,7 @@ export const reportsApi = {
  */
 downloadReport: async (studentId: string, termId: string, token: string) => {
   const response = await fetch(
-    `http://localhost:5000/api/students/${studentId}/report?termId=${termId}`,
+    `${API_BASE_URL}/students/${studentId}/report?termId=${termId}`,
     {
       headers: {
         Authorization: `Bearer ${token}`,

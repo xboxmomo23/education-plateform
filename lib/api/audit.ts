@@ -1,4 +1,5 @@
 import { apiCall } from "./base"
+import { API_BASE_URL } from "./config"
 
 export interface AuditLogItem {
   id: string
@@ -52,9 +53,8 @@ function buildQuery(params: AuditLogQueryParams = {}) {
 }
 
 async function fetchBlob(endpoint: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
   const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null
-  const response = await fetch(`${baseUrl}${endpoint}`, {
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
