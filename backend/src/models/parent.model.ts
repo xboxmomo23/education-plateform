@@ -148,6 +148,7 @@ async function upsertParentProfile(params: {
   canViewGrades?: boolean;
   canViewAttendance?: boolean;
   contactEmail?: string | null;
+  emergencyContactConsent?: boolean;
   client?: PoolClient;
 }): Promise<void> {
   const {
@@ -159,6 +160,7 @@ async function upsertParentProfile(params: {
     canViewGrades,
     canViewAttendance,
     contactEmail,
+    emergencyContactConsent,
     client,
   } = params;
 
@@ -176,10 +178,10 @@ async function upsertParentProfile(params: {
         is_primary_contact,
         can_view_grades,
         can_view_attendance,
-        emergency_contact,
+        emergency_contact_consent,
         contact_email
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, $8)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       ON CONFLICT (user_id)
       DO UPDATE SET
         phone = COALESCE(EXCLUDED.phone, parent_profiles.phone),
@@ -188,6 +190,7 @@ async function upsertParentProfile(params: {
         is_primary_contact = COALESCE(EXCLUDED.is_primary_contact, parent_profiles.is_primary_contact),
         can_view_grades = COALESCE(EXCLUDED.can_view_grades, parent_profiles.can_view_grades),
         can_view_attendance = COALESCE(EXCLUDED.can_view_attendance, parent_profiles.can_view_attendance),
+        emergency_contact_consent = COALESCE(EXCLUDED.emergency_contact_consent, parent_profiles.emergency_contact_consent),
         contact_email = COALESCE(EXCLUDED.contact_email, parent_profiles.contact_email)
     `,
     [
@@ -198,6 +201,7 @@ async function upsertParentProfile(params: {
       isPrimaryContact ?? false,
       canViewGrades ?? true,
       canViewAttendance ?? true,
+      emergencyContactConsent ?? false,
       contactEmail || null,
     ]
   );

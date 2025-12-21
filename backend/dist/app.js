@@ -80,6 +80,15 @@ app.get('/health', (req, res) => {
         environment: process.env.NODE_ENV || 'development',
     });
 });
+// Proxy health (pour Next proxy /api)
+app.get('/api/health', (req, res) => {
+    res.status(200).json({
+        success: true,
+        message: 'EduPilot API is running',
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development',
+    });
+});
 // Routes d'API
 app.use('/api/auth', auth_routes_1.default);
 app.use('/api/grades', grade_routes_1.default);

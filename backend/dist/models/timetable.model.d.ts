@@ -115,6 +115,10 @@ export declare const TimetableModel: {
      */
     getEntriesByClass(classId: string, week?: "A" | "B"): Promise<TimetableEntry[]>;
     /**
+     * Récupérer les templates d'une journée (toutes classes) pour génération auto
+     */
+    getEntriesByDayOfWeek(dayOfWeek: number, week?: "A" | "B"): Promise<TimetableEntry[]>;
+    /**
      * Créer un template
      */
     createEntry(data: CreateTimetableEntryData): Promise<TimetableEntry>;

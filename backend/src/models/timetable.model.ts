@@ -412,6 +412,45 @@ export const TimetableModel = {
   },
 
   /**
+   * Récupérer les templates d'une journée (toutes classes) pour génération auto
+   */
+  async getEntriesByDayOfWeek(dayOfWeek: number, week?: 'A' | 'B'): Promise<TimetableEntry[]> {
+    let query = `
+      SELECT 
+        t.*,
+        c.id as course_id,
+        c.title as course_title,
+        sub.name as subject_name,
+        sub.code as subject_code,
+        sub.color as subject_color,
+        cl.label as class_label,
+        cl.id as class_id,
+        u.full_name as teacher_name,
+        u.id as teacher_id
+      FROM timetable_entries t
+      JOIN courses c ON t.course_id = c.id
+      JOIN subjects sub ON c.subject_id = sub.id
+      JOIN classes cl ON c.class_id = cl.id
+      JOIN users u ON c.teacher_id = u.id
+      WHERE t.day_of_week = $1
+        AND t.status != 'cancelled'
+        AND (t.valid_to IS NULL OR t.valid_to >= CURRENT_DATE)
+    `;
+
+    const params: any[] = [dayOfWeek];
+
+    if (week) {
+      query += ` AND (t.week IS NULL OR t.week = $2)`;
+      params.push(week);
+    }
+
+    query += ` ORDER BY t.start_time`;
+
+    const result = await pool.query(query, params);
+    return result.rows;
+  },
+
+  /**
    * Créer un template
    */
   async createEntry(data: CreateTimetableEntryData): Promise<TimetableEntry> {

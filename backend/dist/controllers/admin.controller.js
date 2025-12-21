@@ -115,36 +115,32 @@ async function processInviteResend(targetUserId, role, estId) {
             message: "Ce compte est déjà activé, l'invitation ne peut pas être renvoyée",
         };
     }
-    let inviteUrl;
-    const existingTokenResult = await database_1.default.query(`
-      SELECT token
-      FROM password_reset_tokens
+    await database_1.default.query(`
+      UPDATE password_reset_tokens
+      SET used_at = NOW()
       WHERE user_id = $1
         AND purpose = 'invite'
         AND used_at IS NULL
-        AND expires_at > NOW()
-      ORDER BY created_at DESC
-      LIMIT 1
     `, [userRow.id]);
-    const existingCount = existingTokenResult?.rowCount ?? 0;
-    if (existingCount > 0) {
-        const token = existingTokenResult.rows[0].token;
-        inviteUrl = (0, auth_controller_1.buildInviteUrl)(token);
-        console.log("[INVITE] Réutilisation du lien d'activation pour", userRow.email, ":", inviteUrl);
-    }
-    else {
-        const invite = await (0, auth_controller_1.createInviteTokenForUser)({
-            id: userRow.id,
-            email: userRow.email,
-            full_name: userRow.full_name,
-        });
-        inviteUrl = invite.inviteUrl;
+    const invite = await (0, auth_controller_1.createInviteTokenForUser)({
+        id: userRow.id,
+        email: userRow.email,
+        full_name: userRow.full_name,
+    });
+    const inviteUrl = invite?.inviteUrl?.trim();
+    if (!inviteUrl) {
+        console.warn("[INVITE] Impossible de générer un nouveau lien pour", userRow.email);
+        return {
+            ok: false,
+            status: 500,
+            message: "Impossible de générer un lien d'invitation",
+        };
     }
     const contactEmail = await getContactEmailForRole(userRow.id, role);
     const { name: establishmentName, locale: establishmentLocale } = await getEstablishmentInfo(estId);
     const targetEmail = contactEmail || userRow.email;
     const smtpConfigured = (0, email_utils_1.isSmtpConfigured)();
-    if (targetEmail) {
+    if (targetEmail && inviteUrl) {
         await (0, email_service_1.sendInviteEmail)({
             to: targetEmail,
             loginEmail: userRow.email,
@@ -155,6 +151,9 @@ async function processInviteResend(targetUserId, role, estId) {
         }).catch((err) => {
             console.error("[MAIL] Erreur envoi email d'invitation:", err);
         });
+    }
+    else if (!targetEmail) {
+        console.warn("[INVITE] Aucune adresse email cible pour", userRow.email, "(", role, ")");
     }
     return { ok: true, inviteUrl, loginEmail: userRow.email, targetEmail, smtpConfigured };
 }

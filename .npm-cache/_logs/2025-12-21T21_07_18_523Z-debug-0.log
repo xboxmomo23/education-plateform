@@ -1,0 +1,67 @@
+0 verbose cli /usr/bin/node /usr/bin/npm
+1 info using npm@9.2.0
+2 info using node@v18.19.1
+3 timing npm:load:whichnode Completed in 1ms
+4 timing config:load:defaults Completed in 3ms
+5 timing config:load:file:/usr/share/nodejs/npm/npmrc Completed in 4ms
+6 timing config:load:builtin Completed in 4ms
+7 timing config:load:cli Completed in 5ms
+8 timing config:load:env Completed in 1ms
+9 timing config:load:file:/home/edupilot/Documents/education-plateform/.npmrc Completed in 0ms
+10 timing config:load:project Completed in 4ms
+11 timing config:load:file:/home/edupilot/.npmrc Completed in 1ms
+12 timing config:load:user Completed in 1ms
+13 timing config:load:file:/etc/npmrc Completed in 0ms
+14 timing config:load:global Completed in 0ms
+15 timing config:load:setEnvs Completed in 2ms
+16 timing config:load Completed in 21ms
+17 timing npm:load:configload Completed in 21ms
+18 timing npm:load:mkdirpcache Completed in 0ms
+19 timing npm:load:mkdirplogs Completed in 1ms
+20 verbose title npm install
+21 verbose argv "install" "--package-lock-only"
+22 timing npm:load:setTitle Completed in 2ms
+23 timing config:load:flatten Completed in 3ms
+24 timing npm:load:display Completed in 5ms
+25 verbose logfile logs-max:10 dir:/home/edupilot/Documents/education-plateform/.npm-cache/_logs/2025-12-21T21_07_18_523Z-
+26 verbose logfile /home/edupilot/Documents/education-plateform/.npm-cache/_logs/2025-12-21T21_07_18_523Z-debug-0.log
+27 timing npm:load:logFile Completed in 9ms
+28 timing npm:load:timers Completed in 0ms
+29 timing npm:load:configScope Completed in 0ms
+30 timing npm:load Completed in 40ms
+31 silly logfile done cleaning log files
+32 timing config:load:flatten Completed in 1ms
+33 timing arborist:ctor Completed in 2ms
+34 timing idealTree:init Completed in 239ms
+35 timing idealTree:userRequests Completed in 0ms
+36 silly idealTree buildDeps
+37 timing idealTree:#root Completed in 0ms
+38 silly tarball no local data for https://registry.npmjs.org/@tailwindcss/oxide-wasm32-wasi/-/oxide-wasm32-wasi-4.1.17.tgz. Extracting by manifest.
+39 timing idealTree Completed in 70394ms
+40 timing command:install Completed in 70400ms
+41 verbose type system
+42 verbose stack FetchError: request to https://registry.npmjs.org/@tailwindcss/oxide-wasm32-wasi/-/oxide-wasm32-wasi-4.1.17.tgz failed, reason: getaddrinfo EAI_AGAIN registry.npmjs.org
+42 verbose stack     at ClientRequest.<anonymous> (/usr/share/nodejs/minipass-fetch/lib/index.js:130:14)
+42 verbose stack     at ClientRequest.emit (node:events:517:28)
+42 verbose stack     at TLSSocket.socketErrorListener (node:_http_client:501:9)
+42 verbose stack     at TLSSocket.emit (node:events:529:35)
+42 verbose stack     at emitErrorNT (node:internal/streams/destroy:151:8)
+42 verbose stack     at emitErrorCloseNT (node:internal/streams/destroy:116:3)
+42 verbose stack     at process.processTicksAndRejections (node:internal/process/task_queues:82:21)
+43 verbose cwd /home/edupilot/Documents/education-plateform
+44 verbose Linux 6.14.0-37-generic
+45 verbose node v18.19.1
+46 verbose npm  v9.2.0
+47 error code EAI_AGAIN
+48 error syscall getaddrinfo
+49 error errno EAI_AGAIN
+50 error request to https://registry.npmjs.org/@tailwindcss/oxide-wasm32-wasi/-/oxide-wasm32-wasi-4.1.17.tgz failed, reason: getaddrinfo EAI_AGAIN registry.npmjs.org
+51 verbose exit 1
+52 timing npm Completed in 70482ms
+53 verbose unfinished npm timer reify 1766351238588
+54 verbose unfinished npm timer reify:loadTrees 1766351238589
+55 verbose unfinished npm timer idealTree:buildDeps 1766351238830
+56 verbose unfinished npm timer idealTree:node_modules/@tailwindcss/oxide-wasm32-wasi 1766351238832
+57 verbose code 1
+58 error A complete log of this run can be found in:
+58 error     /home/edupilot/Documents/education-plateform/.npm-cache/_logs/2025-12-21T21_07_18_523Z-debug-0.log

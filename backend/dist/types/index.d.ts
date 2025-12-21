@@ -60,7 +60,7 @@ export interface RegisterRequest {
         is_primary_contact?: boolean;
         can_view_grades?: boolean;
         can_view_attendance?: boolean;
-        emergency_contact?: boolean;
+        emergency_contact_consent?: boolean;
     };
 }
 export interface User {
@@ -134,7 +134,7 @@ export interface ParentProfile {
     is_primary_contact?: boolean;
     can_view_grades?: boolean;
     can_view_attendance?: boolean;
-    emergency_contact?: boolean;
+    emergency_contact_consent?: boolean;
     created_at?: Date;
     contact_email?: string | null;
 }
