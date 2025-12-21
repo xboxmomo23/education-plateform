@@ -63,7 +63,6 @@ const dashboardMenu: Record<DashboardRole, MenuDefinition[]> = {
     { icon: Calendar, labelKey: "navigation.schedule", href: "/professeur/emplois-du-temps" },
     { icon: Mail, labelKey: "navigation.messages", href: "/professeur/messages", withBadge: true },
     { icon: BookOpen, labelKey: "navigation.classes", href: "/professeur/classes" },
-    { icon: Users, labelKey: "navigation.students", href: "#" },
   ],
   staff: [
     { icon: BookOpen, labelKey: "navigation.dashboard", href: "/dashboard-staff" },
@@ -74,7 +73,6 @@ const dashboardMenu: Record<DashboardRole, MenuDefinition[]> = {
     { icon: Mail, labelKey: "navigation.messages", href: "/staff/messages", withBadge: true },
     { icon: Users, labelKey: "navigation.bulletins", href: "/staff/bulletins" },
     { icon: Users, labelKey: "navigation.periods", href: "/staff/periodes" },
-    { icon: Settings, labelKey: "navigation.settings", href: "/staff/parametres" },
   ],
   admin: [
     { icon: BookOpen, labelKey: "navigation.dashboard", href: "/admin" },
@@ -207,19 +205,22 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
   }
 
   const isStudent = requiredRole === "student"
-  const isResponsiveRole = requiredRole === "student" || requiredRole === "teacher"
+  const isTeacher = requiredRole === "teacher"
+  const isStaff = requiredRole === "staff"
+  const showTopLanguageBar = isStudent || isTeacher || isStaff
+  const isResponsiveRole = isStudent || isTeacher
 
   const SidebarContent = ({ onNavigate }: { onNavigate?: () => void }) => (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-2 border-b p-6">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center justify-between gap-2 border-b p-6 shrink-0">
         <div className="flex items-center gap-2">
           {getRoleIcon()}
           <h1 className="text-lg font-semibold">{getRoleLabel()}</h1>
         </div>
-        {!isStudent && <LanguageSelector compact />}
+        {requiredRole === "admin" && <LanguageSelector compact />}
       </div>
 
-      <nav className="flex-1 space-y-1 p-4">
+      <nav className="flex-1 space-y-1 overflow-y-auto p-4">
         {menuItems.map((item) => {
           const isActive = pathname === item.href
           return (
@@ -251,7 +252,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
       </nav>
 
       {user && (
-        <div className="border-t p-4">
+        <div className="mt-auto border-t p-4 shrink-0">
           <div className="mb-3 rounded-lg bg-muted p-3">
             <p className="text-sm font-medium">{user.full_name || user.email}</p>
             <p className="text-xs text-muted-foreground">{user.email}</p>
@@ -280,6 +281,13 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
           <SidebarContent />
         </aside>
         <main className="flex-1 overflow-auto">
+          {showTopLanguageBar && (
+            <div className="hidden border-b bg-background md:flex">
+              <div className="container flex justify-end py-3">
+                <LanguageSelector compact />
+              </div>
+            </div>
+          )}
           <div className="container py-8">{children}</div>
         </main>
       </div>
@@ -288,7 +296,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
 
   return (
     <div className="flex min-h-screen flex-col bg-background md:flex-row">
-      <aside className="hidden w-64 border-r bg-card md:block md:flex-shrink-0">
+      <aside className="hidden w-64 border-r bg-card md:block md:flex-shrink-0 md:h-screen md:min-h-screen md:max-h-screen">
         <SidebarContent />
       </aside>
 
@@ -311,14 +319,14 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
                 <span className="sr-only">Ouvrir le menu</span>
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-64 p-0">
+            <SheetContent side="left" className="w-64 p-0 flex">
               <SidebarContent onNavigate={() => setMobileMenuOpen(false)} />
             </SheetContent>
           </Sheet>
         </header>
 
         <main className="flex-1 overflow-y-auto">
-          {isStudent && (
+          {showTopLanguageBar && (
             <div className="hidden border-b bg-background md:flex">
               <div className="container flex justify-end py-3">
                 <LanguageSelector compact />

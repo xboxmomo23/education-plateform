@@ -10,6 +10,9 @@ import { ParentChildProvider, useParentChild } from "@/components/parent/ParentC
 import { useEstablishmentSettings } from "@/hooks/useEstablishmentSettings"
 import { LanguageSelector } from "@/components/language-selector"
 import { useI18n } from "@/components/providers/i18n-provider"
+import { Button } from "@/components/ui/button"
+import { LogOut } from "lucide-react"
+import { clearUserSession } from "@/lib/auth-new"
 
 export default function ParentLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -64,6 +67,7 @@ function ParentLayoutContent({
   const { accountDisabled } = useParentChild()
   const { settings } = useEstablishmentSettings()
   const { t } = useI18n()
+  const router = useRouter()
   const navItems = useMemo(
     () => [
       { href: "/parent/dashboard", label: t("navigation.dashboard") },
@@ -78,6 +82,10 @@ function ParentLayoutContent({
   const contactMessage = settings?.contactEmail
     ? t("parent.accountDisabledContactEmail", { email: settings.contactEmail })
     : t("parent.accountDisabledContact")
+  const handleLogout = () => {
+    clearUserSession()
+    router.replace("/login-parent")
+  }
 
   return (
     <div className="min-h-screen bg-muted/20">
@@ -95,7 +103,13 @@ function ParentLayoutContent({
                 </p>
               )}
             </div>
-            <LanguageSelector compact />
+            <div className="flex items-center gap-2">
+              <LanguageSelector compact />
+              <Button variant="outline" onClick={handleLogout}>
+                <LogOut className="mr-2 h-4 w-4" />
+                {t("common.actions.logout")}
+              </Button>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <nav className="flex flex-wrap gap-2">
