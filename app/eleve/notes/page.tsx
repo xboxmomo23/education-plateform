@@ -70,6 +70,14 @@ type StudentNotesResponse = {
 // TRANSFORMATION DES DONNÉES SUMMARY -> UI
 // ============================================
 
+function pickLatestTeacherComment(evaluations: Evaluation[]): string | undefined {
+  const withComment = evaluations
+    .filter((e) => (e.appreciation || "").trim().length > 0)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+  return withComment[0]?.appreciation || undefined
+}
+
 function transformSummaryToUI(summary: GradesSummary): StudentNotesResponse {
   const subjects: SubjectNotes[] = summary.subjects.map((subject) => ({
     subjectId: subject.subjectId,
@@ -97,9 +105,18 @@ function transformSummaryToUI(summary: GradesSummary): StudentNotesResponse {
       })),
   }))
 
+  // Injecter le commentaire prof le plus récent par matière (fallback sur l'appréciation auto)
+  const subjectsWithTeacherComment = subjects.map((subject) => {
+    const teacherComment = pickLatestTeacherComment(subject.evaluations)
+    return {
+      ...subject,
+      appreciation: teacherComment || subject.appreciation,
+    }
+  })
+
   return {
     generalAverage: summary.overallAverage,
-    subjects,
+    subjects: subjectsWithTeacherComment,
   }
 }
 
