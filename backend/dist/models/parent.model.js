@@ -103,40 +103,64 @@ async function upsertParentProfile(params) {
     const { parentId, phone, address, relationType, isPrimaryContact, canViewGrades, canViewAttendance, contactEmail, emergencyContactConsent, client, } = params;
     const safePhone = typeof phone === 'string' && phone.trim().length > 0 ? phone.trim() : FALLBACK_PARENT_PHONE;
     const db = client ?? database_1.pool;
-    await db.query(`
-      INSERT INTO parent_profiles (
-        user_id,
-        phone,
-        address,
-        relation_type,
-        is_primary_contact,
-        can_view_grades,
-        can_view_attendance,
-        emergency_contact_consent,
-        contact_email
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    const doUpsert = async (includeConsent) => {
+        const columns = [
+            "user_id",
+            "phone",
+            "address",
+            "relation_type",
+            "is_primary_contact",
+            "can_view_grades",
+            "can_view_attendance",
+            ...(includeConsent ? ["emergency_contact_consent"] : []),
+            "contact_email",
+        ];
+        const valuesPlaceholders = columns.map((_, idx) => `$${idx + 1}`);
+        const updateColumns = [
+            "phone",
+            "address",
+            "relation_type",
+            "is_primary_contact",
+            "can_view_grades",
+            "can_view_attendance",
+            ...(includeConsent ? ["emergency_contact_consent"] : []),
+            "contact_email",
+        ];
+        const updateSet = updateColumns
+            .map((col) => `${col} = COALESCE(EXCLUDED.${col}, parent_profiles.${col})`)
+            .join(", ");
+        const query = `
+      INSERT INTO parent_profiles (${columns.join(", ")})
+      VALUES (${valuesPlaceholders.join(", ")})
       ON CONFLICT (user_id)
-      DO UPDATE SET
-        phone = COALESCE(EXCLUDED.phone, parent_profiles.phone),
-        address = COALESCE(EXCLUDED.address, parent_profiles.address),
-        relation_type = COALESCE(EXCLUDED.relation_type, parent_profiles.relation_type),
-        is_primary_contact = COALESCE(EXCLUDED.is_primary_contact, parent_profiles.is_primary_contact),
-        can_view_grades = COALESCE(EXCLUDED.can_view_grades, parent_profiles.can_view_grades),
-        can_view_attendance = COALESCE(EXCLUDED.can_view_attendance, parent_profiles.can_view_attendance),
-        emergency_contact_consent = COALESCE(EXCLUDED.emergency_contact_consent, parent_profiles.emergency_contact_consent),
-        contact_email = COALESCE(EXCLUDED.contact_email, parent_profiles.contact_email)
-    `, [
-        parentId,
-        safePhone,
-        address || null,
-        relationType || null,
-        isPrimaryContact ?? false,
-        canViewGrades ?? true,
-        canViewAttendance ?? true,
-        emergencyContactConsent ?? false,
-        contactEmail || null,
-    ]);
+      DO UPDATE SET ${updateSet}
+    `;
+        const paramsUpsert = [
+            parentId,
+            safePhone,
+            address || null,
+            relationType || null,
+            isPrimaryContact ?? false,
+            canViewGrades ?? true,
+            canViewAttendance ?? true,
+        ];
+        if (includeConsent) {
+            paramsUpsert.push(emergencyContactConsent ?? false);
+        }
+        paramsUpsert.push(contactEmail || null);
+        await db.query(query, paramsUpsert);
+    };
+    try {
+        await doUpsert(true);
+    }
+    catch (error) {
+        // Si la colonne n'existe pas encore (DB non migrée), on retente sans le champ
+        const isMissingColumn = error?.code === "42703" ||
+            (typeof error?.message === "string" && error.message.includes("emergency_contact_consent"));
+        if (!isMissingColumn)
+            throw error;
+        await doUpsert(false);
+    }
 }
 async function upsertStudentParentRelation(params) {
     const { studentId, parentId, relationType, isPrimary, receiveNotifications, client } = params;

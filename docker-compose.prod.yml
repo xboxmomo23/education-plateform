@@ -10,6 +10,7 @@ services:
     environment:
       PORT: 4000
       HOST: 0.0.0.0
+    volumes: []
     restart: unless-stopped
     healthcheck:
       test:
@@ -39,6 +40,7 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: /api
       API_INTERNAL_URL: http://backend:4000
+    volumes: []
     depends_on:
       backend:
         condition: service_healthy
